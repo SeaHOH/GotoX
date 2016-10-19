@@ -1,40 +1,10 @@
 #!/usr/bin/env python
 # coding:utf-8
+# Based on GoAgent 3.1.5 by Phus Lu <phus.lu@gmail.com>
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang.2008@gmail.com>
 # Based on WallProxy 0.4.0 by Hust Moon <www.ehust@gmail.com>
 # Contributor:
-#      Phus Lu           <phus.lu@gmail.com>
-#      Hewig Xu          <hewigovens@gmail.com>
-#      Ayanamist Yang    <ayanamist@gmail.com>
-#      V.E.O             <V.E.O@tom.com>
-#      Max Lv            <max.c.lv@gmail.com>
-#      AlsoTang          <alsotang@gmail.com>
-#      Christopher Meng  <i@cicku.me>
-#      Yonsm Guo         <YonsmGuo@gmail.com>
-#      Parkman           <cseparkman@gmail.com>
-#      Ming Bai          <mbbill@gmail.com>
-#      Bin Yu            <yubinlove1991@gmail.com>
-#      lileixuan         <lileixuan@gmail.com>
-#      Cong Ding         <cong@cding.org>
-#      Zhang Youfu       <zhangyoufu@gmail.com>
-#      Lu Wei            <luwei@barfoo>
-#      Harmony Meow      <harmony.meow@gmail.com>
-#      logostream        <logostream@gmail.com>
-#      Rui Wang          <isnowfy@gmail.com>
-#      Wang Wei Qiang    <wwqgtxx@gmail.com>
-#      Felix Yan         <felixonmars@gmail.com>
-#      Sui Feng          <suifeng.me@qq.com>
-#      QXO               <qxodream@gmail.com>
-#      Geek An           <geekan@foxmail.com>
-#      Poly Rabbit       <mcx_221@foxmail.com>
-#      oxnz              <yunxinyi@gmail.com>
-#      Shusen Liu        <liushusen.smart@gmail.com>
-#      Yad Smood         <y.s.inside@gmail.com>
-#      Chen Shuang       <cs0x7f@gmail.com>
-#      cnfuyu            <cnfuyu@gmail.com>
-#      cuixin            <steven.cuixin@gmail.com>
-#      s2marine0         <s2marine0@gmail.com>
-#      Toshio Xiang      <snachx@gmail.com>
+#      SeaHOH          <seahoh@gmail.com>
 
 __version__ = '3.1.5'
 
@@ -266,7 +236,7 @@ def main():
                     error = u'某些安全软件(如 %s)可能和本软件存在冲突，造成 CPU 占用过高。\n如有此现象建议暂时退出此安全软件来继续运行 GotoX' % ','.join(softwares)
                     ctypes.windll.user32.MessageBoxW(None, error, title, 0)
                     #sys.exit(0)
-        if GC.GAE_APPIDS[0] == 'gotox':
+        if not GC.GAE_APPIDS or GC.GAE_APPIDS[0] == 'gotox':
             logging.critical('please edit %s to add your appid to [gae] !', GC.CONFIG_FILENAME)
             sys.exit(-1)
         if not dnslib:
