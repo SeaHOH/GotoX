@@ -76,7 +76,8 @@ hosts_section, http_section = '%s/hosts' % GC.LINK_PROFILE, '%s/http' % GC.LINK_
 #GC.METHOD_REMATCH_HAS_LOCALFILE = any(x.startswith('file://') for x in GC.METHOD_REMATCH_MAP.values())
 
 #GC.HTTP_WITHGAE = set(CONFIG.get(http_section, 'withgae').split('|'))
-GC.HTTP_CRLFSITES = tuple(CONFIG.get(http_section, 'crlfsites').split('|'))
+GC.HTTP_CRLFSITES = CONFIG.get(http_section, 'crlfsites')
+GC.HTTP_CRLFSITES = tuple(GC.HTTP_CRLFSITES.split('|')) if GC.HTTP_CRLFSITES else ()
 #GC.HTTP_FORCEHTTPS = set(CONFIG.get(http_section, 'forcehttps').split('|'))
 #GC.HTTP_FAKEHTTPS = set(CONFIG.get(http_section, 'fakehttps').split('|'))
 
@@ -92,7 +93,8 @@ GC.FINDER_MAXTIMEOUT = CONFIG.getint('finder', 'maxtimeout')
 GC.FINDER_THREADS = CONFIG.getint('finder', 'threads')
 GC.FINDER_BLOCKTIME = CONFIG.getint('finder', 'blocktime')
 GC.FINDER_TIMESBLOCK = CONFIG.getint('finder', 'timesblock')
-GC.FINDER_BLOCK = tuple(CONFIG.get('finder', 'block').split('|'))
+GC.FINDER_BLOCK = CONFIG.get('finder', 'block')
+GC.FINDER_BLOCK = tuple(GC.FINDER_BLOCK.split('|')) if GC.FINDER_BLOCK else ()
 
 #GC.PAC_ENABLE = CONFIG.getint('pac', 'enable')
 #GC.PAC_IP = CONFIG.get('pac', 'ip')
@@ -125,10 +127,13 @@ if GC.PROXY_ENABLE:
 else:
     GC.proxy = ''
 
-GC.AUTORANGE_HOSTS = CONFIG.get('autorange', 'hosts').split('|')
+GC.AUTORANGE_HOSTS = CONFIG.get('autorange', 'hosts')
+GC.AUTORANGE_HOSTS = GC.AUTORANGE_HOSTS.split('|') if GC.AUTORANGE_HOSTS else []
 GC.AUTORANGE_HOSTS_MATCH = [re.compile(fnmatch.translate(h)).match for h in GC.AUTORANGE_HOSTS]
-GC.AUTORANGE_ENDSWITH = tuple(CONFIG.get('autorange', 'endswith').split('|'))
-GC.AUTORANGE_NOENDSWITH = tuple(CONFIG.get('autorange', 'noendswith').split('|'))
+GC.AUTORANGE_ENDSWITH = tuple(CONFIG.get('autorange', 'endswith')
+GC.AUTORANGE_ENDSWITH = tuple(GC.AUTORANGE_ENDSWITH.split('|')) if GC.AUTORANGE_ENDSWITH else ()
+GC.AUTORANGE_NOENDSWITH = tuple(CONFIG.get('autorange', 'noendswith')
+GC.AUTORANGE_NOENDSWITH = tuple(GC.AUTORANGE_NOENDSWITH.split('|')) if GC.AUTORANGE_NOENDSWITH else ()
 GC.AUTORANGE_FIRSTSIZE = CONFIG.getint('autorange', 'firstsize')
 GC.AUTORANGE_MAXSIZE = CONFIG.getint('autorange', 'maxsize')
 GC.AUTORANGE_WAITSIZE = CONFIG.getint('autorange', 'waitsize')
