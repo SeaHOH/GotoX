@@ -1,0 +1,1 @@
+@"%~dp0..\python\python.exe" "%~dpn0.py" && exit /b 0 || (pause && exit /b -1)
