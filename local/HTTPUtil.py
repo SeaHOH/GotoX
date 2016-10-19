@@ -246,7 +246,7 @@ class BaseHTTPUtil(object):
         self.set_ssl_option()
 
     def set_ssl_option(self):
-        self.ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+        self.ssl_context = ssl.SSLContext(GC.LINK_REMOTESSL)
         #validate
         self.ssl_context.verify_mode = ssl.CERT_REQUIRED
         if self.cacert:

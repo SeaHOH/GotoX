@@ -59,7 +59,7 @@ GC.LINK_REMOTESSLTXT = CONFIG.get('link', 'remotessl')
 GC.LINK_LOCALSSLTXT = GC.LINK_LOCALSSLTXT or 'SSLv23'
 GC.LINK_REMOTESSLTXT = GC.LINK_REMOTESSLTXT or 'TLSv1.2'
 GC.LINK_LOCALSSL = SSLv[GC.LINK_LOCALSSLTXT]
-GC.LINK_REMOTESSL = max(SSLv[GC.LINK_REMOTESSLTXT]+1, 4)
+GC.LINK_REMOTESSL = max(SSLv[GC.LINK_REMOTESSLTXT]+1, 4) if GC.LINK_OPENSSL else max(SSLv[GC.LINK_REMOTESSLTXT], 3)
 GC.LINK_TIMEOUT = CONFIG.getint('link', 'timeout')
 GC.LINK_FWDTIMEOUT = CONFIG.getint('link', 'fwd_timeout')
 
@@ -130,9 +130,9 @@ else:
 GC.AUTORANGE_HOSTS = CONFIG.get('autorange', 'hosts')
 GC.AUTORANGE_HOSTS = GC.AUTORANGE_HOSTS.split('|') if GC.AUTORANGE_HOSTS else []
 GC.AUTORANGE_HOSTS_MATCH = [re.compile(fnmatch.translate(h)).match for h in GC.AUTORANGE_HOSTS]
-GC.AUTORANGE_ENDSWITH = tuple(CONFIG.get('autorange', 'endswith')
+GC.AUTORANGE_ENDSWITH = CONFIG.get('autorange', 'endswith')
 GC.AUTORANGE_ENDSWITH = tuple(GC.AUTORANGE_ENDSWITH.split('|')) if GC.AUTORANGE_ENDSWITH else ()
-GC.AUTORANGE_NOENDSWITH = tuple(CONFIG.get('autorange', 'noendswith')
+GC.AUTORANGE_NOENDSWITH = CONFIG.get('autorange', 'noendswith')
 GC.AUTORANGE_NOENDSWITH = tuple(GC.AUTORANGE_NOENDSWITH.split('|')) if GC.AUTORANGE_NOENDSWITH else ()
 GC.AUTORANGE_FIRSTSIZE = CONFIG.getint('autorange', 'firstsize')
 GC.AUTORANGE_MAXSIZE = CONFIG.getint('autorange', 'maxsize')
