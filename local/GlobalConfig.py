@@ -89,7 +89,8 @@ GC.FILTER_SSLACTION = CONFIG.getint('filter', 'sslaction')
 
 GC.FINDER_MINIPCNT = CONFIG.getint('finder', 'minipcnt')
 GC.FINDER_IPCNT = max(CONFIG.getint('finder', 'ipcnt'), GC.FINDER_MINIPCNT)
-GC.FINDER_MAXTIMEOUT = CONFIG.getint('finder', 'maxtimeout')
+GC.FINDER_MAXTIMEOUT = CONFIG.getint('finder', 'maxtimeout') or 1000
+GC.FINDER_TESTTIMEOUT = float(GC.FINDER_MAXTIMEOUT) / 1000 * 2
 GC.FINDER_THREADS = CONFIG.getint('finder', 'threads')
 GC.FINDER_BLOCKTIME = CONFIG.getint('finder', 'blocktime')
 GC.FINDER_TIMESBLOCK = CONFIG.getint('finder', 'timesblock')

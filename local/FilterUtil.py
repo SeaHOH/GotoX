@@ -3,7 +3,7 @@
 from collections import OrderedDict
 from common import LRUCache
 from GlobalConfig import GC
-from FilterConfig import numToAct, numToSSLAct, ACTION_FILTERS
+from FilterConfig import FAKECERT, numToAct, numToSSLAct, ACTION_FILTERS
 
 filters_cache = LRUCache(256)
 ssl_filters_cache = LRUCache(64)
@@ -40,7 +40,7 @@ def get_action(url_parts):
     except KeyError:
         filter = None
         for filters in ACTION_FILTERS:
-            if filters.action == 5: #FAKECERT
+            if filters.action == FAKECERT:
                 continue
             for schemefilter, hostfilter, pathfilter, target in filters:
                 if match_host_filter(hostfilter, host):

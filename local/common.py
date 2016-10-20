@@ -2,11 +2,11 @@
 
 import os
 import re
-import time
 import string
 import select
 import socket
 import urllib2
+from time import time, sleep
 from compat import (
     thread,
     xrange,
@@ -104,22 +104,20 @@ def get_listen_ip():
     sock.close()
     return listen_ip
 
-class testip(): pass
-
-testip.lastupdata = time.time()
-testip.running = False
-testip.lasttest = testip.lastupdata - 30
-testip.lastactive = None
-testip.qcount = 0
-testip.tested = {}
-testip.queobj = Queue.Queue()
-
-from GlobalConfig import GC
+class testip():
+    lastupdata = time()
+    running = False
+    lasttest = lastupdata - 30
+    lastactive = None
+    qcount = 0
+    tested = {}
+    queobj = Queue.Queue()
 
 isip = re.compile(r'(\d+\.){3}\d+$|(([a-f\d]{1,4}:){1,6}|:)([a-f\d]{1,4})?(:[a-f\d]{1,4}){1,6}$').match
 isipv4 = re.compile(r'(\d+\.){3}\d+$').match
 isipv6 = re.compile(r'(([a-f\d]{1,4}:){1,6}|:)([a-f\d]{1,4})?(:[a-f\d]{1,4}){1,6}$').match
 
+from GlobalConfig import GC
 dns = {}
 def dns_resolve(host, dnsservers=[]):
     if isip(host):
@@ -157,7 +155,7 @@ def dns_remote_resolve(qname, dnsservers, blacklist, timeout):
     if dns_v6_servers:
         sock_v6 = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
         socks.append(sock_v6)
-    timeout_at = time.time() + timeout
+    timeout_at = time() + timeout
     try:
         for _ in xrange(2):
             try:
@@ -165,7 +163,7 @@ def dns_remote_resolve(qname, dnsservers, blacklist, timeout):
                     sock_v4.sendto(query_data, (dnsserver, 53))
                 for dnsserver in dns_v6_servers:
                     sock_v6.sendto(query_data, (dnsserver, 53))
-                while time.time() < timeout_at:
+                while time() < timeout_at:
                     ins, _, _ = select.select(socks, [], [], 0.1)
                     for sock in ins:
                         reply_data, _ = sock.recvfrom(512)
@@ -185,6 +183,6 @@ def dns_remote_resolve(qname, dnsservers, blacklist, timeout):
 
 def spawn_later(seconds, target, *args, **kwargs):
     def wrap(*args, **kwargs):
-        time.sleep(seconds)
+        sleep(seconds)
         return target(*args, **kwargs)
     return thread.start_new_thread(wrap, args, kwargs)

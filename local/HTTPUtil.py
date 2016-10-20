@@ -314,6 +314,8 @@ class HTTPUtil(BaseHTTPUtil):
                             #'ECDHE-RSA-DES-CBC3-SHA',
                             #'ECDHE-ECDSA-RC4-SHA',
                             'TLS_EMPTY_RENEGOTIATION_INFO_SCSV'])
+    outtimes = 0
+    keeptime = 90
 
     def __init__(self, max_window=4, max_timeout=8, max_retry=2, proxy=''):
         # http://docs.python.org/dev/library/ssl.html
@@ -322,7 +324,6 @@ class HTTPUtil(BaseHTTPUtil):
         # http://www.openssl.org/docs/apps/ciphers.html
         # openssl s_server -accept 443 -key CA.crt -cert CA.crt
         # set_ciphers as Modern Browsers
-        self.outtimes = 0
         self.max_window = max_window
         self.max_retry = max_retry
         self.max_timeout = max_timeout
@@ -332,7 +333,6 @@ class HTTPUtil(BaseHTTPUtil):
         self.ssl_connection_time = collections.defaultdict(float)
         self.ssl_connection_cache = collections.defaultdict(Queue.PriorityQueue)
         self.proxy = proxy
-        self.ssl_context = None
         if self.proxy:
             #dns_resolve = self.__dns_resolve_withproxy
             self.create_connection = self.__create_connection_withproxy
@@ -355,7 +355,7 @@ class HTTPUtil(BaseHTTPUtil):
                     while True:
                         ctime, sock = self.tcp_connection_cache[connection_cache_key].get_nowait()
                         rd, _, ed = select([sock], [], [sock], 0.1)
-                        if rd or ed or time()-ctime > 90:
+                        if rd or ed or time()-ctime > self.keeptime:
                             sock.close()
                         else:
                             self.tcp_connection_cache[connection_cache_key].put((ctime, sock))
@@ -378,7 +378,7 @@ class HTTPUtil(BaseHTTPUtil):
                     while True:
                         ctime, ssl_sock = self.ssl_connection_cache[connection_cache_key].get_nowait()
                         rd, _, ed = select([ssl_sock.sock], [], [ssl_sock.sock], 0.1)
-                        if rd or ed or time()-ctime > 90:
+                        if rd or ed or time()-ctime > self.keeptime:
                             ssl_sock.sock.close()
                         else:
                             self.ssl_connection_cache[connection_cache_key].put((ctime, ssl_sock))
@@ -441,7 +441,7 @@ class HTTPUtil(BaseHTTPUtil):
             while connection_cache_key:
                 ctime, sock = self.tcp_connection_cache[connection_cache_key].get_nowait()
                 rd, _, ed = select([sock], [], [sock], 0.1)
-                if rd or ed or time()-ctime > 90:
+                if rd or ed or time()-ctime > self.keeptime:
                     sock.close()
                 else:
                     return sock
@@ -503,7 +503,7 @@ class HTTPUtil(BaseHTTPUtil):
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32*1024)
                 # disable negal algorithm to send http request quickly.
                 sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
-                # pick up the certificate
+                # pick up the sock socket
                 server_hostname = b'www.google.com' if address[0].endswith('.appspot.com') else None
                 ssl_sock = self.get_ssl_socket(sock, server_hostname)
                 # set a short timeout to trigger timeout retry more quickly.
@@ -527,13 +527,11 @@ class HTTPUtil(BaseHTTPUtil):
                 if test:
                     if ssl_sock.ssl_time > timeout:
                         raise socket.error('%d timed out' % int(ssl_sock.ssl_time*1000))
-                # sometimes, we want to use raw tcp socket directly(select/epoll), so setattr it to ssl socket.
-                ssl_sock.sock = sock
                 # verify SSL certificate.
                 if 'google' in hostname or test:
                     #多次使用慢速或无效的 IP 刷新
                     if ssl_sock.ssl_time > 1.5:
-                        if self.outtimes >= 8 or ssl_sock.ssl_time > 4:
+                        if ssl_sock.ssl_time > 4 or self.outtimes > max(min(len(GC.IPLIST_MAP[GC.GAE_LISTNAME])/2, 16), 8):
                             logging.warning(u'连接过慢 %s: %d' %('.'.join(x.rjust(3) for x in ipaddr[0].split('.')), int(ssl_sock.ssl_time*1000)))
                             spawn_later(5, testgaeip)
                         else:
@@ -544,11 +542,13 @@ class HTTPUtil(BaseHTTPUtil):
                     subject = cert.get_subject()
                     if not subject.O == b'Google Inc':
                         raise ssl.SSLError("%s certificate organizationName(%s) not startswith 'Google'" % (address[0], orgname))
-                # put ssl socket object to output queobj
+                # sometimes, we want to use raw tcp socket directly(select/epoll), so setattr it to ssl socket.
+                ssl_sock.sock = sock
                 ssl_sock.xip = ipaddr
                 if test:
                     self.ssl_connection_cache[GC.GAE_LISTNAME + ':443'].put((time(), ssl_sock))
                     return test.put((ipaddr[0], ssl_sock.ssl_time))
+                # put ssl socket object to output queobj
                 queobj.put(ssl_sock)
             except NetWorkIOError as e:
                 # reset a large and random timeout to the ipaddr
@@ -579,7 +579,7 @@ class HTTPUtil(BaseHTTPUtil):
             while connection_cache_key:
                 ctime, ssl_sock = self.ssl_connection_cache[connection_cache_key].get_nowait()
                 rd, _, ed = select([ssl_sock.sock], [], [ssl_sock.sock], 0.1)
-                if rd or ed or time()-ctime > 90:
+                if rd or ed or time()-ctime > self.keeptime:
                     ssl_sock.sock.close()
                 else:
                     return ssl_sock
@@ -759,11 +759,11 @@ class HTTPUtil(BaseHTTPUtil):
                 if realurl:
                     _, realhost, _, _, _, _ = urlparse.urlparse(realurl)
                     if realhost not in testip.tested:
-                        logging.warning('"%s" trigger testip1' % realhost)
+                        logging.warning('request: "%s" trigger testip' % realhost)
                         testip.tested[realhost] = True
                         testgaeip()
                 return None
 
 http_util = HTTPUtil(max_window=GC.LINK_WINDOW, max_timeout=GC.LINK_TIMEOUT, proxy=GC.proxy)
 from GAEUpdata import testgaeip
-thread.start_new_thread(http_util.check_connection_cache, tuple())
+thread.start_new_thread(http_util.check_connection_cache, ())

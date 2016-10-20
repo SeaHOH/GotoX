@@ -16,11 +16,9 @@ sys.dont_write_bytecode = True
 from GlobalConfig import GC
 #全局只读写数据
 #最大 IP 延时，单位：毫秒
-g_maxhandletimeout = GC.FINDER_MAXTIMEOUT or 900
+g_maxhandletimeout = GC.FINDER_MAXTIMEOUT or 1000
 #加高峰时段 IP 延时，单位：毫秒
 g_maxhandletimeoutday = 200
-#加正在使用 IP 延时，单位：毫秒
-g_maxhandletimeoutadd = 300
 #扫描得到的可用 IP 数量
 g_maxgaeipcnt = GC.FINDER_IPCNT or 12
 #扫描 IP 的线程数量
@@ -120,7 +118,7 @@ def readiplist(badlist, nowgaelist):
         for ip in g_block:
             if iplist[i].startswith(ip):
                 del iplist[i]
-    iplist = (set(iplist) - blocklist - lowlist) | nowgaelist
+    iplist = set(iplist) - blocklist - lowlist
     return list(iplist), list(lowlist)
 
 def readbadlist():
@@ -264,13 +262,12 @@ def runfinder(ip):
     ssldomain, costtime, servername = gae_finder.getssldomain(ip)
     with gLock:
         g.pingcnt -= 1
-        pingcnt = g.pingcnt
+        remain = len(g.iplist) + len(g.lowlist) + g.pingcnt
     #判断是否可用
     if isgaeserver(servername):
         if ip in g.badlist: #删除未到容忍次数的 badip
             del g.badlist[ip]
-        PRINT(u'剩余：%s，%s，%sms，%s，%s',
-              str(len(g.iplist) + len(g.lowlist) + pingcnt).rjust(3), ip.rjust(15),
+        PRINT(u'剩余：%s，%s，%sms，%s，%s', str(remain).rjust(3), ip.rjust(15),
               str(costtime).rjust(4), servername.ljust(3), ssldomain)
         #判断是否够快
         if costtime < g.maxhandletimeout:
@@ -284,7 +281,7 @@ def runfinder(ip):
         else: #记录检测到 badip 的时间
             g.badlist[ip] = [1, time()]
     #满足数量后停止
-    if len(g.gaelist) >= g_maxgaeipcnt:
+    if len(g.gaelist) >= g.maxgaeipcnt:
         return True
 
 class Finder(threading.Thread):
@@ -298,15 +295,6 @@ class Finder(threading.Thread):
             if runfinder(ip):
                 break
             ip = randomip()
-
-def testnow(nowgaelist):
-    if nowgaelist:
-        for ip in nowgaelist:
-            g.pingcnt += 1
-            g.iplist.remove(ip) #移除 IP
-            if runfinder(ip):
-                return False
-    return True
 
 def _randomip(iplist):
     with gLock:
@@ -341,44 +329,41 @@ def getgaeip(*args):
     nowtime = int(strftime('%H'))
     g.maxhandletimeoutday = g_maxhandletimeoutday if nowtime > 12 and nowtime < 21 else 0
     g.maxhandletimeout = g_maxhandletimeout + g.maxhandletimeoutday
-    nowgaelist = args[0] if len(args) > 0 else False #提取 IP 列表
+    nowgaelist = args[0] if len(args) > 0 else set() #提取 IP 列表
+    g.maxgaeipcnt = g_maxgaeipcnt - len(nowgaelist)
     g.badlist = readbadlist()
-    g.iplist, g.lowlist = readiplist(g.badlist, nowgaelist or set())
+    g.iplist, g.lowlist = readiplist(g.badlist, nowgaelist)
     g.gaelist = []
     g.gaelistbak = []
     g.pingcnt = 0
     PRINT(u'====================== 开始更新 GAE IP ======================')
-    PRINT(u'待检测 IP 数：%d', len(g.iplist) + len(g.lowlist))
-    #优先测试正在使用中的 IP 列表
-    if testnow(nowgaelist):
-        g.maxhandletimeout = g_maxhandletimeoutadd + g.maxhandletimeout
-        #多线程搜索
-        threadiplist = []
-        for i in xrange(1, g_maxthreads + 1):
-            ping_thread = Finder()
-            ping_thread.setDaemon(True)
-            ping_thread.setName('Ping-%s' % str(i).rjust(2, '0'))
-            ping_thread.start()
-            threadiplist.append(ping_thread)
-        for p in threadiplist:
-            p.join()
+    PRINT(u'需要 IP 数：%d，待检测 IP 数：%d', g.maxgaeipcnt, len(g.iplist) + len(g.lowlist))
+    #多线程搜索
+    threadiplist = []
+    for i in xrange(1, g_maxthreads + 1):
+        ping_thread = Finder()
+        ping_thread.setDaemon(True)
+        ping_thread.setName('Ping-%s' % str(i).rjust(2, '0'))
+        ping_thread.start()
+        threadiplist.append(ping_thread)
+    for p in threadiplist:
+        p.join()
     #结果
     savebadlist()
-    #补齐个数
-    n = g_maxgaeipcnt - len(g.gaelist)
+    gn = len(g.gaelist)
+    n = g.maxgaeipcnt - gn
     if n > 0:
-        #排序
+        #补齐个数
         g.gaelistbak.sort(key = lambda x: x[1])
-        g.gaelist += [x[0] for x in g.gaelistbak[:n]]
-        n -= g_maxgaeipcnt - len(g.gaelist)
-        PRINT(u'未找到足够的优质 GAE IP，添加 %s 个备选 IP：\n %s', n, ' | '.join(g.gaelist))
+        g.gaelist += g.gaelistbak[:n]
+        n -= g.maxgaeipcnt - len(g.gaelist)
+        PRINT(u'未找到足够的优质 GAE IP，添加 %d 个备选 IP：\n %s', n, ' | '.join(g.gaelist))
     else:
-        PRINT(u'已经找到足够的优质 GAE IP：\n %s', ' | '.join(g.gaelist))
+        PRINT(u'已经找到 %d 个新的优质 GAE IP：\n %s', gn, ' | '.join(g.gaelist))
     PRINT(u'====================== GAE IP 更新完毕 ======================')
     g.running = False
 
-    return g.gaelist
+    return g.gaelist + list(nowgaelist)
 
 if __name__ == '__main__':
     getgaeip()
-    #getgaeip({'180.96.70.108','180.96.70.109','180.96.70.110','61.49.62.44','61.49.62.45','61.49.62.46','61.49.51.44','61.49.51.45','61.49.51.46','101.226.196.172','101.226.196.173','101.226.196.174','101.226.196.204','101.226.196.205','101.226.196.206','183.60.90.108','183.60.90.109','183.60.90.110','58.63.254.108','58.63.254.109','58.63.254.110','59.173.16.236','59.173.16.237','59.173.16.238','59.173.16.172','59.173.16.173','59.173.16.174','222.211.87.12','222.211.87.13','222.211.87.14','222.211.87.44','222.211.87.45','222.211.87.46','180.96.71.172','180.96.71.173','180.96.71.174','180.96.70.108','180.96.70.109','180.96.70.110','117.34.15.204','117.34.15.205','117.34.15.206','117.34.15.236','117.34.15.237','117.34.15.238','124.95.172.108','124.95.172.109','124.95.172.110','124.95.174.44','124.95.174.45','124.95.174.46'})

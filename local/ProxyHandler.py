@@ -34,7 +34,7 @@ from common import (
     )
 import CertUtil
 from GlobalConfig import GC
-from GAEUpdata import flashgaeip
+from GAEUpdata import testgaeip
 from HTTPUtil import http_util
 from RangeFetch import RangeFetch
 from GAEFetch import gae_urlfetch
@@ -213,18 +213,18 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if response is None:
                     if retry == GC.FETCHMAX_LOCAL - 1:
                         if host not in testip.tested:
-                            logging.warning('"%s" trigger flashgaeip' % host)
+                            logging.warning('do_GAE: "%s" trigger testgaeip' % host)
                             testip.tested[host] = True
-                            flashgaeip()
+                            testgaeip()
                         html = message_html('502 URLFetch failed', 'Local URLFetch %r failed' % self.path, str(errors))
                         self.wfile.write(b'HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n' + html.encode('utf-8'))
                         return
                     else:
-                        logging.warning('AutoProxyHandler.do_GAE timed out, url=%r, try again', self.path)
+                        logging.warning('do_GAE timed out, url=%r, try again', self.path)
                         continue
                 # gateway error, switch to https mode
                 if response.app_status in (400, 504):
-                    logging.warning('AutoProxyHandler.do_GAE gateway error, url=%r, try again', self.path)
+                    logging.warning('do_GAE gateway error, url=%r, try again', self.path)
                     continue
                 # appid not exists, try remove it from appid
                 if response.app_status == 404:
@@ -286,21 +286,21 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 errors.append(e)
                 if e.args[0] in (10053, ) or 'bad write' in e.args[-1]:
                     # local connection abort
-                    logging.warning('AutoProxyHandler.do_GAE "%s" return %r, abort.', self.path, e)
+                    logging.warning('do_GAE "%s" return %r, abort.', self.path, e)
                     return
                 elif range_retry:
                     # retry range only once
-                    logging.exception('AutoProxyHandler.do_GAE "%s" failed:%r', self.path, e)
+                    logging.exception('do_GAE "%s" failed:%r', self.path, e)
                     return
                 elif retry < GC.FETCHMAX_LOCAL - 1:
                     if end:
                         # we can retry range fetch here
                         self.headers['Range'] = 'bytes=%d-%d' % (start, end)
                         range_retry = True
-                    logging.warning('AutoProxyHandler.do_GAE "%s" return %r, try again', self.path, e)
+                    logging.warning('do_GAE "%s" return %r, try again', self.path, e)
                 else:
                     # last retry failed
-                    logging.exception('AutoProxyHandler.do_GAE "%s" failed:%r', self.path, e)
+                    logging.exception('do_GAE "%s" failed:%r', self.path, e)
             finally:
                 if response:
                     response.close()

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding:utf-8
-# Based on GoAgent 3.1.5 by Phus Lu <phus.lu@gmail.com>
+# Based on GoAgent 3.1.5   by Phus Lu <phus.lu@gmail.com>
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang.2008@gmail.com>
 # Based on WallProxy 0.4.0 by Hust Moon <www.ehust@gmail.com>
 # Contributor:
@@ -288,12 +288,12 @@ def main():
     CertUtil.check_ca()
 
     from GAEUpdata import testipserver
-    thread.start_new_thread(testipserver, tuple())
+    thread.start_new_thread(testipserver, ())
 
     #if GC.PAC_ENABLE:
     #    from ProxyHandler import PACProxyHandler
     #    server = LocalProxyServer((GC.PAC_IP, GC.PAC_PORT), PACProxyHandler)
-    #    thread.start_new_thread(server.serve_forever, tuple())
+    #    thread.start_new_thread(server.serve_forever, ())
 
     if GC.DNS_ENABLE:
         try:
@@ -301,14 +301,14 @@ def main():
             from dnsproxy import DNSServer
             host, port = GC.DNS_LISTEN.split(':')
             server = DNSServer((host, int(port)), dns_servers=GC.DNS_SERVERS, dns_blacklist=GC.DNS_BLACKLIST)
-            thread.start_new_thread(server.serve_forever, tuple())
+            thread.start_new_thread(server.serve_forever, ())
         except ImportError:
             logging.exception('GotoX DNSServer requires dnslib and gevent 1.0')
             sys.exit(-1)
 
     server = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_GAE_PORT), GAEProxyHandler)
     try:
-        thread.start_new_thread(server.serve_forever, tuple())
+        thread.start_new_thread(server.serve_forever, ())
     except SystemError as e:
         if ' (libev) select: Unknown error' in repr(e):
             logging.error('PLEASE START GotoX BY uvent.bat')
