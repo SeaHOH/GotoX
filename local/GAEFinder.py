@@ -192,7 +192,7 @@ class GAE_Finder(BaseHTTPUtil):
                             #'ECDHE-ECDSA-RC4-SHA',
                             'TLS_EMPTY_RENEGOTIATION_INFO_SCSV'])
 
-    def getssldomain(self, ip):
+    def getssldomain(self, ip, retry=None):
         start_time = time()
         costtime = 0
         domain = None
@@ -224,8 +224,8 @@ class GAE_Finder(BaseHTTPUtil):
         except NetWorkIOError as e:
             sock.close()
             ssl_sock = None
-            if e.args == (-1, 'Unexpected EOF'):
-                return self.getssldomain(ip)
+            if not retry and e.args == (-1, 'Unexpected EOF'):
+                return self.getssldomain(ip, True)
             WARNING('%r', e)
         if ssl_sock:
             servername = self.getservername(ssl_sock, sock, ip)
