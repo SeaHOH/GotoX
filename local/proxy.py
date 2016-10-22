@@ -68,7 +68,7 @@ class LocalProxyServer(SocketServer.ThreadingTCPServer):
         try:
             self.RequestHandlerClass(request, client_address, self)
         except NetWorkIOError as e:
-            if e[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
+            if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
                 raise
 
     def handle_error(self, *args):
@@ -257,7 +257,11 @@ def main():
             dns[host] = GC.IPLIST_MAP[GC.GAE_LISTNAME]
 
     logging.disable(0 if GC.LISTEN_DEBUGINFO else logging.DEBUG)
-    #GC.LISTEN_AUTO_PORT = 1111
+    if 0:
+        GC.LISTEN_AUTO_PORT = 1111
+        GC.LISTEN_GAE_PORT = 1112
+        GC.LINK_OPENSSL = 1
+        #GC.IPLIST_MAP[GC.GAE_LISTNAME] = []
     info = '==================================================================================\n'
     info += '* GotoX Version    : %s (python/%s %spyopenssl/%s)\n' % (__version__, sys.version.split(' ')[0], gevent and 'gevent/%s ' % gevent.__version__ or '', getattr(OpenSSL, '__version__', 'Disabled'))
     info += '* Uvent Version    : %s (pyuv/%s libuv/%s)\n' % (__import__('uvent').__version__, __import__('pyuv').__version__, __import__('pyuv').LIBUV_VERSION) if all(x in sys.modules for x in ('pyuv', 'uvent')) else ''

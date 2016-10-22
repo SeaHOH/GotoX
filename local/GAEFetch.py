@@ -3,7 +3,7 @@
 import zlib
 import io
 import struct
-from compat import PY3, httplib, Queue
+from compat import PY3, httplib, Queue, xrange
 from GlobalConfig import GC
 from HTTPUtil import http_util
 
@@ -11,7 +11,7 @@ qGAE = Queue.Queue(GC.GAE_MAXREQUESTS)
 for i in xrange(GC.GAE_MAXREQUESTS):
     qGAE.put(True)
 
-def gae_urlfetch(method, url, headers, payload, appid, rangefetch=None, **kwargs):
+def gae_urlfetch(method, url, headers, payload, appid, timeout=None, rangefetch=None, **kwargs):
     if GC.GAE_PASSWORD:
         kwargs['password'] = GC.GAE_PASSWORD
     if GC.GAE_VALIDATE:
@@ -23,6 +23,8 @@ def gae_urlfetch(method, url, headers, payload, appid, rangefetch=None, **kwargs
     # deflate = lambda x:zlib.compress(x)[2:-4]
     if payload:
         if len(payload) < 10 * 1024 * 1024 and 'Content-Encoding' not in headers:
+            if not isinstance(payload, bytes):
+                payload = payload.encode()
             zpayload = zlib.compress(payload)[2:-4]
             if len(zpayload) < len(payload):
                 payload = zpayload
@@ -34,20 +36,21 @@ def gae_urlfetch(method, url, headers, payload, appid, rangefetch=None, **kwargs
     metadata = 'G-Method:%s\nG-Url:%s\n%s' % (method, url, ''.join('G-%s:%s\n' % (k, v) for k, v in kwargs.items() if v))
     skip_headers = http_util.skip_headers
     metadata += ''.join('%s:%s\n' % (k.title(), v) for k, v in headers.items() if k not in skip_headers)
-    if PY3:
+    if not isinstance(metadata, bytes):
         metadata = metadata.encode()
     # prepare GAE request
     request_method = 'POST'
     request_headers = {}
     metadata = zlib.compress(metadata)[2:-4]
-    payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
+    #payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
+    payload = struct.pack('!h', len(metadata)) + metadata + payload
     request_headers['Content-Length'] = str(len(payload))
     # post data
     fetchserver = 'https://%s.appspot.com%s?' % (appid, GC.GAE_PATH)
     connection_cache_key = GC.GAE_LISTNAME + ':443'
     realurl = 'GAE-' + url
     qGAE.get() # get start from Queue
-    response = http_util.request(request_method, fetchserver, payload, request_headers, connection_cache_key=connection_cache_key, rangefetch=rangefetch, realurl=realurl)
+    response = http_util.request(request_method, fetchserver, payload, request_headers, connection_cache_key=connection_cache_key, timeout=timeout, rangefetch=rangefetch, realurl=realurl)
     qGAE.put(True) # put back
     if response is None:
         return None
@@ -68,5 +71,9 @@ def gae_urlfetch(method, url, headers, payload, appid, rangefetch=None, **kwargs
         response.fp = io.BytesIO(b'connection aborted. too short headers data=' + data)
         response.read = response.fp.read
         return response
-    response.msg = httplib.HTTPMessage(io.BytesIO(zlib.decompress(data, -zlib.MAX_WBITS)))
+    if PY3:
+        response.headers = httplib.parse_headers(io.BytesIO(zlib.decompress(data, -zlib.MAX_WBITS)))
+        response.msg = response.headers.get_payload()
+    else:
+        response.msg = httplib.HTTPMessage(io.BytesIO(zlib.decompress(data, -zlib.MAX_WBITS)))
     return response

@@ -17,6 +17,8 @@ if PY3:
     from configparser import ConfigParser
     xrange = range
     exc_clear = lambda: None
+    class socketMod(socket.socket): pass
+    socket.socket = socketMod
 else:
     import Queue
     import thread

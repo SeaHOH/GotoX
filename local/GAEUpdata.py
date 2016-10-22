@@ -2,13 +2,15 @@
 '''Auto check and updata GAE IP'''
 
 import os
+import sys
 import threading
 import re
-from time import time, sleep
+from time import time, sleep, strftime
 from compat import (
     thread,
     ConfigParser,
     logging,
+    xrange,
     Queue
     )
 from common import config_dir, testip, isip, dns
@@ -62,15 +64,19 @@ def _testgaeip():
         return updataip()
     if testip.qcount > niplist/3:  #未完成的 GAE 请求个数
         return
-    logging.test(u'连接测试开始')
     badip = set()
+    nowtime = int(strftime('%H'))
+    testip.timeout = max(GC.FINDER_MAXTIMEOUT*1.5/1000, 1.0) + min(niplist, 20)*0.05
+    if nowtime > 12 and nowtime < 21:
+        testip.timeout += 0.3
+    logging.test(u'连接测试开始，超时：%d 毫秒', int(testip.timeout*1000))
     for ip in iplist:
-        thread.start_new_thread(http_util.create_ssl_connection, ((ip, 443), GC.FINDER_TESTTIMEOUT, testip.queobj))
+        thread.start_new_thread(http_util.create_ssl_connection, ((ip, 443), testip.timeout, testip.queobj))
     for i in xrange(niplist):
         result = testip.queobj.get()
         if isinstance(result, Exception):
             ip = result.xip[0]
-            logging.warning(u'连接失败 %s：%r' % ('.'.join(x.rjust(3) for x in ip.split('.')), result))
+            logging.warning(u'测试失败 %s：%s' % ('.'.join(x.rjust(3) for x in ip.split('.')), result.args[0]))
             badip.add(ip)
         else:
             logging.test(u'测试连接 %s: %d' %('.'.join(x.rjust(3) for x in result[0].split('.')), int(result[1]*1000)))
@@ -79,8 +85,7 @@ def _testgaeip():
     if nbadip > 0:
         iplist = list(set(iplist) - badip)
         _refreship(iplist)
-        logging.test(u'Bad IP 删除完毕')
-    logging.test(u'连接测试完毕')
+    logging.test(u'连接测试完毕%s', u'，Bad IP 已删除' if nbadip > 0 else '')
     # IP 慢速计数归零
     http_util.outtimes = 0
     testip.lasttest = time()
@@ -100,10 +105,11 @@ def testgaeip():
 
 def testipserver():
     while True:
-        if not testip.lastactive:                   #启动时
+        if not testip.lastactive:                    #启动时
             testgaeip()
-        elif time() - testip.lastactive > 60 * 6:   # X 分钟未使用
-                #and not GC.PROXY_ENABLE             #无代理
+        elif (time() - testip.lastactive > 60 * 6 or # X 分钟未使用
+                time() - testip.lasttest > 60 * 9):  #强制 X 分钟检测
+                #and not GC.PROXY_ENABLE              #无代理
             testgaeip()
         sleep(60)
 

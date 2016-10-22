@@ -26,6 +26,7 @@ class RangeFetch(object):
     waitsize = GC.AUTORANGE_WAITSIZE or 2
     lowspeed = GC.AUTORANGE_LOWSPEED or 1024*32
     expect_begin = 0
+    timeout = max(GC.LINK_TIMEOUT-2, 2)
     getrange = re.compile(r'bytes (\d+)-(\d+)/(\d+)').search
 
     def __init__(self, wfile, response, method, url, headers, payload):
@@ -67,7 +68,7 @@ class RangeFetch(object):
         for begin in xrange(end+1, length, self.maxsize):
             range_queue.put((begin, min(begin+self.maxsize-1, length-1)))
         for i in xrange(self.threads):
-            range_delay_size = (self.threads-i) * self.maxsize * self.threads * 0.66
+            range_delay_size = int((self.threads-i) * self.maxsize * self.threads * 0.66)
             spawn_later(i*self.waitsize, self.__fetchlet, range_queue, data_queue, range_delay_size)
         has_peek = hasattr(data_queue, 'peek')
         peek_timeout = 120
@@ -131,13 +132,13 @@ class RangeFetch(object):
                     appid = self.appids.get()
                     if self._last_app_status.get(appid, 200) >= 500:
                         sleep(2)
-                    while start - self.expect_begin > self.maxsize and data_queue.qsize() * self.bufsize > range_delay_size:
+                    while start - self.expect_begin > self.maxsize and data_queue.maxsize * self.bufsize > range_delay_size:
                         sleep(0.1)
                     if self.response:
                         response = self.response
                         self.response = None
                     else:
-                        response = gae_urlfetch(self.command, self.url, headers, self.payload, appid, rangefetch=True)
+                        response = gae_urlfetch(self.command, self.url, headers, self.payload, appid, timeout=self.timeout, rangefetch=True)
                     if response:
                         if response.xip[0] in self.iplist:
                             self._last_app_status[appid] = response.app_status

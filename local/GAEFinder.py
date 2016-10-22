@@ -2,10 +2,8 @@
 #!/usr/bin/env python
 __author__ = 'seahoh@gamil.com'
 """
-精简 checkgoogleip 代码
-从结果中快速筛选优质 IP
-以方便 GotoX 自动更新
-优先检测正在使用中的 GAE IP
+根据 checkgoogleip 代码重新编写整合到 GotoX
+从一个较大的可用 GAE IP 列表中快速筛选优质 IP
 """
 
 import os
@@ -18,7 +16,7 @@ from GlobalConfig import GC
 #最大 IP 延时，单位：毫秒
 g_maxhandletimeout = GC.FINDER_MAXTIMEOUT or 1000
 #加高峰时段 IP 延时，单位：毫秒
-g_maxhandletimeoutday = 200
+g_maxhandletimeoutday = 300
 #扫描得到的可用 IP 数量
 g_maxgaeipcnt = GC.FINDER_IPCNT or 12
 #扫描 IP 的线程数量
@@ -32,7 +30,7 @@ g_gvs = 1
 #连接超时设置，单位：秒
 g_timeout = 4
 g_conntimeout = 1
-g_handshaketimeout = 2
+g_handshaketimeout = 1.5
 # SSL 连接是否使用 OpenSSL
 g_useOpenSSL = GC.LINK_OPENSSL or 1
 #屏蔽列表（通过测试、但无法使用 GAE）
@@ -47,6 +45,7 @@ from compat import (
     PY3,
     xrange,
     OpenSSL,
+    logging,
     NetWorkIOError
     )
 g_cacertfile = os.path.join(cert_dir, "cacert.pem")
@@ -64,7 +63,6 @@ import struct
 import select
 import random
 from time import time, strftime
-import clogging as logging
 
 if __name__ == '__main__':
     import glob
@@ -244,7 +242,7 @@ class GAE_Finder(BaseHTTPUtil):
                 if costime >= g_timeout:
                     WARNING(u'获取 http 响应超时(%ss)，ip：%s', costime, ip)
                     return ''
-                data += d
+                data += d.decode() if PY3 else d
                 index = data.find('\r\n\r\n')
                 if index > 0:
                     return getservernamefromheader(data, index)
@@ -267,8 +265,8 @@ def runfinder(ip):
     if isgaeserver(servername):
         if ip in g.badlist: #删除未到容忍次数的 badip
             del g.badlist[ip]
-        PRINT(u'剩余：%s，%s，%sms，%s，%s', str(remain).rjust(3), ip.rjust(15),
-              str(costtime).rjust(4), servername.ljust(3), ssldomain)
+        PRINT(u'剩余：%s，%s，%sms，%s', str(remain).rjust(3), ip.rjust(15),
+              str(costtime).rjust(4), ssldomain)
         #判断是否够快
         if costtime < g.maxhandletimeout:
             g.gaelist.append(ip)
@@ -336,8 +334,8 @@ def getgaeip(*args):
     g.gaelist = []
     g.gaelistbak = []
     g.pingcnt = 0
-    PRINT(u'====================== 开始更新 GAE IP ======================')
-    PRINT(u'需要 IP 数：%d，待检测 IP 数：%d', g.maxgaeipcnt, len(g.iplist) + len(g.lowlist))
+    PRINT(u'==================== 开始查找 GAE IP ====================')
+    PRINT(u'需要查找 IP 数：%d，待检测 IP 数：%d', g.maxgaeipcnt, len(g.iplist) + len(g.lowlist))
     #多线程搜索
     threadiplist = []
     for i in xrange(1, g_maxthreads + 1):
@@ -360,7 +358,7 @@ def getgaeip(*args):
         PRINT(u'未找到足够的优质 GAE IP，添加 %d 个备选 IP：\n %s', n, ' | '.join(g.gaelist))
     else:
         PRINT(u'已经找到 %d 个新的优质 GAE IP：\n %s', gn, ' | '.join(g.gaelist))
-    PRINT(u'====================== GAE IP 更新完毕 ======================')
+    PRINT(u'==================== GAE IP 查找完毕 ====================')
     g.running = False
 
     return g.gaelist + list(nowgaelist)

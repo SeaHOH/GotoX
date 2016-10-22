@@ -72,7 +72,7 @@ class SSLConnection(object):
                 if not wd:
                     raise socket.timeout('The write operation timed out')
             except OpenSSL.SSL.SysCallError as e:
-                if e[0] == 10035 and 'WSAEWOULDBLOCK' in e[1]:
+                if e.args[0] == 10035 and 'WSAEWOULDBLOCK' in e.args[1]:
                     exc_clear()
                     rd, wd, ed = select([fd], [fd], [fd], timeout)
                     if ed:
@@ -102,7 +102,7 @@ class SSLConnection(object):
         try:
             return self.__iowait(self._connection.send, data)
         except OpenSSL.SSL.SysCallError as e:
-            if e[0] == -1 and not data:
+            if e.args[0] == -1 and not data:
                 return 0
             raise socket.error(str(e))
         except Exception as e:
@@ -127,9 +127,9 @@ class SSLConnection(object):
                 return b''
             raise e
         except OpenSSL.SSL.SysCallError as e:
-            if e[0] == -1 and 'Unexpected EOF' in e[1]:
+            if e.args[0] == -1 and 'Unexpected EOF' in e.args[1]:
                 return b''
-            elif e[0] in (10053, 10054, 10038):
+            elif e.args[0] in (10053, 10054, 10038):
                 return b''
             raise socket.error(str(e))
     read = recv
@@ -142,9 +142,9 @@ class SSLConnection(object):
                 return 0
             raise e
         except OpenSSL.SSL.SysCallError as e:
-            if e[0] == -1 and 'Unexpected EOF' in e[1]:
+            if e.args[0] == -1 and 'Unexpected EOF' in e.args[1]:
                 return 0
-            elif e[0] in (10053, 10054, 10038):
+            elif e.args[0] in (10053, 10054, 10038):
                 return 0
             raise socket.error(str(e))
 
@@ -157,11 +157,11 @@ class SSLConnection(object):
         else:
             self._makefile_refs -= 1
 
-    def makefile(self, mode='r', bufsize=-1):
-        self._makefile_refs += 1
-        if PY3:
-            return self._sock.makefile(mode, bufsize)
-        else:
+    if PY3:
+        from makefile import backport_makefile as makefile
+    else:
+        def makefile(self, mode='r', bufsize=-1):
+            self._makefile_refs += 1
             return socket._fileobject(self, mode, bufsize, close=True)
 
 class BaseHTTPUtil(object):
@@ -333,10 +333,10 @@ class HTTPUtil(BaseHTTPUtil):
         self.ssl_connection_time = collections.defaultdict(float)
         self.ssl_connection_cache = collections.defaultdict(Queue.PriorityQueue)
         self.proxy = proxy
-        if self.proxy:
-            #dns_resolve = self.__dns_resolve_withproxy
-            self.create_connection = self.__create_connection_withproxy
-            self.create_ssl_connection = self.__create_ssl_connection_withproxy
+        #if self.proxy:
+        #    dns_resolve = self.__dns_resolve_withproxy
+        #    self.create_connection = self.__create_connection_withproxy
+        #    self.create_ssl_connection = self.__create_ssl_connection_withproxy
         BaseHTTPUtil.__init__(self, GC.LINK_OPENSSL, os.path.join(cert_dir, 'cacert.pem'))
 
     def check_connection_cache(self):
@@ -477,7 +477,7 @@ class HTTPUtil(BaseHTTPUtil):
                         pass
                     if i == 0:
                         #only output first error
-                        logging.warning('%s create_connection "%s" return %r, try again.', addr[0], host, result)
+                        logging.warning(u'%s create_connection %r 返回 %r，重试', addr[0], host, result)
                 else:
                     thread.start_new_thread(_close_connection, (addrslen-i-1, queobj, result.tcp_time))
                     return result
@@ -489,7 +489,7 @@ class HTTPUtil(BaseHTTPUtil):
     def create_ssl_connection(self, address, timeout=None, test=None, source_address=None, rangefetch=None, **kwargs):
         connection_cache_key = kwargs.get('cache_key')
         hostname = connection_cache_key or ''
-        def _create_ssl_connection(ipaddr, timeout, queobj):
+        def _create_ssl_connection(ipaddr, timeout, queobj, retry=None):
             sock = None
             ssl_sock = None
             try:
@@ -514,7 +514,7 @@ class HTTPUtil(BaseHTTPUtil):
                 ssl_sock.connect(ipaddr)
                 connected_time = time()
                 # set a short timeout to trigger timeout retry more quickly.
-                ssl_sock.settimeout(1.5)
+                ssl_sock.settimeout(timeout if test else 1.5)
                 # SSL handshake
                 ssl_sock.do_handshake()
                 # set a normal timeout
@@ -526,22 +526,22 @@ class HTTPUtil(BaseHTTPUtil):
                 self.ssl_connection_time[ipaddr] = ssl_sock.ssl_time = handshaked_time - start_time
                 if test:
                     if ssl_sock.ssl_time > timeout:
-                        raise socket.error('%d timed out' % int(ssl_sock.ssl_time*1000))
+                        raise socket.timeout(u'%d 超时' % int(ssl_sock.ssl_time*1000))
                 # verify SSL certificate.
                 if 'google' in hostname or test:
                     #多次使用慢速或无效的 IP 刷新
-                    if ssl_sock.ssl_time > 1.5:
-                        if ssl_sock.ssl_time > 4 or self.outtimes > max(min(len(GC.IPLIST_MAP[GC.GAE_LISTNAME])/2, 16), 8):
+                    if not test and ssl_sock.ssl_time > 1.5:
+                        if self.outtimes > max(min(len(GC.IPLIST_MAP[GC.GAE_LISTNAME])/2, 12), 6):
                             logging.warning(u'连接过慢 %s: %d' %('.'.join(x.rjust(3) for x in ipaddr[0].split('.')), int(ssl_sock.ssl_time*1000)))
                             spawn_later(5, testgaeip)
                         else:
                             self.outtimes += 1
                     cert = self.get_peercert(ssl_sock)
                     if not cert:
-                        raise socket.error('certficate is none')
+                        raise socket.error(u'没有获取到证书')
                     subject = cert.get_subject()
-                    if not subject.O == b'Google Inc':
-                        raise ssl.SSLError("%s certificate organizationName(%s) not startswith 'Google'" % (address[0], orgname))
+                    if not subject.O == 'Google Inc':
+                        raise ssl.SSLError(u'%s 证书的公司名称（%s）不是以 "Google" 开头' % (address[0], subject.O))
                 # sometimes, we want to use raw tcp socket directly(select/epoll), so setattr it to ssl socket.
                 ssl_sock.sock = sock
                 ssl_sock.xip = ipaddr
@@ -558,8 +558,8 @@ class HTTPUtil(BaseHTTPUtil):
                 # any socket.error, put Excpetions to output queobj.
                 e.xip = ipaddr
                 if test:
-                    if e.args == (-1, 'Unexpected EOF'):
-                        return _create_ssl_connection(ipaddr, timeout, test)
+                    if not retry and e.args == (-1, 'Unexpected EOF'):
+                        return _create_ssl_connection(ipaddr, timeout, test, True)
                     return test.put(e)
                 queobj.put(e)
 
@@ -582,6 +582,7 @@ class HTTPUtil(BaseHTTPUtil):
                 if rd or ed or time()-ctime > self.keeptime:
                     ssl_sock.sock.close()
                 else:
+                    ssl_sock.settimeout(timeout)
                     return ssl_sock
         except Queue.Empty:
             pass
@@ -592,9 +593,8 @@ class HTTPUtil(BaseHTTPUtil):
             addresseslen = len(addresses)
             addresses.sort(key=self.ssl_connection_time.__getitem__)
             if rangefetch:
+                #按线程数量获取排序靠前的 IP
                 addrs = addresses[:GC.AUTORANGE_THREADS+1]
-                if timeout > 3:
-                    timeout -= 2
             else:
                 max_window = self.max_window
                 if addresseslen > max_window:
@@ -617,7 +617,7 @@ class HTTPUtil(BaseHTTPUtil):
                         pass
                     if i == 0:
                         #only output first error
-                        logging.warning('%s create_ssl_connection "%s" return %r, try again.', addr[0], host, result)
+                        logging.warning(u'%s create_ssl_connection %r 返回 %r，重试', addr[0], host, result)
                 else:
                     thread.start_new_thread(_close_ssl_connection, (addrslen-i-1, queobj, result.ssl_time))
                     return result
@@ -685,8 +685,10 @@ class HTTPUtil(BaseHTTPUtil):
             if username and password:
                 request_data += 'Proxy-Authorization: Basic %s\r\n' % base64.b64encode(('%s:%s' % (username, password)).encode()).decode().strip()
         request_data += '\r\n'
+        if not isinstance(request_data, bytes):
+            request_data = request_data.encode()
 
-        sock.sendall(request_data.encode() + payload)
+        sock.sendall(request_data + payload)
         #if isinstance(payload, bytes):
         #    sock.sendall(request_data.encode() + payload)
         #elif hasattr(payload, 'read'):
@@ -725,10 +727,11 @@ class HTTPUtil(BaseHTTPUtil):
 
         if 'Host' not in headers:
             headers['Host'] = host
-        if payload and 'Content-Length' not in headers:
-            headers['Content-Length'] = str(len(payload))
-        if PY3 and not isinstance(payload, bytes):
-            payload = payload.encode()
+        if payload:
+            if not isinstance(payload, bytes):
+                payload = payload.encode()
+            if 'Content-Length' not in headers:
+                headers['Content-Length'] = str(len(payload))
 
         for i in xrange(self.max_retry):
             sock = None
@@ -751,15 +754,15 @@ class HTTPUtil(BaseHTTPUtil):
                     sock.close()
                 if hasattr(e, 'xip'):
                     ip = e.xip[0]
-                    logging.warning('%s create_%sconnection "%s" failed:%r', ip, '' if port == 80 else 'ssl_', realurl or url, e)
+                    logging.warning(u'%s create_%sconnection %r 失败：%r', ip, '' if port == 80 else 'ssl_', realurl or url, e)
                 else:
-                    logging.warning('%s _request "%s %s" failed:%r', ip, method, realurl or url, e)
+                    logging.warning(u'%s _request "%s %s" 失败：%r', ip, method, realurl or url, e)
             if i == self.max_retry - 1:
-                logging.warning('%s request "%s %s" failed.', ip, method, realurl or url)
+                logging.warning(u'%s request "%s %s" 失败', ip, method, realurl or url)
                 if realurl:
                     _, realhost, _, _, _, _ = urlparse.urlparse(realurl)
                     if realhost not in testip.tested:
-                        logging.warning('request: "%s" trigger testip' % realhost)
+                        logging.warning(u'request：%r 触发 IP 检测' % realhost)
                         testip.tested[realhost] = True
                         testgaeip()
                 return None

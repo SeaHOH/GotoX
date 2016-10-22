@@ -5,13 +5,13 @@ import re
 import string
 import select
 import socket
-import urllib2
 from time import time, sleep
 from compat import (
     thread,
     xrange,
     dnslib,
     Queue,
+    urllib2,
     logging
     )
 

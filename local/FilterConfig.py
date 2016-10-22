@@ -79,7 +79,7 @@ for s in sections:
     #order = int(order)
     filters = classlist()
     filters.action = actToNum[action]
-    print '[%s]' % s,filters.action
+    print('[%s]' % s, filters.action)
     for k, v in CONFIG.items(s):
         scheme = ''
         if k.find('://', 0, 9) > 0 :

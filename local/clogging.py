@@ -55,7 +55,7 @@ _colors = {
 }
 
 def _checkLevel(level):
-    if isinstance(level, (int, long)):
+    if isinstance(level, (int, float)):
         rv = level
     elif str(level) == level:
         if level not in _nameToLevel:

@@ -82,11 +82,14 @@ def create_subcert(certfile, commonname, sans=()):
     subject.commonName = commonname
     subject.organizationName = commonname
     sans = set([commonname, '*.'+commonname]) | set(sans)
+    sans = ', '.join('DNS: %s' % x for x in sans)
+    if not isinstance(sans, bytes):
+        sans = sans.encode()
     cert.gmtime_adj_notBefore(0)
     cert.gmtime_adj_notAfter(sub_time)
     cert.set_issuer(ca_subject)
     cert.set_pubkey(sub_key)
-    cert.add_extensions([crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans))])
+    cert.add_extensions([crypto.X509Extension(b'subjectAltName', True, sans)])
     cert.sign(ca_key, ca_digest)
 
     with open(certfile, 'wb') as fp:
