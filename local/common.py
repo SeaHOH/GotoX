@@ -5,6 +5,7 @@ import re
 import string
 import select
 import socket
+import random
 from time import time, sleep
 from compat import (
     thread,
@@ -89,6 +90,8 @@ def message_html(title, banner, detail=''):
     '''
     return string.Template(MESSAGE_TEMPLATE).substitute(title=title, banner=banner, detail=detail)
 
+def onlytime():
+    return int(time())+random.random()
 
 def parse_proxy(proxy):
     return urllib2._parse_proxy(proxy)
@@ -130,11 +133,14 @@ def dns_resolve(host, dnsservers=[]):
             iplist = dns_remote_resolve(host, dnsservers, GC.DNS_BLACKLIST, timeout=2)
         if not iplist:
             iplist = dns_remote_resolve(host, GC.DNS_SERVERS, GC.DNS_BLACKLIST, timeout=2)
-        if GC.LINK_PROFILE == 'ipv4':
-            iplist = [ip for ip in iplist if isipv4(ip)]
-        elif GC.LINK_PROFILE == 'ipv6':
-            iplist = [ip for ip in iplist if isipv6(ip)]
-        dns[host] = iplist = list(set(iplist))
+        if iplist:
+            if GC.LINK_PROFILE == 'ipv4':
+                iplist = [ip for ip in iplist if isipv4(ip)]
+            elif GC.LINK_PROFILE == 'ipv6':
+                iplist = [ip for ip in iplist if isipv6(ip)]
+            dns[host] = iplist = list(set(iplist))
+        else:
+            raise
     return iplist
 
 def dns_remote_resolve(qname, dnsservers, blacklist, timeout):

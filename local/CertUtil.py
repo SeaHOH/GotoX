@@ -70,7 +70,7 @@ def dump_subkey():
         fp.write(sub_keystr)
     return sub_keystr
 
-def create_subcert(certfile, commonname, sans=()):
+def create_subcert(certfile, commonname, ip=False, sans=[]):
     cert = crypto.X509()
     cert.set_version(2)
     cert.set_serial_number(int((int(time()-sub_serial)+random.random())*100)) #setting the only number
@@ -81,7 +81,10 @@ def create_subcert(certfile, commonname, sans=()):
     subject.organizationalUnitName = '%s Branch' % ca_vendor
     subject.commonName = commonname
     subject.organizationName = commonname
-    sans = set([commonname, '*.'+commonname]) | set(sans)
+    if ip:
+        sans = set([commonname,] + sans)
+    else:
+        sans = set([commonname, '*.'+commonname] + sans)
     sans = ', '.join('DNS: %s' % x for x in sans)
     if not isinstance(sans, bytes):
         sans = sans.encode()
@@ -95,15 +98,18 @@ def create_subcert(certfile, commonname, sans=()):
     with open(certfile, 'wb') as fp:
         fp.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
 
-def get_cert(commonname, sans=()):
+def get_cert(commonname, ip=False, sans=[]):
     #if commonname.count('.') >= 2 and [len(x) for x in reversed(commonname.split('.'))] > [2, 4]:
     #    commonname = '.'+commonname.partition('.')[-1]
-    rcommonname = '.'.join(reversed(commonname.split('.')))
-    certfile = os.path.join(ca_certdir, rcommonname + '.crt')
+    if ip:
+        certfile = os.path.join(ca_certdir, commonname + '.crt')
+    else:
+        rcommonname = '.'.join(reversed(commonname.split('.')))
+        certfile = os.path.join(ca_certdir, rcommonname + '.crt')
     with sub_lock:
         if os.path.exists(certfile):
             return certfile, sub_keyfile
-    create_subcert(certfile, commonname, sans)
+    create_subcert(certfile, commonname, ip, sans)
     return certfile, sub_keyfile
 
 def import_cert(certfile):

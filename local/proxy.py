@@ -6,7 +6,7 @@
 # Contributor:
 #      SeaHOH          <seahoh@gmail.com>
 
-__version__ = '3.1.5'
+__version__ = '3.3.0'
 
 import sys
 import os
@@ -47,7 +47,6 @@ from compat import (
     logging,
     dnslib,
     OpenSSL,
-    pacparser,
     NetWorkIOError
     )
 from GlobalConfig import GC
@@ -147,7 +146,7 @@ def main():
                     iplist = dns_remote_resolve(host, dnsservers, GC.DNS_BLACKLIST, timeout=2)
                     queue.put((host, dnsservers, iplist or []))
                 except (socket.error, OSError) as e:
-                    logging.error('resolve remote host=%r failed: %s', host, e)
+                    logging.error(u'远程解析失败：host=%r，%r', host, e)
                     queue.put((host, dnsservers, []))
             # https://support.google.com/websearch/answer/186669?hl=zh-Hans
             google_blacklist = ['216.239.32.20', '74.125.127.102', '74.125.155.102', '74.125.39.102', '74.125.39.113', '209.85.229.138']
@@ -159,15 +158,15 @@ def main():
                 result_queue = Queue.Queue()
                 for host in need_resolve_remote:
                     for dnsserver in GC.DNS_SERVERS:
-                        logging.debug('resolve remote host=%r from dnsserver=%r', host, dnsserver)
+                        logging.debug(u'远程解析开始：host=%r，dns=%r', host, dnsserver)
                         threading._start_new_thread(do_resolve, (host, [dnsserver], result_queue))
                 for _ in xrange(len(GC.DNS_SERVERS) * len(need_resolve_remote)):
                     try:
                         host, dnsservers, iplist = result_queue.get(timeout=2)
                         resolved_iplist += iplist or []
-                        logging.debug('resolve remote host=%r from dnsservers=%s return iplist=%s', host, dnsservers, iplist)
+                        logging.debug(u'远程解析成功：host=%r，dns=%s，iplist=%s', host, dnsservers, iplist)
                     except Queue.Empty:
-                        logging.warn('resolve remote timeout, try resolve local')
+                        logging.warn(u'远程解析超时，尝试本地解析')
                         resolved_iplist += sum([socket.gethostbyname_ex(x)[-1] for x in need_resolve_remote], [])
                         break
                 if name.startswith('google_') and name not in ('google_cn', 'google_hk'):
@@ -178,13 +177,13 @@ def main():
                 if name.startswith('google_'):
                     resolved_iplist = list(set(resolved_iplist) - set(google_blacklist))
                 if len(resolved_iplist) == 0:
-                    logging.error('resolve %s host return empty! please retry!', name)
-                    #sys.exit(-1)
+                    logging.error(u'host 列表 %r 解析结果为空，请重试！', name)
+                    sys.exit(-1)
                 if GC.LINK_PROFILE == 'ipv4':
                     resolved_iplist = [ip for ip in resolved_iplist if isipv4(ip)]
                 elif GC.LINK_PROFILE == 'ipv6':
                     resolved_iplist = [ip for ip in resolved_iplist if isipv6(ip)]
-                logging.info('resolve name=%s host to iplist=%r', name, resolved_iplist)
+                logging.info(u'host 列表 %r 解析结果：iplist=%r', name, resolved_iplist)
                 GC.IPLIST_MAP[name] = resolved_iplist
 
         def network_test():
@@ -202,8 +201,8 @@ def main():
             if haserr:
                 logging.info(u'网络已经可以使用，初始化继续……')
             try:
-                GAEProxyHandler.__class__.localhosts = tuple(set(sum((x if isinstance(x, list) else [x] for x in socket.gethostbyname_ex(socket.gethostname())), list(GAEProxyHandler.__class__.localhosts))))
-                GAEProxyHandler.__class__.localhosts = tuple(set([get_listen_ip()] + list(GAEProxyHandler.__class__.localhosts)))
+                AutoProxyHandler.localhosts = tuple(set(sum((x if isinstance(x, list) else [x] for x in socket.gethostbyname_ex(socket.gethostname())), list(AutoProxyHandler.localhosts))))
+                AutoProxyHandler.localhosts = tuple(set([get_listen_ip()] + list(AutoProxyHandler.localhosts)))
             except:
                 pass
 
@@ -237,18 +236,18 @@ def main():
                     ctypes.windll.user32.MessageBoxW(None, error, title, 0)
                     #sys.exit(0)
         if not GC.GAE_APPIDS or GC.GAE_APPIDS[0] == 'gotox':
-            logging.critical('please edit %s to add your appid to [gae] !', GC.CONFIG_FILENAME)
+            logging.critical(u'请编辑 %r 文件，添加你的 appid 到 [gae] 配置中！', GC.CONFIG_FILENAME)
             sys.exit(-1)
         if not dnslib:
-            logging.error('dnslib not found, please put dnslib-0.8.3.egg to %r!', cwdir)
+            logging.error(u'无法找到 dnslib，请将 dnslib-0.8.3.egg 放到 %r 文件夹！', cwdir)
             sys.exit(-1)
         if os.name == 'nt' and not GC.DNS_ENABLE:
             any(GC.DNS_SERVERS.insert(0, x) for x in [y for y in win32dns_query_dnsserver_list() if y not in GC.DNS_SERVERS])
         if not GC.PROXY_ENABLE:
-            logging.info('resolve GC.IPLIST_MAP names=%s to iplist', list(GC.IPLIST_MAP))
+            logging.info(u'开始将 GC.IPLIST_MAP names=%s 解析为 IP 列表', list(GC.IPLIST_MAP))
             resolve_iplist()
         if not OpenSSL:
-            logging.warning('python-openssl not found, please install it!')
+            logging.warning(u'无法找到 pyopenssl，请安装 pyopenssl-16.0.0 以上版本！')
         if 'uvent.loop' in sys.modules and isinstance(gevent.get_hub().loop, __import__('uvent').loop.UVLoop):
             logging.info('Uvent enabled, patch forward_socket')
             AutoProxyHandler.forward_socket = AutoProxyHandler.green_forward_socket
@@ -257,31 +256,30 @@ def main():
             dns[host] = GC.IPLIST_MAP[GC.GAE_LISTNAME]
 
     logging.disable(0 if GC.LISTEN_DEBUGINFO else logging.DEBUG)
-    if 0:
+    if 0: #测试用
         GC.LISTEN_AUTO_PORT = 1111
         GC.LISTEN_GAE_PORT = 1112
         GC.LINK_OPENSSL = 1
         #GC.IPLIST_MAP[GC.GAE_LISTNAME] = []
     info = '==================================================================================\n'
-    info += '* GotoX Version    : %s (python/%s %spyopenssl/%s)\n' % (__version__, sys.version.split(' ')[0], gevent and 'gevent/%s ' % gevent.__version__ or '', getattr(OpenSSL, '__version__', 'Disabled'))
+    info += u'* GotoX  版 本 : %s (python/%s %spyopenssl/%s)\n' % (__version__, sys.version.split(' ')[0], gevent and 'gevent/%s ' % gevent.__version__ or '', getattr(OpenSSL, '__version__', 'Disabled'))
     info += '* Uvent Version    : %s (pyuv/%s libuv/%s)\n' % (__import__('uvent').__version__, __import__('pyuv').__version__, __import__('pyuv').LIBUV_VERSION) if all(x in sys.modules for x in ('pyuv', 'uvent')) else ''
-    info += '* Listen Address   : Auto Proxy - %s:%d\n' % (GC.LISTEN_IP, GC.LISTEN_AUTO_PORT)
-    info += '*                    GAE  Proxy - %s:%d\n' % (GC.LISTEN_IP, GC.LISTEN_GAE_PORT)
-    info += '* Local Proxy      : %s:%s\n' % (GC.PROXY_HOST, GC.PROXY_PORT) if GC.PROXY_ENABLE else ''
-    info += '* Debug INFO       : %s\n' % GC.LISTEN_DEBUGINFO if GC.LISTEN_DEBUGINFO else ''
-    info += '* Link Mode        : HTTP/1.1 with %s/Remote - %s\n' % ('openssl' if GC.LINK_OPENSSL else ' gevent', GC.LINK_REMOTESSLTXT)
-    info += '*                                   gevent/Local  - %s\n' % GC.LINK_LOCALSSLTXT
-    info += '* Link Profile     : %s\n' % GC.LINK_PROFILE if GC.LINK_PROFILE else ''
-    info += '* GAE Validate     : %s\n' % GC.GAE_VALIDATE if GC.GAE_VALIDATE else ''
-    #info += '* GAE Obfuscate    : %s\n' % GC.GAE_OBFUSCATE if GC.GAE_OBFUSCATE else ''
-    info += '* GAE APPID        : %s\n' % '|'.join(GC.GAE_APPIDS)
+    info += '* GAE    APPID : %s\n' % '|'.join(GC.GAE_APPIDS)
+    info += u'* GAE 远程验证 : %s\n' % u'已启用' if GC.GAE_SSLVERIFY else u'未启用'
+    info += u'*  监 听 地 址 : 自动代理 - %s:%d\n' % (GC.LISTEN_IP, GC.LISTEN_AUTO_PORT)
+    info += u'*                GAE 代理 - %s:%d\n' % (GC.LISTEN_IP, GC.LISTEN_GAE_PORT)
+    info += '* Local Proxy  : %s:%s\n' % (GC.PROXY_HOST, GC.PROXY_PORT) if GC.PROXY_ENABLE else ''
+    info += '* Debug INFO   : %s\n' % GC.LISTEN_DEBUGINFO if GC.LISTEN_DEBUGINFO else ''
+    info += u'*  链 接 模 式 : 远程 - %s/%s\n' % (GC.LINK_REMOTESSLTXT, 'openssl' if GC.LINK_OPENSSL else 'gevent')
+    info += u'*                本地 - %s/gevent\n' % GC.LINK_LOCALSSLTXT
+    info += u'*  链接 配置集 : %s\n' % GC.LINK_PROFILE if GC.LINK_PROFILE else ''
     #if GC.PAC_ENABLE:
     #    info += '* Pac Server       : http://%s:%d/%s\n' % (GC.PAC_IP, GC.PAC_PORT, GC.PAC_FILE)
     #    info += '* Pac File         : file://%s\n' % os.path.join(cwdir, GC.PAC_FILE).replace('\\', '/')
     if GC.DNS_ENABLE:
         info += '* DNS Listen       : %s\n' % GC.DNS_LISTEN
         info += '* DNS Servers      : %s\n' % '|'.join(GC.DNS_SERVERS)
-    info += '* Download CA      : %s\n' % AutoProxyHandler.CAfile
+    info += u'*  下 载 证 书 : %s\n' % AutoProxyHandler.CAfile
     info += '==================================================================================\n'
     sys.stdout.write(info)
 

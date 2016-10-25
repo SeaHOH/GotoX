@@ -56,7 +56,6 @@ def updataip():
     thread.start_new_thread(refreship, ())
 updataip.running = False
 
-
 def _testgaeip():
     iplist = GC.IPLIST_MAP[GC.GAE_LISTNAME]
     niplist = len(iplist)
@@ -66,10 +65,9 @@ def _testgaeip():
         return
     badip = set()
     nowtime = int(strftime('%H'))
-    testip.timeout = max(GC.FINDER_MAXTIMEOUT*1.5/1000, 1.0) + min(niplist, 20)*0.05
-    if nowtime > 12 and nowtime < 21:
-        testip.timeout += 0.3
-    logging.test(u'连接测试开始，超时：%d 毫秒', int(testip.timeout*1000))
+    testip.timeout = max(GC.FINDER_MAXTIMEOUT*1.5, 1000) + min(niplist, 20)*50 + timeToDelay[nowtime]
+    logging.test(u'连接测试开始，超时：%d 毫秒', int(testip.timeout))
+    testip.timeout = testip.timeout / 1000.0
     for ip in iplist:
         thread.start_new_thread(http_util.create_ssl_connection, ((ip, 443), testip.timeout, testip.queobj))
     for i in xrange(niplist):
@@ -113,5 +111,5 @@ def testipserver():
             testgaeip()
         sleep(60)
 
-from GAEFinder import getgaeip
+from GAEFinder import timeToDelay, getgaeip
 from HTTPUtil import http_util

@@ -15,8 +15,6 @@ from GlobalConfig import GC
 #全局只读写数据
 #最大 IP 延时，单位：毫秒
 g_maxhandletimeout = GC.FINDER_MAXTIMEOUT or 1000
-#加高峰时段 IP 延时，单位：毫秒
-g_maxhandletimeoutday = 300
 #扫描得到的可用 IP 数量
 g_maxgaeipcnt = GC.FINDER_IPCNT or 12
 #扫描 IP 的线程数量
@@ -52,6 +50,14 @@ g_cacertfile = os.path.join(cert_dir, "cacert.pem")
 g_ipfile = os.path.join(data_dir, "ip.txt")
 g_badfile = os.path.join(data_dir, "ip_bad.txt")
 g_badfilebak = os.path.join(data_dir, "ip_badbak.txt")
+
+#加各时段 IP 延时，单位：毫秒
+timeToDelay = {    0 :   0,
+         1 :   0,  2 :   0,  3 :   0,  4 :   0,  5 :   0,  6 :   0, 
+         7 :  50,  8 : 100,  9 :  50, 10 : 150, 11 : 250, 12 : 350,
+        13 : 350, 14 : 300, 15 : 200, 16 : 250, 17 : 300, 18 : 350, 
+        19 : 350, 20 : 300, 21 : 150, 22 :  50, 23 :   0, 24 :   0
+        }
 
 #全局可读写数据
 class g: pass
@@ -116,7 +122,7 @@ def readiplist(badlist, nowgaelist):
         for ip in g_block:
             if iplist[i].startswith(ip):
                 del iplist[i]
-    iplist = set(iplist) - blocklist - lowlist
+    iplist = set(iplist) - blocklist - lowlist - nowgaelist
     return list(iplist), list(lowlist)
 
 def readbadlist():
@@ -325,8 +331,7 @@ def getgaeip(*args):
     #初始化
     g.running = True
     nowtime = int(strftime('%H'))
-    g.maxhandletimeoutday = g_maxhandletimeoutday if nowtime > 12 and nowtime < 21 else 0
-    g.maxhandletimeout = g_maxhandletimeout + g.maxhandletimeoutday
+    g.maxhandletimeout = g_maxhandletimeout + timeToDelay[nowtime]
     nowgaelist = args[0] if len(args) > 0 else set() #提取 IP 列表
     g.maxgaeipcnt = g_maxgaeipcnt - len(nowgaelist)
     g.badlist = readbadlist()
@@ -361,7 +366,7 @@ def getgaeip(*args):
     PRINT(u'==================== GAE IP 查找完毕 ====================')
     g.running = False
 
-    return g.gaelist + list(nowgaelist)
+    return list(set(g.gaelist) | nowgaelist)
 
 if __name__ == '__main__':
     getgaeip()

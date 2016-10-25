@@ -74,8 +74,8 @@ if hasattr(sys.stderr, 'isatty') and sys.stderr.isatty():
         _colors['HEAD'] = 0x03
         import ctypes
         _setCTA = ctypes.windll.kernel32.SetConsoleTextAttribute
-        _getStdHandle = ctypes.windll.kernel32.GetStdHandle
-        _setColor = lambda color: _setCTA(_getStdHandle(-12), color)
+        _stdHandle = ctypes.windll.kernel32.GetStdHandle(-12)
+        _setColor = lambda color: _setCTA(_stdHandle, color)
     elif os.name == 'posix':
         _colors['INFO'] = '\033[0m'
         _colors['ERROR'] = '\033[31m'
@@ -113,6 +113,7 @@ def log(level, fmt, *args, **kwargs):
         levelName = _levelToName[level]
         _setColor(_colors['HEAD'])
         sys.stderr.write('%s %s ' % (time.strftime('%H:%M:%S'), levelName[0]))
+        sys.stderr.flush() #行间不缓存，立即输出
         _setColor(_colors[levelName])
         sys.stderr.write('%s\n' % (fmt % args))
         _setColor(_colors['RESET'])

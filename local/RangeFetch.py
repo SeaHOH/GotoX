@@ -11,7 +11,7 @@ import re
 import threading
 import random
 from time import time, sleep
-from common import spawn_later, testip
+from common import onlytime, spawn_later, testip
 from GAEFetch import gae_urlfetch
 from GlobalConfig import GC
 from HTTPUtil import http_util
@@ -22,21 +22,23 @@ class RangeFetch(object):
     maxsize = GC.AUTORANGE_MAXSIZE or 1024*1024*4
     bufsize = GC.AUTORANGE_BUFSIZE or 8192
     threads = GC.AUTORANGE_THREADS or 2
-    minip = max(threads-2, 2)
+    minip = max(threads-2, 3)
     waitsize = GC.AUTORANGE_WAITSIZE or 2
     lowspeed = GC.AUTORANGE_LOWSPEED or 1024*32
     expect_begin = 0
     timeout = max(GC.LINK_TIMEOUT-2, 2)
     getrange = re.compile(r'bytes (\d+)-(\d+)/(\d+)').search
 
-    def __init__(self, wfile, response, method, url, headers, payload):
+    def __init__(self, handler, headers, payload, response):
         #self.urlfetch = urlfetch
-        self.wfile = wfile
-        self.response = response
-        self.command = method
-        self.url = url
+        self.tLock = threading.Lock()
+        self.handler = handler
+        self.wfile = handler.wfile
+        self.command = handler.command
+        self.url = handler.path
         self.headers = headers
         self.payload = payload
+        self.response = response
         self._stopped = None
         self._last_app_status = {}
         self.lastupdata = testip.lastupdata
@@ -59,7 +61,7 @@ class RangeFetch(object):
             response_headers['Content-Range'] = 'bytes %s-%s/%s' % (start, end, length)
             response_headers['Content-Length'] = str(length-start)
 
-        logging.info('>>>>>>>>>>>>>>> RangeFetch started(%r) %d-%d', self.url, start, end)
+        logging.info(u'>>>>>>>>>>>>>>> RangeFetch 开始 %r %d-%d', self.url, start, end)
         self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k, v) for k, v in response_headers.items()))))
 
         data_queue = Queue.PriorityQueue()
@@ -103,24 +105,24 @@ class RangeFetch(object):
                 self.wfile.write(data)
                 self.expect_begin += len(data)
             except Exception as e:
-                logging.info('RangeFetch client connection aborted(%s).', e)
+                logging.info(u'RangeFetch 本地链接断开：%r', e)
                 break
+        else:
+            logging.info(u'RangeFetch 成功完成')
         self._stopped = True
 
     def address_string(self, response=None):
-        if hasattr(response, 'xip'):
-            return response.xip[0]
-        else:
-            return '--'
+        return self.handler.address_string(response)
 
     def __fetchlet(self, range_queue, data_queue, range_delay_size):
         headers = dict((k.title(), v) for k, v in self.headers.items())
         headers['Connection'] = 'close'
         while True:
             try:
-                if self.lastupdata != testip.lastupdata:
-                    self.lastupdata = testip.lastupdata
-                    self.iplist = GC.IPLIST_MAP[GC.GAE_LISTNAME][:]
+                with self.tLock:
+                    if self.lastupdata != testip.lastupdata:
+                        self.lastupdata = testip.lastupdata
+                        self.iplist = GC.IPLIST_MAP[GC.GAE_LISTNAME][:]
                 noerror = True
                 response = None
                 starttime = None
@@ -180,12 +182,10 @@ class RangeFetch(object):
                             data = response.read(self.bufsize)
                     except Exception as e:
                         noerror = False
-                        if len(self.iplist) > self.minip:
-                            try:
+                        with self.tLock:
+                            if response.xip[0] in self.iplist and len(self.iplist) > self.minip:
                                 self.iplist.remove(response.xip[0])
                                 logging.warning('RangeFetch remove error ip %s', response.xip[0])
-                            except:
-                                pass
                         logging.warning('%s RangeFetch "%s %s" %s failed: %s', self.address_string(response), self.command, self.url, headers['Range'], e)
                     if start < end + 1:
                         logging.warning('%s RangeFetch "%s %s" retry %s-%s', self.address_string(response), self.command, self.url, start, end)
@@ -206,11 +206,9 @@ class RangeFetch(object):
                     response.close()
                     if noerror:
                         # remove slow ip
-                        if starttime and len(self.iplist) > self.minip and (start-realstart)/(time()-starttime) < self.lowspeed:
-                            try:
+                        with self.tLock:
+                            if response.xip[0] in self.iplist and starttime and len(self.iplist) > self.minip and (start-realstart)/(time()-starttime) < self.lowspeed:
                                 self.iplist.remove(response.xip[0])
                                 logging.warning('RangeFetch remove slow ip %s', response.xip[0])
-                            except:
-                                pass
                         # return to sock cache
-                        http_util.ssl_connection_cache[GC.GAE_LISTNAME+':443'].put((time(), response.sock))
+                        http_util.ssl_connection_cache[GC.GAE_LISTNAME+':443'].put((onlytime(), response.sock))

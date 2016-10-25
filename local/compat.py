@@ -38,8 +38,4 @@ try:
     import OpenSSL
 except ImportError:
     OpenSSL = None
-try:
-    import pacparser
-except ImportError:
-    pacparser = None
 NetWorkIOError = (socket.error, ssl.SSLError, OSError) if not OpenSSL else (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)

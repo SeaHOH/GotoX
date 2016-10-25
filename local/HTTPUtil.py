@@ -26,6 +26,7 @@ from compat import (
 from common import (
     cert_dir,
     parse_proxy,
+    onlytime,
     testip,
     dns,
     dns_resolve,
@@ -44,7 +45,7 @@ class SSLConnection(object):
 
     def __del__(self):
         if self._sock:
-            socket.socket.close(self._sock)
+            self._sock.close()
             self._sock = None
 
     def __getattr__(self, attr):
@@ -97,8 +98,6 @@ class SSLConnection(object):
         self.__iowait(self._connection.connect, addr)
 
     def send(self, data, flags=0):
-        if hasattr(data, 'tobytes'):
-            data = data.tobytes()
         try:
             return self.__iowait(self._connection.send, data)
         except OpenSSL.SSL.SysCallError as e:
@@ -285,9 +284,8 @@ class BaseHTTPUtil(object):
 class HTTPUtil(BaseHTTPUtil):
     """HTTP Request Class"""
 
-    MessageClass = dict
+    #MessageClass = dict
     protocol_version = 'HTTP/1.1'
-    skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'X-Chrome-Variations', 'Connection', 'Cache-Control'])
     ssl_ciphers = ':'.join([
                             #defaultTLS ex
                             'ECDHE-RSA-AES128-SHA256',
@@ -434,7 +432,7 @@ class HTTPUtil(BaseHTTPUtil):
                 tcp_time_threshold = min(0.66, 1.5 * first_tcp_time)
                 if isinstance(sock, socket.socket):
                     if connection_cache_key and sock.tcp_time < tcp_time_threshold:
-                        self.tcp_connection_cache[connection_cache_key].put((time(), sock))
+                        self.tcp_connection_cache[connection_cache_key].put((onlytime(), sock))
                     else:
                         sock.close()
         try:
@@ -546,7 +544,7 @@ class HTTPUtil(BaseHTTPUtil):
                 ssl_sock.sock = sock
                 ssl_sock.xip = ipaddr
                 if test:
-                    self.ssl_connection_cache[GC.GAE_LISTNAME + ':443'].put((time(), ssl_sock))
+                    self.ssl_connection_cache[GC.GAE_LISTNAME + ':443'].put((onlytime(), ssl_sock))
                     return test.put((ipaddr[0], ssl_sock.ssl_time))
                 # put ssl socket object to output queobj
                 queobj.put(ssl_sock)
@@ -569,7 +567,7 @@ class HTTPUtil(BaseHTTPUtil):
                 ssl_time_threshold = min(1, 1.5 * first_ssl_time)
                 if isinstance(ssl_sock, (SSLConnection, ssl.SSLSocket)):
                     if connection_cache_key and ssl_sock.ssl_time < ssl_time_threshold:
-                        self.ssl_connection_cache[connection_cache_key].put((time(), ssl_sock))
+                        self.ssl_connection_cache[connection_cache_key].put((onlytime(), ssl_sock))
                     else:
                         ssl_sock.sock.close()
 
@@ -671,7 +669,6 @@ class HTTPUtil(BaseHTTPUtil):
             raise
 
     def _request(self, sock, method, path, protocol_version, headers, payload, bufsize=8192, crlf=None):
-        skip_headers = self.skip_headers
         need_crlf = bool(crlf)
         if need_crlf:
             fakehost = 'www.' + ''.join(random.choice(('bcdfghjklmnpqrstvwxyz','aeiou')[x&1]) for x in xrange(random.randint(5,20))) + random.choice(['.net', '.com', '.org'])
@@ -679,7 +676,7 @@ class HTTPUtil(BaseHTTPUtil):
         else:
             request_data = ''
         request_data += '%s %s %s\r\n' % (method, path, protocol_version)
-        request_data += ''.join('%s: %s\r\n' % (k.title(), v) for k, v in headers.items() if k.title() not in skip_headers)
+        request_data += ''.join('%s: %s\r\n' % (k.title(), v) for k, v in headers.items())
         if self.proxy:
             _, username, password, _ = parse_proxy(self.proxy)
             if username and password:

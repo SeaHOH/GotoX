@@ -44,9 +44,10 @@ GC.GAE_APPIDS = re.findall(r'[\w\-\.]+', CONFIG.get('gae', 'appid').replace('.ap
 GC.GAE_PASSWORD = CONFIG.get('gae', 'password').strip()
 GC.GAE_PATH = CONFIG.get('gae', 'path')
 GC.GAE_LISTNAME = CONFIG.get('gae', 'listname')
-GC.GAE_MAXREQUESTS = min(CONFIG.getint('gae', 'maxrequsts'), 12)
-#GC.GAE_OBFUSCATE = CONFIG.getint('gae', 'obfuscate')
-GC.GAE_VALIDATE = CONFIG.getint('gae', 'validate')
+GC.GAE_MAXREQUESTS = min(CONFIG.getint('gae', 'maxrequsts'), 5) * len(GC.GAE_APPIDS)
+GC.GAE_SSLVERIFY = CONFIG.get('gae', 'sslverify')
+GC.GAE_FETCHMAX = CONFIG.get('gae', 'fetchmax') or 2
+GC.GAE_MAXSIZE = CONFIG.get('gae', 'maxsize')
 
 GC.LINK_PROFILE = CONFIG.get('link', 'profile')
 if GC.LINK_PROFILE not in ('ipv4', 'ipv6', 'ipv46'):
@@ -127,9 +128,9 @@ if GC.PROXY_ENABLE:
 else:
     GC.proxy = ''
 
-GC.AUTORANGE_HOSTS = CONFIG.get('autorange', 'hosts')
-GC.AUTORANGE_HOSTS = GC.AUTORANGE_HOSTS.split('|') if GC.AUTORANGE_HOSTS else []
-GC.AUTORANGE_HOSTS_MATCH = [re.compile(fnmatch.translate(h)).match for h in GC.AUTORANGE_HOSTS]
+#GC.AUTORANGE_HOSTS = CONFIG.get('autorange', 'hosts')
+#GC.AUTORANGE_HOSTS = GC.AUTORANGE_HOSTS.split('|') if GC.AUTORANGE_HOSTS else []
+#GC.AUTORANGE_HOSTS_MATCH = [re.compile(fnmatch.translate(h)).match for h in GC.AUTORANGE_HOSTS]
 GC.AUTORANGE_ENDSWITH = CONFIG.get('autorange', 'endswith')
 GC.AUTORANGE_ENDSWITH = tuple(GC.AUTORANGE_ENDSWITH.split('|')) if GC.AUTORANGE_ENDSWITH else ()
 GC.AUTORANGE_NOENDSWITH = CONFIG.get('autorange', 'noendswith')
@@ -140,10 +141,6 @@ GC.AUTORANGE_WAITSIZE = CONFIG.getint('autorange', 'waitsize')
 GC.AUTORANGE_BUFSIZE = CONFIG.getint('autorange', 'bufsize')
 GC.AUTORANGE_THREADS = CONFIG.getint('autorange', 'threads')
 GC.AUTORANGE_LOWSPEED = CONFIG.getint('autorange', 'lowspeed')
-
-GC.FETCHMAX_LOCAL = CONFIG.getint('fetchmax', 'local') if CONFIG.get('fetchmax', 'local') else 2
-GC.FETCHMAX_SERVER = CONFIG.get('fetchmax', 'server')
-GC.FETCHMAXSIZE = CONFIG.get('fetchmax', 'maxsize')
 
 GC.DNS_ENABLE = CONFIG.getint('dns', 'enable')
 GC.DNS_LISTEN = CONFIG.get('dns', 'listen')
