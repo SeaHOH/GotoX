@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding:utf-8
-# Based on GoAgent 3.1.5   by Phus Lu <phus.lu@gmail.com>
+# Based on GoAgent   3.1.5 by Phus Lu <phus.lu@gmail.com>
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang.2008@gmail.com>
 # Based on WallProxy 0.4.0 by Hust Moon <www.ehust@gmail.com>
 # Contributor:
@@ -279,7 +279,8 @@ def main():
     if GC.DNS_ENABLE:
         info += '* DNS Listen       : %s\n' % GC.DNS_LISTEN
         info += '* DNS Servers      : %s\n' % '|'.join(GC.DNS_SERVERS)
-    info += u'*  下 载 证 书 : %s\n' % AutoProxyHandler.CAfile
+    info += u'*  安 装 证 书 : %s\n' % AutoProxyHandler.CAfile
+    info += u'*  下 载 证 书 : %s 加任意字符\n' % AutoProxyHandler.CAfile
     info += '==================================================================================\n'
     sys.stdout.write(info)
 

@@ -46,6 +46,8 @@ from FilterUtil import (
     get_ssl_action
     )
 
+tcp_connection_cache = http_util.tcp_connection_cache
+ssl_connection_cache = http_util.ssl_connection_cache
 HAS_PYPY = hasattr(sys, 'pypy_version_info')
 normcookie = partial(re.compile(r',(?= [^ =]+(?:=|$))').sub, r'\r\nSet-Cookie:')
 normattachment = partial(re.compile(r'(?<=filename=)([^"\']+)').sub, r'"\1"')
@@ -124,7 +126,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.host, self.port = self.headers.get('Host'), int(port)
         if not self.host or self.host.startswith(self.localhosts):
             self.host = host
-        self.action, self.target = get_ssl_action(host)
+        self.action, self.target = get_ssl_action(self.host)
         self.do_count()
 
     def do_METHOD(self):
@@ -136,7 +138,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return self.do_LOCAL()
         if self.path[0] == '/':
             self.path = '%s://%s%s' % ('https' if self.ssl else 'http', self.host, self.path)
-        if self.path.lower() == self.CAfile:
+        if self.path.lower().startswith(self.CAfile):
             return self.send_CA()
         self.url_parts = urlparse.urlparse(self.path)
         if not self.ssl:
@@ -145,7 +147,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.port = int(port)
             else:
                 self.port = 80
-        self.action, self.target  = get_action(self.url_parts)
+        self.action, self.target = get_action(self.url_parts.scheme, self.host, self.path)
         self.do_count()
 
     do_GET = do_METHOD
@@ -156,7 +158,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     do_OPTIONS = do_METHOD
     do_PATCH = do_METHOD
 
-    def get_request_headers(self, skip_headers):
+    def handle_request_headers(self, skip_headers):
         request_headers = dict((k.title(), v) for k, v in self.headers.items() if k.title() not in skip_headers)
         connection = self.headers.get('Connection') or self.headers.get('Proxy-Connection')
         if connection:
@@ -170,7 +172,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 raise
         return request_headers, payload
 
-    def get_response_headers(self, response):
+    def handle_response_headers(self, command, response):
         response_headers = dict((k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding')
         length = response_headers.get('Content-Length', '0')
         length = int(length) if length.isdigit() else 0
@@ -187,8 +189,14 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if 'Content-Disposition' in response_headers:
             response_headers['Content-Disposition'] = normattachment(response_headers['Content-Disposition'])
         headers_data = 'HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), response_headers[k]) for k in response_headers))
-        logging.debug('headers_data=%s', headers_data)
         self.write(headers_data)
+        if response.status in (300, 301, 302, 303, 307) and 'Location' in response_headers:
+                logging.info(u'%r 返回包含重定向 %r', self.path, response_headers['Location'])
+        logging.debug('headers_data=%s', headers_data)
+        if response.status == 304:
+            logging.debug('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), command, self.command, self.path, response.status, length or '-')
+        else:
+            logging.info('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), command, self.command, self.path, response.status, length or '-')
         return length, data, need_chunked
 
     def do_DIRECT(self):
@@ -196,23 +204,21 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         hostname = self.set_DNS()
         response = None
         noerror = True
-        request_headers, payload = self.get_request_headers(skip_headers_d)
+        request_headers, payload = self.handle_request_headers(skip_headers_d)
         path = self.url_parts.path
         try:
             need_crlf = hostname.startswith('google_') or self.host.endswith(GC.HTTP_CRLFSITES)
             connection_cache_key = '%s:%d' % (hostname, self.port)
             response = http_util.request(self.command, self.path, payload, request_headers, crlf=need_crlf, connection_cache_key=connection_cache_key, timeout=self.fwd_timeout)
             if not response:
-                if path.endswith('ico') or path.endswith(GC.AUTORANGE_ENDSWITH):
+                if self.target is not None or path.endswith('ico'): #非默认规则、网站图标
                     logging.warn(u'http_util.request "%s %s" 失败，返回 404', self.command, self.path)
                     self.write('HTTP/1.1 404 %s\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n%s' % self.responses[404])
                     return
                 else:
                     logging.warn(u'http_util.request "%s %s" 失败，尝试使用 "GAE"', self.command, self.path)
                     return self.go_GAE()
-            length, data, need_chunked = self.get_response_headers(response)
-            if response.status != 304: #资源未修改
-                logging.info('%s "DIRECT %s %s HTTP/1.1" %s %s', self.address_string(response), self.command, self.path, response.status, length or '-')
+            length, data, need_chunked = self.handle_response_headers('DIRECT', response)
             while data:
                 if need_chunked:
                     self.write(hex(len(data))[2:].encode() if PY3 else hex(len(data))[2:])
@@ -245,7 +251,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if connection and connection.lower() != 'close':
                         self.close_connection = 0
                     #放入套接字缓存
-                    http_util.tcp_connection_cache[connection_cache_key].put((onlytime(), response.sock))
+                    tcp_connection_cache[connection_cache_key].put((onlytime(), response.sock))
 
     def do_GAE(self):
         """GAE http urlfetch"""
@@ -253,7 +259,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             logging.warn(u'GAE 不支持 "%s %s"，转用 DIRECT', self.command, self.path)
             self.action == 'do_DIRECT'
             return self.do_DIRECT()
-        request_headers, payload = self.get_request_headers(skip_headers_g)
+        request_headers, payload = self.handle_request_headers(skip_headers_g)
         host = self.host
         path = self.url_parts.path
         #need_autorange = any(x(host) for x in GC.AUTORANGE_HOSTS_MATCH) or path.endswith(GC.AUTORANGE_ENDSWITH)
@@ -342,11 +348,12 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 #第一个响应，不用重新写入头部
                 if not headers_sent:
                     if response.status == 206 and need_autorange:
+                        testgaeip(True)
+                        sleep(2.5)
                         rangefetch = RangeFetch(self, request_headers, payload, response)
                         return rangefetch.fetch()
-                    length, data, need_chunked = self.get_response_headers(response)
+                    length, data, need_chunked = self.handle_response_headers('GAE', response)
                     headers_sent = True
-                    logging.info('%s "GAE %s %s HTTP/1.1" %s %s', self.address_string(response), self.command, self.path, response.status, length or '-')
                 content_range = response.getheader('Content-Range', '')
                 if content_range:
                     start, end, length = tuple(int(x) for x in getrange(content_range).group(1, 2, 3))
@@ -398,7 +405,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         if connection and connection.lower() != 'close':
                             self.close_connection = 0
                         #放入套接字缓存
-                        http_util.ssl_connection_cache[GC.GAE_LISTNAME+':443'].put((onlytime(), response.sock))
+                        ssl_connection_cache[GC.GAE_LISTNAME+':443'].put((onlytime(), response.sock))
 
     def do_FORWARD(self):
         """Forward socket"""
@@ -535,9 +542,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def go_GAE(self):
         if self.command not in ('GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'PATCH'):
             return go_BAD(self)
-        filters_cache[self.host][''] = ('do_GAE', ''), ''
-        if self.ssl:
-            ssl_filters_cache[self.host] = 'do_FAKECERT', ''
+        #自动多线程不持续使用 GAE，下一次仍尝试默认设置
+        filters_cache[self.host][GC.AUTORANGE_ENDSWITH] = ('do_GAE', ''), ''
         self.action = 'do_GAE'
         self.do_GAE()
 
@@ -589,7 +595,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def set_DNS(self):
         """Maintain a self-DNS map"""
-        iporname = self.target
+        iporname = self.target or '' #替代默认 None
         if self.host not in dns:
             if isinstance(iporname, list):
                 dns[self.host] = iporname
@@ -626,7 +632,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if isinstance(self.target, partial):
             self.target = self.target(self.path, 1)
         elif isinstance(self.target, tuple):
-            self.target = self.path.replace(self.target)
+            self.target = self.path.replace(*self.target)
 
     def send_CA(self):
         """Return CA cert file"""
@@ -634,7 +640,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         with open(ca_certfile, 'rb') as fp:
             data = fp.read()
         logging.info(u'"HTTP/1.1 200"，发送 CA 证书到 %r', self.address_string())
-        self.write('HTTP/1.1 200\r\nContent-Type: application/x-x509-ca-cert\r\nContent-Length: %s\r\n\r\n' % len(data))
+        self.write(b'HTTP/1.1 200\r\nContent-Type: application/x-x509-ca-cert\r\n')
+        if self.path.lower() != self.CAfile:
+            self.write(b'Content-Disposition: attachment; filename="GotoXCA.crt"\r\n')
+        self.write('Content-Length: %s\r\n\r\n' % len(data))
         self.write(data)
 
     def address_string(self, response=None):
@@ -665,7 +674,7 @@ class GAEProxyHandler(AutoProxyHandler):
             return self.do_LOCAL()
         if self.path[0] == '/':
             self.path = '%s://%s%s' % ('https' if self.ssl else 'http', self.host, self.path)
-        if self.path.lower() == self.CAfile:
+        if self.path.lower().startswith(self.CAfile):
             return self.send_CA()
         self.url_parts = urlparse.urlparse(self.path)
         if not self.ssl:
@@ -674,7 +683,7 @@ class GAEProxyHandler(AutoProxyHandler):
                 self.port = int(port)
             else:
                 self.port = 80
-        _, self.target  = get_action(self.url_parts)
+        _, self.target = get_action(self.url_parts.scheme, self.host, self.path)
         self.action = 'do_GAE'
         self.do_count()
 
@@ -687,4 +696,4 @@ class GAEProxyHandler(AutoProxyHandler):
     do_PATCH = do_METHOD
 
     def go_GAE(self):
-        go_BAD(self)
+        go_BAD()

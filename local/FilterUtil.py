@@ -24,12 +24,16 @@ def match_host_filter(filter, host):
 def match_path_filter(filter, path):
     if isinstance(filter, str):
         return filter in path
+    #不包含元组元素（媒体文件）
+    elif isinstance(filter, tuple):
+        return not any(x in path for x in filter)
     return filter(path)
 
-def get_action(url_parts):
-    schemes = ('', url_parts.scheme)
-    host = url_parts.netloc.rpartition(':')[0] if ':' in url_parts.netloc else url_parts.netloc
-    path = url_parts.path[1:]
+def get_action(scheme, host, path):
+    schemes = ('', scheme)
+    #除去主机部分
+    path = path[path.find('//')+3:]
+    path = path[path.find('/')+1:]
     try:
         filters = filters_cache[host]
         if isinstance(filters, tuple):
@@ -52,7 +56,7 @@ def get_action(url_parts):
                         filter = numToAct[filters.action], target
         if filter:
             return filter
-    filter = (numToAct[GC.FILTER_ACTION], ''), ''
+    filter = (numToAct[GC.FILTER_ACTION], None), ''
     if host in filters_cache.cache:
         filters_cache.cache[host][''] = filter
     else:
@@ -69,5 +73,5 @@ def get_ssl_action(host):
                 if schemefilter in schemes and match_host_filter(hostfilter, host):
                     ssl_filters_cache[host] = filter = numToSSLAct[filters.action], target
                     return filter
-        ssl_filters_cache[host] = filter = numToSSLAct[GC.FILTER_SSLACTION], ''
+        ssl_filters_cache[host] = filter = numToSSLAct[GC.FILTER_SSLACTION], None
         return filter

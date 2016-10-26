@@ -93,10 +93,11 @@ def _testgaeip():
     if nbadip > 3 or niplist - nbadip < GC.FINDER_MINIPCNT:
         updataip()
 
-def testgaeip():
+def testgaeip(force=False):
     with tLock:
-        if (time() - testip.lasttest < 30  #强制 30 秒间隔
-                or updataip.running or testip.running ):
+        if updataip.running or not force and (
+                time() - testip.lasttest < 30  #强制 30 秒间隔
+                or testip.running ):
             return
         testip.running = True
     thread.start_new_thread(_testgaeip, ())

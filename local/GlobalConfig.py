@@ -86,7 +86,9 @@ GC.IPLIST_MAP = dict((k, v.split('|')) for k, v in CONFIG.items('iplist'))
 #GC.IPLIST_MAP.update((k, [k]) for k, v in GC.HOSTS_MAP.items() if k == v)
 
 GC.FILTER_ACTION = CONFIG.getint('filter', 'action')
+GC.FILTER_ACTION = GC.FILTER_ACTION if GC.FILTER_ACTION in (1, 2, 3, 4) else 3
 GC.FILTER_SSLACTION = CONFIG.getint('filter', 'sslaction')
+GC.FILTER_SSLACTION = GC.FILTER_SSLACTION if GC.FILTER_SSLACTION in (1, 2, 3, 4) else 2
 
 GC.FINDER_MINIPCNT = CONFIG.getint('finder', 'minipcnt')
 GC.FINDER_IPCNT = max(CONFIG.getint('finder', 'ipcnt'), GC.FINDER_MINIPCNT)

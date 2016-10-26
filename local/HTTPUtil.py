@@ -314,6 +314,11 @@ class HTTPUtil(BaseHTTPUtil):
                             'TLS_EMPTY_RENEGOTIATION_INFO_SCSV'])
     outtimes = 0
     keeptime = 90
+    import collections
+    tcp_connection_time = collections.defaultdict(float)
+    tcp_connection_cache = collections.defaultdict(Queue.PriorityQueue)
+    ssl_connection_time = collections.defaultdict(float)
+    ssl_connection_cache = collections.defaultdict(Queue.PriorityQueue)
 
     def __init__(self, max_window=4, max_timeout=8, max_retry=2, proxy=''):
         # http://docs.python.org/dev/library/ssl.html
@@ -325,11 +330,6 @@ class HTTPUtil(BaseHTTPUtil):
         self.max_window = max_window
         self.max_retry = max_retry
         self.max_timeout = max_timeout
-        import collections
-        self.tcp_connection_time = collections.defaultdict(float)
-        self.tcp_connection_cache = collections.defaultdict(Queue.PriorityQueue)
-        self.ssl_connection_time = collections.defaultdict(float)
-        self.ssl_connection_cache = collections.defaultdict(Queue.PriorityQueue)
         self.proxy = proxy
         #if self.proxy:
         #    dns_resolve = self.__dns_resolve_withproxy
