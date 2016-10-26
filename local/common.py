@@ -16,17 +16,17 @@ from compat import (
     logging
     )
 
-if os.name == 'nt':
-    app_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    cert_dir = os.path.join(app_root, 'cert')
-    config_dir = os.path.join(app_root, 'config')
-    data_dir = os.path.join(app_root, 'data')
-    web_dir = os.path.join(app_root, 'web')
-else:
-    cert_dir = 'cert'
-    config_dir = 'config'
-    data_dir = 'data'
-    web_dir = 'web'
+#if os.name == 'nt':
+app_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+cert_dir = os.path.join(app_root, 'cert')
+config_dir = os.path.join(app_root, 'config')
+data_dir = os.path.join(app_root, 'data')
+web_dir = os.path.join(app_root, 'web')
+#else:
+#    cert_dir = 'cert'
+#    config_dir = 'config'
+#    data_dir = 'data'
+#    web_dir = 'web'
 
 
 class LRUCache(object):
