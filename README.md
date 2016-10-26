@@ -16,7 +16,7 @@
     * **相关链接**
     * 简易教程 https://github.com/phuslu/goproxy/blob/wiki/SimpleGuide.md
     * 常见问题 https://github.com/phuslu/goproxy/blob/wiki/FAQ.md
-* 成功运行后会创建独一无二的 CA 证书，证书名称为：“**GotoX CA**”。配置好代理后，按照提示在浏览器中输入 CA 证书地址 “**http://gotox.net/ca**” 可安装到浏览器或下载后导入系统，也可在“**cert**”文件夹找到“**CA.crt**”证书文件。由于还不完善，暂时不打算启用自动导入和删除功能，如有需求请手动删除老旧证书。
+* 成功运行后会创建独一无二的 CA 证书，证书名称为：“**GotoX CA**”。配置好代理后，按照提示在浏览器中输入 CA 证书地址 “**http://gotox.net/ca**” 可安装到浏览器，或在以上地址后加任意字符即可下载，然后手动导入系统，还可在“**cert**”文件夹找到“**CA.crt**”证书文件。由于还不完善，暂时不打算启用自动导入和删除功能，如有需求请手动删除老旧证书。
     * **相关链接**
     * 手动导入证书 https://github.com/XX-net/XX-Net/wiki/GoAgent-Import-CA
 
@@ -28,6 +28,7 @@
     * dnslib 0.9.6 及以上
 * 发布暂时只会提供 cpython 2.7.12 版本。
 * IPv6 未测试，欢迎反馈。
+* 由于代码中使用了大量中文，非 windows 如果要正常使用可能需要 python3；你也可以使用 python2 并反馈相关结果给作者。
 * 由于自己只使用 windows，所以其它系统不保证能正常使用。如果有需求作者会尽量修改，但这需要有人帮助测试反馈。
 
 # 计划
