@@ -21,11 +21,11 @@
     * 手动导入证书 https://github.com/XX-net/XX-Net/wiki/GoAgent-Import-CA
 
 # 兼容性
-* python 2.7/3.4 已测试
-* 必须组件：
+* cpython 2.7/3.4 已测试
+* 必须组件（可放入“**python/site-packages**”目录，支持 “**.egg**”）：
     * gevent 1.1.2 
     * pyOpenSSL 16.0.0 及以上
-    * dnslib 0.9.6 及以上
+    * dnslib 0.8.3 及以上
 * 发布暂时只会提供 cpython 2.7.12 版本。
 * IPv6 未测试，欢迎反馈。
 * 由于代码中使用了大量中文，非 windows 如果要正常使用可能需要 python3；你也可以使用 python2 并反馈相关结果给作者。
