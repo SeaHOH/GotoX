@@ -23,7 +23,7 @@ if PY3:
     socket.socket = socketMod
     #默认编码
     _read = ConfigParser.read
-    ConfigParser.read = lambda *args, encoding='utf8': _read(*args, encoding=encoding)
+    ConfigParser.read = lambda s, f, encoding='utf8': _read(s, f, encoding)
 else:
     import Queue
     import thread
