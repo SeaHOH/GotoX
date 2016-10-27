@@ -9,6 +9,8 @@ import socket
 import random
 import socks
 import mimetypes
+import CertUtil
+import clogging as logging
 from select import select
 from time import time, sleep
 from functools import partial
@@ -16,26 +18,23 @@ from compat import (
     PY3,
     BaseHTTPServer,
     urlparse,
-    logging,
     thread,
-    xrange,
-    NetWorkIOError
+    xrange
     )
 from common import (
+    web_dir,
+    NetWorkIOError,
     LRUCache,
     message_html,
-    get_listen_ip,
-    web_dir,
     onlytime,
     testip,
     isip,
-    isipv4,
-    dns,
-    dns_resolve
+    isipv4
     )
-import CertUtil
+from common.proxy import get_listen_ip
+from common.dns import dns, dns_resolve
 from GlobalConfig import GC
-from GAEUpdata import testgaeip
+from GAEUpdata import testgaeip, addtoblocklist, _refreship as refreship
 from HTTPUtil import http_util
 from RangeFetch import RangeFetch
 from GAEFetch import gae_urlfetch
@@ -158,6 +157,23 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     do_OPTIONS = do_METHOD
     do_PATCH = do_METHOD
 
+    def write_response_content(self, start, data, response, need_chunked):
+        try:
+            while data:
+                if need_chunked:
+                    self.write(hex(len(data))[2:].encode() if PY3 else hex(len(data))[2:])
+                    self.write(b'\r\n')
+                    self.write(data)
+                    self.write(b'\r\n')
+                else:
+                    self.write(data)
+                    start += len(data)
+                data = response.read(8192)
+        finally:
+            if need_chunked:
+                self.write(b'0\r\n\r\n')
+            return start
+
     def handle_request_headers(self, skip_headers):
         request_headers = dict((k.title(), v) for k, v in self.headers.items() if k.title() not in skip_headers)
         connection = self.headers.get('Connection') or self.headers.get('Proxy-Connection')
@@ -176,7 +192,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         response_headers = dict((k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding')
         length = response_headers.get('Content-Length', '0')
         length = int(length) if length.isdigit() else 0
-        data = response.read(8192)
+        if hasattr(response, 'data'):
+            # goproxy 服务端错误信息处理预读数据
+            data = response.data
+        else:
+            data = response.read(8192)
         need_chunked = data and not length # response 中的数据已经正确解码
         if need_chunked:
             response_headers['Transfer-Encoding'] = 'chunked'
@@ -188,7 +208,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             response_headers['Set-Cookie'] = normcookie(response_headers['Set-Cookie'])
         if 'Content-Disposition' in response_headers:
             response_headers['Content-Disposition'] = normattachment(response_headers['Content-Disposition'])
-        headers_data = 'HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), response_headers[k]) for k in response_headers))
+        headers_data = 'HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response_headers.items()))
         self.write(headers_data)
         if response.status in (300, 301, 302, 303, 307) and 'Location' in response_headers:
                 logging.info(u'%r 返回包含重定向 %r', self.path, response_headers['Location'])
@@ -218,18 +238,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 else:
                     logging.warn(u'http_util.request "%s %s" 失败，尝试使用 "GAE"', self.command, self.path)
                     return self.go_GAE()
-            length, data, need_chunked = self.handle_response_headers('DIRECT', response)
-            while data:
-                if need_chunked:
-                    self.write(hex(len(data))[2:].encode() if PY3 else hex(len(data))[2:])
-                    self.write(b'\r\n')
-                    self.write(data)
-                    self.write(b'\r\n')
-                else:
-                    self.write(data)
-                data = response.read(8192)
-            if need_chunked:
-                self.write(b'0\r\n\r\n')
+            _, data, need_chunked = self.handle_response_headers('DIRECT', response)
+            self.write_response_content(0, data, response, need_chunked)
         except NetWorkIOError as e:
             noerror = False
             if e.args[0] in (errno.ECONNRESET, 10063, errno.ENAMETOOLONG):
@@ -281,14 +291,14 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         range_retry = None
         errors = []
         headers_sent = False
-        need_chunked = False
-        data = b''
         for retry in xrange(GC.GAE_FETCHMAX):
             if len(self.appids) > 0:
                 appid = self.appids.pop()
             else:
                 appid = random.choice(GC.GAE_APPIDS)
             noerror = True
+            need_chunked = False
+            data = b''
             try:
                 end = 0
                 response = gae_urlfetch(self.command, self.path, request_headers, payload, appid)
@@ -304,11 +314,41 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     else:
                         logging.warning(u'do_GAE 超时，url=%r，重试', self.path)
                         continue
-                #网关错误
-                if response.app_status in (400, 504):
+                #网关超时（Gateway Timeout）
+                if response.app_status == 504:
                     logging.warning('do_GAE 网关错误，url=%r，重试', self.path)
                     continue
-                # appid 不存在
+                #无法提供 GAE 服务（Found｜Forbidden｜Bad Gateway｜Method Not Allowed）
+                if response.app_status in (302, 403, 405, 502):
+                    if hasattr(response, 'app_reason'):
+                        #密码错误
+                        logging.error(response.app_reason)
+                    else:
+                        #移除不可用 IP
+                        ip = response.xip[0]
+                        logging.warning(u'IP：%r 不支持 GAE 服务，正在删除……', ip)
+                        refreship(GC.IPLIST_MAP[GC.GAE_LISTNAME][:].remove(ip))
+                        addtoblocklist(ip)
+                        noerror = False
+                        continue
+                #当前 appid 流量完结(Service Unavailable)
+                if response.app_status == 503:
+                    if len(GC.GAE_APPIDS) > 1:
+                        GC.GAE_APPIDS.remove(appid)
+                        appid = None
+                        logging.info(u'当前 appid[%s] 流量使用完毕，切换下一个…', appid)
+                        self.do_GAE()
+                        return
+                    else:
+                        logging.error(u'全部的 APPID 流量都使用完毕')
+                #服务端出错（Internal Server Error）
+                if response.app_status == 500:
+                    logging.warning(u'"%s %s" GAE_APP 发生错误，重试', self.command, self.path)
+                    continue
+                #服务端不兼容（Bad Request）
+                if response.app_status in (400, 415):
+                    logging.error('%r 部署的可能是 GotoX 不兼容的服务端，如果这条错误反复出现请将之反馈给开发者。', appid)
+                # appid 不存在（Not Found）
                 if response.app_status == 404:
                     if len(GC.GAE_APPIDS) > 1:
                         GC.GAE_APPIDS.remove(appid)
@@ -321,33 +361,28 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         self.write(b'HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n')
                         self.write(html.encode('utf-8'))
                         return
-                #无法提供 GAE 服务
-                if response.app_status == 403 or response.app_status == 405:
-                    if hasattr(response, 'app_reason'):
-                        logging.error(response.app_reason)
-                    else:
-                        continue
-                #当前 appid 流量完结，切换下一个
-                if response.app_status == 503:
-                    if len(GC.GAE_APPIDS) > 1:
-                        GC.GAE_APPIDS.remove(appid)
-                        appid = None
-                        logging.info(u'当前 appid[%s] 流量使用完毕，切换下一个…', appid)
-                        self.do_GAE()
-                        return
-                    else:
-                        logging.error(u'全部的 APPID 流量都使用完毕')
-                if response.app_status == 500 and 'Range' in request_headers:
-                    logging.warning(u'Range 请求返回 GAE_APP 错误，重试')
-                    continue
-                if response.app_status != 200 and retry == GC.GAE_FETCHMAX-1:
-                    logging.info('%s "GAE %s %s HTTP/1.1" %s -', self.address_string(response), self.command, self.path, response.status)
-                    self.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding'))))
-                    self.write(response.read())
+                #输出服务端返回的错误信息
+                if response.app_status != 200:
+                    _, data, need_chunked = self.handle_response_headers('GAE', response)
+                    self.write_response_content(0, data, response, need_chunked)
                     return
+                #处理 goproxy 错误信息（Bad Gateway）
+                if response.status == 502:
+                    data = response.read()
+                    if b'DEADLINE_EXCEEDED' in data:
+                        logging.warning(u'GAE：%r urlfetch %r 返回 DEADLINE_EXCEEDED，重试', appid, self.path)
+                        continue
+                    if b'ver quota' in data:
+                        logging.warning(u'GAE：%r urlfetch %r 返回 over quota，重试', appid, self.path)
+                        continue
+                    if b'urlfetch: CLOSED' in data:
+                        logging.warning(u'GAE：%r urlfetch %r 返回 urlfetch: CLOSED，重试', appid, self.path)
+                        continue
+                    response.data = data
                 #第一个响应，不用重新写入头部
                 if not headers_sent:
                     if response.status == 206 and need_autorange:
+                        #开始多线程时先测试一遍 IP
                         testgaeip(True)
                         sleep(2.5)
                         rangefetch = RangeFetch(self, request_headers, payload, response)
@@ -361,18 +396,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     start, end = 0, length-1
                 else:
                     start = 0
-                while data and start <= length:
-                    if need_chunked:
-                        self.write(hex(len(data))[2:].encode() if PY3 else hex(len(data))[2:])
-                        self.write(b'\r\n')
-                        self.write(data)
-                        self.write(b'\r\n')
-                    else:
-                        start += len(data)
-                        self.write(data)
-                    data = response.read(8192)
-                if need_chunked:
-                    self.write(b'0\r\n\r\n')
+                start = self.write_response_content(start, data, response, need_chunked)
                 return
             except Exception as e:
                 noerror = False
@@ -400,7 +424,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if response:
                     response.close()
                     if noerror:
-                        connection = self.headers.get('Connection') or self.headers.get('Proxy-Connection')
+                        #connection = self.headers.get('Connection') or self.headers.get('Proxy-Connection')
                         connection = response.getheader('Connection')
                         if connection and connection.lower() != 'close':
                             self.close_connection = 0

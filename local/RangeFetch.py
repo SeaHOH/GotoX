@@ -4,12 +4,12 @@
 from compat import (
     Queue,
     urlparse,
-    xrange,
-    logging
+    xrange
     )
 import re
 import threading
 import random
+import clogging as logging
 from time import time, sleep
 from common import onlytime, spawn_later, testip
 from GAEFetch import gae_urlfetch

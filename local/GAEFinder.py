@@ -9,9 +9,35 @@ __author__ = 'seahoh@gamil.com'
 import os
 import sys
 
-sys.dont_write_bytecode = True
+if __name__ == '__main__':
+    sys.dont_write_bytecode = True
+    import glob
+    sys.path += glob.glob('%s/*.egg' % os.path.dirname(os.path.abspath(__file__)))
+    try:
+        import gevent
+        import gevent.socket
+        import gevent.monkey
+        gevent.monkey.patch_all(subprocess=True)
+    except ImportError:
+        gevent = None
+    except TypeError:
+        gevent.monkey.patch_all()
+        sys.stderr.write('\033[31m  Warning: Please update gevent to the latest 1.0 version!\033[0m\n')
+    logging.disable(logging.DEBUG)
 
+import threading
+import socket
+import ssl
+import struct
+import select
+import random
+import OpenSSL
+import clogging as logging
+from time import time, strftime
+from common import cert_dir, data_dir, NetWorkIOError
+from compat import PY3, xrange
 from GlobalConfig import GC
+
 #全局只读写数据
 #最大 IP 延时，单位：毫秒
 g_maxhandletimeout = GC.FINDER_MAXTIMEOUT or 1000
@@ -34,18 +60,6 @@ g_useOpenSSL = GC.LINK_OPENSSL or 1
 #屏蔽列表（通过测试、但无法使用 GAE）
 g_block = GC.FINDER_BLOCK #('74.125.', '173.194.', '203.208.', '113.171.')
 
-
-from common import (
-    cert_dir,
-    data_dir
-    )
-from compat import (
-    PY3,
-    xrange,
-    OpenSSL,
-    logging,
-    NetWorkIOError
-    )
 g_cacertfile = os.path.join(cert_dir, "cacert.pem")
 g_ipfile = os.path.join(data_dir, "ip.txt")
 g_badfile = os.path.join(data_dir, "ip_bad.txt")
@@ -61,29 +75,6 @@ timeToDelay = {    0 :   0,
 
 #全局可读写数据
 class g: pass
-
-import threading
-import socket
-import ssl
-import struct
-import select
-import random
-from time import time, strftime
-
-if __name__ == '__main__':
-    import glob
-    sys.path += glob.glob('%s/*.egg' % os.path.dirname(os.path.abspath(__file__)))
-    try:
-        import gevent
-        import gevent.socket
-        import gevent.monkey
-        gevent.monkey.patch_all(subprocess=True)
-    except ImportError:
-        gevent = None
-    except TypeError:
-        gevent.monkey.patch_all()
-        sys.stderr.write('\033[31m  Warning: Please update gevent to the latest 1.0 version!\033[0m\n')
-    logging.disable(logging.DEBUG)
 
 gLock = threading.Lock()
 
@@ -135,12 +126,12 @@ def readbadlist():
                     ipdict[ips[0]] = [int(ips[1]), float(ips[2])]
     return ipdict
 
-def savebadlist():
+def savebadlist(badlist=None):
     if os.path.exists(g_badfile):
         if os.path.exists(g_badfilebak):
             os.remove(g_badfilebak)
         os.rename(g_badfile, g_badfilebak)
-    badlist = g.badlist
+    badlist = badlist or g.badlist
     op = 'wb'
     if PY3:
         op = 'w'

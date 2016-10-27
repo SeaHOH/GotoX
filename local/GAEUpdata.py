@@ -5,18 +5,26 @@ import os
 import sys
 import threading
 import re
+import clogging as logging
 from time import time, sleep, strftime
 from compat import (
     thread,
     ConfigParser,
-    logging,
     xrange,
     Queue
     )
-from common import config_dir, testip, isip, dns
+from common import config_dir, testip, isip
+from common.dns import dns
 from GlobalConfig import GC
 
 tLock = threading.Lock()
+fLock = threading.Lock()
+
+def addtoblocklist(ip):
+    with fLock:
+        badlist = readbadlist()
+        badlist[ip] = [timesblock+1, time()]
+        savebadlist(badlist)
 
 def _refreship(gaeip):
         with tLock:
@@ -29,7 +37,8 @@ def _refreship(gaeip):
 def refreship():
     threading.current_thread().setName('Ping-IP')
     #检测当前 IP 并搜索新的 IP
-    gaeip = getgaeip(set(GC.IPLIST_MAP[GC.GAE_LISTNAME]))
+    with fLock:
+        gaeip = getgaeip(set(GC.IPLIST_MAP[GC.GAE_LISTNAME]))
     if gaeip and len(gaeip) >= GC.FINDER_MINIPCNT:
         #更新 IP
         _refreship(gaeip)
@@ -112,5 +121,11 @@ def testipserver():
             testgaeip()
         sleep(60)
 
-from GAEFinder import timeToDelay, getgaeip
+from GAEFinder import (
+    g_timesblock as timesblock,
+    timeToDelay,
+    getgaeip,
+    readbadlist,
+    savebadlist
+    )
 from HTTPUtil import http_util

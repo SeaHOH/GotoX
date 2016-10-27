@@ -9,17 +9,19 @@
 __version__ = '3.3.0'
 
 import sys
-import os
-__file__ = os.path.abspath(__file__)
-if os.path.islink(__file__):
-    __file__ = getattr(os, 'readlink', lambda x: x)(__file__)
-cwdir = os.path.dirname(os.path.abspath(__file__))
-os.chdir(cwdir)
 sys.dont_write_bytecode = True
 
-import glob
-sys.path += glob.glob('%s/*.egg' % cwdir)
+import os
+#__file__ = os.path.abspath(__file__)
+#if os.path.islink(__file__):
+#    __file__ = getattr(os, 'readlink', lambda x: x)(__file__)
+#cwdir = os.path.dirname(os.path.abspath(__file__))
+#os.chdir(cwdir)
 
+#这条代码负责导入依赖库路径，不要改变位置
+from common import NetWorkIOError
+
+import clogging as logging
 try:
     import gevent
     import gevent.socket
@@ -31,7 +33,7 @@ except ImportError:
     gevent = None
 except TypeError:
     gevent.monkey.patch_all()
-    sys.stderr.write('\033[31m  Warning: Please update gevent to the latest 1.0 version!\033[0m\n')
+    logging.warning(u'警告：请更新 gevent 至 1.0 以上版本！')
 
 import errno
 import struct
@@ -39,15 +41,13 @@ import threading
 import socket
 import ssl
 import re
+import dnslib
+import OpenSSL
 from compat import (
     Queue,
     thread,
     SocketServer,
-    xrange,
-    logging,
-    dnslib,
-    OpenSSL,
-    NetWorkIOError
+    xrange
     )
 from GlobalConfig import GC
 from ProxyHandler import GAEProxyHandler, AutoProxyHandler
@@ -82,7 +82,8 @@ class LocalProxyServer(SocketServer.ThreadingTCPServer):
 
 def main():
     def pre_start():
-        from common import isip, isipv4, isipv6, dns
+        from common import isip, isipv4, isipv6
+        from common.dns import dns
         def get_process_list():
             import collections
             Process = collections.namedtuple('Process', 'pid name exe')
@@ -112,6 +113,7 @@ def main():
                         process_list.append(Process(pid=pid, name=name, exe=exe))
                         ctypes.windll.kernel32.CloseHandle(hProcess)
             elif sys.platform.startswith('linux'):
+                import glob
                 for filename in glob.glob('/proc/[0-9]*/cmdline'):
                     pid = int(filename.split('/')[2])
                     exe_link = '/proc/%d/exe' % pid
@@ -238,16 +240,11 @@ def main():
         if not GC.GAE_APPIDS or GC.GAE_APPIDS[0] == 'gotox':
             logging.critical(u'请编辑 %r 文件，添加你的 appid 到 [gae] 配置中！', GC.CONFIG_FILENAME)
             sys.exit(-1)
-        if not dnslib:
-            logging.error(u'无法找到 dnslib，请将 dnslib-0.8.3.egg 放到 %r 文件夹！', cwdir)
-            sys.exit(-1)
         if os.name == 'nt' and not GC.DNS_ENABLE:
             any(GC.DNS_SERVERS.insert(0, x) for x in [y for y in win32dns_query_dnsserver_list() if y not in GC.DNS_SERVERS])
         if not GC.PROXY_ENABLE:
             logging.info(u'开始将 GC.IPLIST_MAP names=%s 解析为 IP 列表', list(GC.IPLIST_MAP))
             resolve_iplist()
-        if not OpenSSL:
-            logging.warning(u'无法找到 pyopenssl，请安装 pyopenssl-16.0.0 以上版本！')
         if 'uvent.loop' in sys.modules and isinstance(gevent.get_hub().loop, __import__('uvent').loop.UVLoop):
             logging.info('Uvent enabled, patch forward_socket')
             AutoProxyHandler.forward_socket = AutoProxyHandler.green_forward_socket

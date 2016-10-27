@@ -26,18 +26,18 @@ def gae_urlfetch(method, url, headers, payload, appid, timeout=None, rangefetch=
         kwargs['SSLVerify'] = kwargs['validate'] = 1
     if GC.GAE_MAXSIZE:
         kwargs['MaxSize'] = kwargs['fetchmaxsize'] = GC.GAE_MAXSIZE
-    if payload:
-        if not isinstance(payload, bytes):
-            payload = payload.encode()
+    # GAE donot allow set `Host` header
+    if 'Host' in headers:
+        del headers['Host']
+    #if payload:
+        #if not isinstance(payload, bytes):
+        #    payload = payload.encode()
         #if len(payload) < 10 * 1024 * 1024 and 'Content-Encoding' not in headers:
         #    zpayload = zlib.compress(payload)[2:-4]
         #    if len(zpayload) < len(payload):
         #        payload = zpayload
         #        headers['Content-Encoding'] = 'deflate'
-        headers['Content-Length'] = str(len(payload))
-    # GAE donot allow set `Host` header
-    if 'Host' in headers:
-        del headers['Host']
+        #headers['Content-Length'] = str(len(payload))
     if GC.GAE_PATH == '/2':
         metadata = 'G-Method:%s\nG-Url:%s\n%s' % (method, url, ''.join('G-%s:%s\n' % (k, v) for k, v in kwargs.items() if v))
         metadata += ''.join('%s:%s\n' % (k.title(), v) for k, v in headers.items())
@@ -47,18 +47,20 @@ def gae_urlfetch(method, url, headers, payload, appid, timeout=None, rangefetch=
         metadata += ''.join('X-Urlfetch-%s: %s\r\n' % (k, v) for k, v in kwargs.items() if v)
     if not isinstance(metadata, bytes):
         metadata = metadata.encode()
-    # prepare GAE request
-    request_method = 'POST'
-    request_headers = {}
     metadata = zlib.compress(metadata)[2:-4]
-    payload = struct.pack('!h', len(metadata)) + metadata + payload
-    request_headers['Content-Length'] = str(len(payload))
+    if payload:
+        if not isinstance(payload, bytes):
+            payload = payload.encode()
+        payload = struct.pack('!h', len(metadata)) + metadata + payload
+    else:
+        payload = struct.pack('!h', len(metadata)) + metadata
+    request_headers = {'User-Agent': 'a', 'Content-Length': str(len(payload))}
     # post data
     fetchserver = 'https://%s.appspot.com%s?' % (appid, GC.GAE_PATH)
     connection_cache_key = GC.GAE_LISTNAME + ':443'
     realurl = 'GAE-' + url
     qGAE.get() # get start from Queue
-    response = http_util.request(request_method, fetchserver, payload, request_headers, connection_cache_key=connection_cache_key, timeout=timeout, rangefetch=rangefetch, realurl=realurl)
+    response = http_util.request('POST', fetchserver, payload, request_headers, connection_cache_key=connection_cache_key, timeout=timeout, rangefetch=rangefetch, realurl=realurl)
     qGAE.put(True) # put back
     if response is None:
         return None
