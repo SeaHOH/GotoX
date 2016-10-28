@@ -2,7 +2,7 @@
 '''ProxyUtil module, based on urllib2'''
 
 import socket
-from compat import urllib2
+from ..compat import urllib2
 
 def parse_proxy(proxy):
     return urllib2._parse_proxy(proxy)

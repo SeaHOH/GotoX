@@ -12,11 +12,11 @@ import glob
 import sys
 packages = os.path.join(py_dir, 'site-packages')
 sys.path.insert(0, packages)
-#sys.path = glob.glob('%s/*.egg' % packages) + sys.path
+sys.path = glob.glob('%s/*.egg' % packages) + sys.path
 
-import clogging as logging
+from .. import clogging as logging
 from time import time, sleep
-from compat import thread, Queue
+from ..compat import thread, Queue
 
 try:
     import OpenSSL
