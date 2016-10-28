@@ -186,7 +186,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 raise
         return request_headers, payload
 
-    def handle_response_headers(self, command, response):
+    def handle_response_headers(self, action, response):
         response_headers = dict((k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding')
         length = response_headers.get('Content-Length', '0')
         length = int(length) if length.isdigit() else 0
@@ -210,11 +210,12 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.write(headers_data)
         if response.status in (300, 301, 302, 303, 307) and 'Location' in response_headers:
                 logging.info(u'%r 返回包含重定向 %r', self.path, response_headers['Location'])
+                self.close_connection = 3
         logging.debug('headers_data=%s', headers_data)
         if response.status == 304:
-            logging.debug('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), command, self.command, self.path, response.status, length or '-')
+            logging.debug('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), action, self.command, self.path, response.status, length or '-')
         else:
-            logging.info('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), command, self.command, self.path, response.status, length or '-')
+            logging.info('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), action, self.command, self.path, response.status, length or '-')
         return length, data, need_chunked
 
     def do_DIRECT(self):
@@ -255,9 +256,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if response:
                 response.close()
                 if noerror:
-                    connection = response.getheader('Connection')
-                    if connection and connection.lower() != 'close':
-                        self.close_connection = 0
+                    if self.close_connection < 2:
+                        connection = response.getheader('Connection')
+                        if connection and connection.lower() != 'close':
+                            self.close_connection = 0
                     #放入套接字缓存
                     tcp_connection_cache[connection_cache_key].put((onlytime(), response.sock))
 
@@ -422,10 +424,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if response:
                     response.close()
                     if noerror:
-                        #connection = self.headers.get('Connection') or self.headers.get('Proxy-Connection')
-                        connection = response.getheader('Connection')
-                        if connection and connection.lower() != 'close':
-                            self.close_connection = 0
+                        if self.close_connection < 2:
+                            #connection = self.headers.get('Connection') or self.headers.get('Proxy-Connection')
+                            connection = response.getheader('Connection')
+                            if connection and connection.lower() != 'close':
+                                self.close_connection = 0
                         #放入套接字缓存
                         ssl_connection_cache[GC.GAE_LISTNAME+':443'].put((onlytime(), response.sock))
 

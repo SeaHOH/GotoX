@@ -74,38 +74,11 @@ class BaseHTTPUtil(object):
                             #'ECDH-ECDSA-DES-CBC3-SHA',
                             #'DES-CBC3-SHA',
                             'TLS_EMPTY_RENEGOTIATION_INFO_SCSV'])
-    openssl_ciphers = ':'.join([
-                            #defaultTLS ex
-                            'ECDHE-RSA-AES128-SHA256',
-                            'AES128-SHA256',
-                            #mixinCiphers ex
-                            'AES256-SHA256',
-                            #defaultTLS
-                            #'AES128-SHA',
-                            #'AES256-SHA',
-                            #'AES128-GCM-SHA256',
-                            'AES256-GCM-SHA384',
-                            #'ECDHE-ECDSA-AES128-SHA',
-                            'ECDHE-ECDSA-AES256-SHA',
-                            #'ECDHE-RSA-AES128-SHA',
-                            'ECDHE-RSA-AES256-SHA',
-                            #'ECDHE-RSA-AES128-GCM-SHA256',
-                            'ECDHE-RSA-AES256-GCM-SHA384',
-                            #'ECDHE-ECDSA-AES128-GCM-SHA256',
-                            'ECDHE-ECDSA-AES256-GCM-SHA384',
-                            #mixinCiphers
-                            #'RC4-SHA',
-                            #'DES-CBC3-SHA',
-                            #'ECDHE-RSA-RC4-SHA',
-                            #'ECDHE-RSA-DES-CBC3-SHA',
-                            #'ECDHE-ECDSA-RC4-SHA',
-                            'TLS_EMPTY_RENEGOTIATION_INFO_SCSV'])
 
     def __init__(self, use_openssl=None, cacert=None, ssl_ciphers=None):
         # http://docs.python.org/dev/library/ssl.html
         # http://www.openssl.org/docs/apps/ciphers.html
         self.cacert = cacert
-        #self.ssl_ciphers = self.openssl_ciphers #debug
         if ssl_ciphers:
             self.ssl_ciphers = ssl_ciphers
         if use_openssl:
@@ -214,8 +187,15 @@ def check_connection_cache():
 class HTTPUtil(BaseHTTPUtil):
     """HTTP Request Class"""
 
-    #MessageClass = dict
     protocol_version = 'HTTP/1.1'
+    # Google video ip can act as Google FrontEnd if cipher suits not include
+    # RC4-SHA
+    # AES128-GCM-SHA256
+    # ECDHE-RSA-RC4-SHA
+    # ECDHE-RSA-AES128-GCM-SHA256
+    #不安全 cipher
+    # AES128-SHA
+    # ECDHE-RSA-AES128-SHA
     ssl_ciphers = ':'.join([
                             #defaultTLS ex
                             'ECDHE-RSA-AES128-SHA256',
