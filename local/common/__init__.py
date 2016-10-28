@@ -16,11 +16,11 @@ packages = os.path.join(py_dir, 'site-packages')
 #sys.path = glob.glob('%s/*.egg' % packages) + sys.path
 #优先顺序：当前运行 py 已安装
 sys.path.append(packages)
-sys.path += glob.glob('%s/*.egg' % packages)
+#sys.path += glob.glob('%s/*.egg' % packages)
 
-from .. import clogging as logging
+from local import clogging as logging
 from time import time, sleep
-from ..compat import thread, Queue
+from local.compat import thread, Queue
 
 try:
     import OpenSSL
