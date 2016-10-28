@@ -35,7 +35,7 @@ from common.proxy import get_listen_ip
 from common.dns import dns, dns_resolve
 from GlobalConfig import GC
 from GAEUpdata import testgaeip, addtoblocklist, _refreship as refreship
-from HTTPUtil import http_util
+from HTTPUtil import tcp_connection_cache, ssl_connection_cache, http_util
 from RangeFetch import RangeFetch
 from GAEFetch import gae_urlfetch
 from FilterUtil import (
@@ -45,8 +45,6 @@ from FilterUtil import (
     get_ssl_action
     )
 
-tcp_connection_cache = http_util.tcp_connection_cache
-ssl_connection_cache = http_util.ssl_connection_cache
 HAS_PYPY = hasattr(sys, 'pypy_version_info')
 normcookie = partial(re.compile(r',(?= [^ =]+(?:=|$))').sub, r'\r\nSet-Cookie:')
 normattachment = partial(re.compile(r'(?<=filename=)([^"\']+)').sub, r'"\1"')

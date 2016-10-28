@@ -14,10 +14,9 @@ from time import time, sleep
 from common import onlytime, spawn_later, testip
 from GAEFetch import gae_urlfetch
 from GlobalConfig import GC
-from HTTPUtil import HTTPUtil
+from HTTPUtil import ssl_connection_cache
 from GAEUpdata import testgaeip
 
-ssl_connection_cache = HTTPUtil.ssl_connection_cache
 getrange = re.compile(r'bytes (\d+)-(\d+)/(\d+)').search
 
 class RangeFetch(object):
@@ -28,7 +27,6 @@ class RangeFetch(object):
     threads = GC.AUTORANGE_THREADS or 2
     minip = max(threads-2, 3)
     testcnt = minip + 2
-    
     waitsize = GC.AUTORANGE_WAITSIZE or 2
     lowspeed = GC.AUTORANGE_LOWSPEED or 1024*32
     timeout = min(max(GC.LINK_TIMEOUT-2, 1.5), 3)

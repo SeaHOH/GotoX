@@ -152,6 +152,65 @@ class BaseHTTPUtil(object):
     def get_openssl_peercert(self, sock):
         return sock.get_peer_certificate()
 
+keeptime = 90
+import collections
+tcp_connection_time = collections.defaultdict(float)
+tcp_connection_cache = collections.defaultdict(Queue.PriorityQueue)
+ssl_connection_time = collections.defaultdict(float)
+ssl_connection_cache = collections.defaultdict(Queue.PriorityQueue)
+
+def check_connection_cache():
+    '''check and close unavailable connection continued forever'''
+    while True:
+        sleep(60)
+        #get keyname put in a tuple
+        keys = None
+        while keys is None:
+            try:
+                keys = tuple(key for key in tcp_connection_cache)
+            except:
+                sleep(1)
+        for connection_cache_key in keys:
+            try:
+                while True:
+                    ctime, sock = tcp_connection_cache[connection_cache_key].get_nowait()
+                    rd, _, ed = select([sock], [], [sock], 0.1)
+                    if rd or ed or time()-ctime > keeptime:
+                        sock.close()
+                    else:
+                        tcp_connection_cache[connection_cache_key].put((ctime, sock))
+                        break
+            except Queue.Empty:
+                pass
+            except Exception as e:
+                if e.args[0] == 9:
+                    pass
+                else:
+                    raise e
+        keys = None
+        while keys is None:
+            try:
+                keys = tuple(key for key in ssl_connection_cache)
+            except:
+                sleep(1)
+        for connection_cache_key in keys:
+            try:
+                while True:
+                    ctime, ssl_sock = ssl_connection_cache[connection_cache_key].get_nowait()
+                    rd, _, ed = select([ssl_sock.sock], [], [ssl_sock.sock], 0.1)
+                    if rd or ed or time()-ctime > keeptime:
+                        ssl_sock.sock.close()
+                    else:
+                        ssl_connection_cache[connection_cache_key].put((ctime, ssl_sock))
+                        break
+            except Queue.Empty:
+                pass
+            except Exception as e:
+                if e.args[0] == 9:
+                    pass
+                else:
+                    raise e
+
 class HTTPUtil(BaseHTTPUtil):
     """HTTP Request Class"""
 
@@ -184,12 +243,6 @@ class HTTPUtil(BaseHTTPUtil):
                             #'ECDHE-ECDSA-RC4-SHA',
                             'TLS_EMPTY_RENEGOTIATION_INFO_SCSV'])
     outtimes = 0
-    keeptime = 90
-    import collections
-    tcp_connection_time = collections.defaultdict(float)
-    tcp_connection_cache = collections.defaultdict(Queue.PriorityQueue)
-    ssl_connection_time = collections.defaultdict(float)
-    ssl_connection_cache = collections.defaultdict(Queue.PriorityQueue)
 
     def __init__(self, max_window=4, max_timeout=8, max_retry=2, proxy=''):
         # http://docs.python.org/dev/library/ssl.html
@@ -207,58 +260,6 @@ class HTTPUtil(BaseHTTPUtil):
         #    self.create_connection = self.__create_connection_withproxy
         #    self.create_ssl_connection = self.__create_ssl_connection_withproxy
         BaseHTTPUtil.__init__(self, GC.LINK_OPENSSL, os.path.join(cert_dir, 'cacert.pem'))
-
-    def check_connection_cache(self):
-        '''check and close unavailable connection continued forever'''
-        while True:
-            sleep(60)
-            #get keyname put in a tuple
-            keys = None
-            while keys is None:
-                try:
-                    keys = tuple(key for key in self.tcp_connection_cache)
-                except:
-                    sleep(1)
-            for connection_cache_key in keys:
-                try:
-                    while True:
-                        ctime, sock = self.tcp_connection_cache[connection_cache_key].get_nowait()
-                        rd, _, ed = select([sock], [], [sock], 0.1)
-                        if rd or ed or time()-ctime > self.keeptime:
-                            sock.close()
-                        else:
-                            self.tcp_connection_cache[connection_cache_key].put((ctime, sock))
-                            break
-                except Queue.Empty:
-                    pass
-                except Exception as e:
-                    if e.args[0] == 9:
-                        pass
-                    else:
-                        raise e
-            keys = None
-            while keys is None:
-                try:
-                    keys = tuple(key for key in self.ssl_connection_cache)
-                except:
-                    sleep(1)
-            for connection_cache_key in keys:
-                try:
-                    while True:
-                        ctime, ssl_sock = self.ssl_connection_cache[connection_cache_key].get_nowait()
-                        rd, _, ed = select([ssl_sock.sock], [], [ssl_sock.sock], 0.1)
-                        if rd or ed or time()-ctime > self.keeptime:
-                            ssl_sock.sock.close()
-                        else:
-                            self.ssl_connection_cache[connection_cache_key].put((ctime, ssl_sock))
-                            break
-                except Queue.Empty:
-                    pass
-                except Exception as e:
-                    if e.args[0] == 9:
-                        pass
-                    else:
-                        raise e
 
     def create_connection(self, address, timeout=None, source_address=None, **kwargs):
         connection_cache_key = kwargs.get('cache_key')
@@ -285,7 +286,7 @@ class HTTPUtil(BaseHTTPUtil):
                 # set a normal timeout
                 sock.settimeout(timeout)
                 # record TCP connection time
-                self.tcp_connection_time[ipaddr] = sock.tcp_time = time() - start_time
+                tcp_connection_time[ipaddr] = sock.tcp_time = time() - start_time
                 # put socket object to output queobj
                 sock.xip = ipaddr
                 queobj.put(sock)
@@ -294,7 +295,7 @@ class HTTPUtil(BaseHTTPUtil):
                 e.xip = ipaddr
                 queobj.put(e)
                 # reset a large and random timeout to the ipaddr
-                self.tcp_connection_time[ipaddr] = self.max_timeout+random.random()
+                tcp_connection_time[ipaddr] = self.max_timeout+random.random()
                 # close tcp socket
                 sock.close()
         def _close_connection(count, queobj, first_tcp_time):
@@ -303,14 +304,14 @@ class HTTPUtil(BaseHTTPUtil):
                 tcp_time_threshold = min(0.66, 1.5 * first_tcp_time)
                 if isinstance(sock, socket.socket):
                     if connection_cache_key and sock.tcp_time < tcp_time_threshold:
-                        self.tcp_connection_cache[connection_cache_key].put((onlytime(), sock))
+                        tcp_connection_cache[connection_cache_key].put((onlytime(), sock))
                     else:
                         sock.close()
         try:
             while connection_cache_key:
-                ctime, sock = self.tcp_connection_cache[connection_cache_key].get_nowait()
+                ctime, sock = tcp_connection_cache[connection_cache_key].get_nowait()
                 rd, _, ed = select([sock], [], [sock], 0.1)
-                if rd or ed or time()-ctime > self.keeptime:
+                if rd or ed or time()-ctime > keeptime:
                     sock.close()
                 else:
                     return sock
@@ -320,9 +321,9 @@ class HTTPUtil(BaseHTTPUtil):
         result = None
         addresses = [(x, port) for x in dns_resolve(host)]
         if port == 443:
-            get_connection_time = lambda addr: self.ssl_connection_time.__getitem__(addr) or self.tcp_connection_time.__getitem__(addr)
+            get_connection_time = lambda addr: ssl_connection_time.__getitem__(addr) or tcp_connection_time.__getitem__(addr)
         else:
-            get_connection_time = self.tcp_connection_time.__getitem__
+            get_connection_time = tcp_connection_time.__getitem__
         for i in xrange(self.max_retry):
             addresseslen = len(addresses)
             addresses.sort(key=get_connection_time)
@@ -390,9 +391,9 @@ class HTTPUtil(BaseHTTPUtil):
                 ssl_sock.settimeout(timeout)
                 handshaked_time = time()
                 # record TCP connection time
-                self.tcp_connection_time[ipaddr] = ssl_sock.tcp_time = connected_time - start_time
+                tcp_connection_time[ipaddr] = ssl_sock.tcp_time = connected_time - start_time
                 # record SSL connection time
-                self.ssl_connection_time[ipaddr] = ssl_sock.ssl_time = handshaked_time - start_time
+                ssl_connection_time[ipaddr] = ssl_sock.ssl_time = handshaked_time - start_time
                 if test:
                     if ssl_sock.ssl_time > timeout:
                         raise socket.timeout(u'%d 超时' % int(ssl_sock.ssl_time*1000))
@@ -415,13 +416,13 @@ class HTTPUtil(BaseHTTPUtil):
                 ssl_sock.sock = sock
                 ssl_sock.xip = ipaddr
                 if test:
-                    self.ssl_connection_cache[GC.GAE_LISTNAME + ':443'].put((onlytime(), ssl_sock))
+                    ssl_connection_cache[GC.GAE_LISTNAME + ':443'].put((onlytime(), ssl_sock))
                     return test.put((ipaddr[0], ssl_sock.ssl_time))
                 # put ssl socket object to output queobj
                 queobj.put(ssl_sock)
             except NetWorkIOError as e:
                 # reset a large and random timeout to the ipaddr
-                self.ssl_connection_time[ipaddr] = self.max_timeout + random.random()
+                ssl_connection_time[ipaddr] = self.max_timeout + random.random()
                 # close tcp socket
                 sock.close()
                 # any socket.error, put Excpetions to output queobj.
@@ -438,7 +439,7 @@ class HTTPUtil(BaseHTTPUtil):
                 ssl_time_threshold = min(1, 1.5 * first_ssl_time)
                 if isinstance(ssl_sock, (SSLConnection, ssl.SSLSocket)):
                     if connection_cache_key and ssl_sock.ssl_time < ssl_time_threshold:
-                        self.ssl_connection_cache[connection_cache_key].put((onlytime(), ssl_sock))
+                        ssl_connection_cache[connection_cache_key].put((onlytime(), ssl_sock))
                     else:
                         ssl_sock.sock.close()
 
@@ -446,9 +447,9 @@ class HTTPUtil(BaseHTTPUtil):
             return _create_ssl_connection(address, timeout, test)
         try:
             while connection_cache_key:
-                ctime, ssl_sock = self.ssl_connection_cache[connection_cache_key].get_nowait()
+                ctime, ssl_sock = ssl_connection_cache[connection_cache_key].get_nowait()
                 rd, _, ed = select([ssl_sock.sock], [], [ssl_sock.sock], 0.1)
-                if rd or ed or time()-ctime > self.keeptime:
+                if rd or ed or time()-ctime > keeptime:
                     ssl_sock.sock.close()
                 else:
                     ssl_sock.settimeout(timeout)
@@ -460,7 +461,7 @@ class HTTPUtil(BaseHTTPUtil):
         addresses = [(x, port) for x in dns_resolve(host)]
         for i in xrange(self.max_retry):
             addresseslen = len(addresses)
-            addresses.sort(key=self.ssl_connection_time.__getitem__)
+            addresses.sort(key=ssl_connection_time.__getitem__)
             if rangefetch:
                 #按线程数量获取排序靠前的 IP
                 addrs = addresses[:GC.AUTORANGE_THREADS+1]
@@ -636,4 +637,4 @@ class HTTPUtil(BaseHTTPUtil):
                 return None
 
 http_util = HTTPUtil(max_window=GC.LINK_WINDOW, max_timeout=GC.LINK_TIMEOUT, proxy=GC.proxy)
-thread.start_new_thread(http_util.check_connection_cache, ())
+thread.start_new_thread(check_connection_cache, ())
