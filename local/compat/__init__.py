@@ -6,7 +6,7 @@ import socket
 import ssl
 _ver = sys.version_info
 PY3 = _ver[0] == 3
-PY35 = PY3 and _ver[2] == 5
+PY35 = PY3 and _ver[1] == 5
 if PY3:
     import queue as Queue
     import _thread as thread

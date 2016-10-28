@@ -4,7 +4,7 @@
 import socket
 import OpenSSL
 from select import select
-from compat import PY3, exc_clear
+from . import PY3, exc_clear
 
 class SSLConnection(object):
     '''API-compatibility wrapper for Python OpenSSL's Connection-class.'''
