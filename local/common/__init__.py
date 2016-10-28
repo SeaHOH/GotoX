@@ -11,8 +11,12 @@ web_dir = os.path.join(app_root, 'web')
 import glob
 import sys
 packages = os.path.join(py_dir, 'site-packages')
-sys.path.insert(0, packages)
-sys.path = glob.glob('%s/*.egg' % packages) + sys.path
+#优先顺序：GotoX 自带
+#sys.path.insert(0, packages)
+#sys.path = glob.glob('%s/*.egg' % packages) + sys.path
+#优先顺序：当前运行 py 已安装
+sys.path.append(packages)
+sys.path += glob.glob('%s/*.egg' % packages)
 
 from .. import clogging as logging
 from time import time, sleep
