@@ -7,9 +7,9 @@ import sys
 #import collections
 import re
 import fnmatch
-from compat import ConfigParser
-from common import config_dir
-#from common.proxy import get_system_proxy, parse_proxy
+from .compat import ConfigParser
+from .common import config_dir
+#from .common.proxy import get_system_proxy, parse_proxy
 
 SSLv = {
     'SSLv3'   : 1,

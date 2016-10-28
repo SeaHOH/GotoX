@@ -9,19 +9,19 @@ import socket
 import random
 import socks
 import mimetypes
-import CertUtil
-import clogging as logging
+from . import CertUtil
+from . import clogging as logging
 from select import select
 from time import time, sleep
 from functools import partial
-from compat import (
+from .compat import (
     PY3,
     BaseHTTPServer,
     urlparse,
     thread,
     xrange
     )
-from common import (
+from .common import (
     web_dir,
     NetWorkIOError,
     LRUCache,
@@ -31,14 +31,14 @@ from common import (
     isip,
     isipv4
     )
-from common.proxy import get_listen_ip
-from common.dns import dns, dns_resolve
-from GlobalConfig import GC
-from GAEUpdata import testgaeip, addtoblocklist, _refreship as refreship
-from HTTPUtil import tcp_connection_cache, ssl_connection_cache, http_util
-from RangeFetch import RangeFetch
-from GAEFetch import gae_urlfetch
-from FilterUtil import (
+from .common.proxy import get_listen_ip
+from .common.dns import dns, dns_resolve
+from .GlobalConfig import GC
+from .GAEUpdata import testgaeip, addtoblocklist, _refreship as refreship
+from .HTTPUtil import tcp_connection_cache, ssl_connection_cache, http_util
+from .RangeFetch import RangeFetch
+from .GAEFetch import gae_urlfetch
+from .FilterUtil import (
     filters_cache,
     ssl_filters_cache,
     get_action,
@@ -343,7 +343,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if response.app_status == 500:
                     logging.warning(u'"%s %s" GAE_APP 发生错误，重试', self.command, self.path)
                     continue
-                #服务端不兼容（Bad Request）
+                #服务端不兼容（Bad Request｜Unsupported Media Type）
                 if response.app_status in (400, 415):
                     logging.error('%r 部署的可能是 GotoX 不兼容的服务端，如果这条错误反复出现请将之反馈给开发者。', appid)
                 # appid 不存在（Not Found）
@@ -491,9 +491,15 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.do_LOCAL(filename)
         else:
             logging.info(u'%s 内部重定向 %r 到 %r', self.address_string(), self.path, self.target)
+            #重设 path
             self.path = self.target
             self.target = ''
-            self.do_METHOD()
+            #重设 host
+            self.url_parts = urlparse.urlparse(self.path)
+            self.headers['Host'] = self.host = self.url_parts.netloc
+            #重设 action
+            self.action, self.target = get_action(self.url_parts.scheme, self.host, self.path)
+            self.do_count()
 
     def do_FAKECERT(self):
         """Deploy a fake cert to client"""
@@ -658,7 +664,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def send_CA(self):
         """Return CA cert file"""
-        from CertUtil import ca_certfile
+        from .CertUtil import ca_certfile
         with open(ca_certfile, 'rb') as fp:
             data = fp.read()
         logging.info(u'"HTTP/1.1 200"，发送 CA 证书到 %r', self.address_string())

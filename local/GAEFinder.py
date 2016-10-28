@@ -32,11 +32,11 @@ import struct
 import select
 import random
 import OpenSSL
-import clogging as logging
+from . import clogging as logging
 from time import time, strftime
-from common import cert_dir, data_dir, NetWorkIOError
-from compat import PY3, xrange
-from GlobalConfig import GC
+from .common import cert_dir, data_dir, NetWorkIOError
+from .compat import PY3, xrange
+from .GlobalConfig import GC
 
 #全局只读写数据
 #最大 IP 延时，单位：毫秒
@@ -156,7 +156,7 @@ def getservernamefromheader(header, headerend):
         return header[begin:end].strip(' \t')
     return ''
 
-from HTTPUtil import BaseHTTPUtil
+from .HTTPUtil import BaseHTTPUtil
 class GAE_Finder(BaseHTTPUtil):
 
     httpreq = b'GET / HTTP/1.1\r\nAccept: */*\r\nHost: www.google.com\r\nConnection: Close\r\n\r\n'

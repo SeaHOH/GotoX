@@ -10,12 +10,12 @@ import ssl
 import struct
 import random
 import OpenSSL
-import clogging as logging
+from . import clogging as logging
 from select import select
 from time import time, sleep
-from GlobalConfig import GC
-from compat.openssl import SSLConnection
-from compat import (
+from .GlobalConfig import GC
+from .compat.openssl import SSLConnection
+from .compat import (
     PY3,
     Queue,
     thread,
@@ -23,16 +23,16 @@ from compat import (
     urlparse,
     xrange,
     )
-from common.dns import dns, dns_resolve
-from common.proxy import parse_proxy
-from common import (
+from .common.dns import dns, dns_resolve
+from .common.proxy import parse_proxy
+from .common import (
     cert_dir,
     NetWorkIOError,
     onlytime,
     testip,
     spawn_later
     )
-from GAEUpdata import testgaeip
+from .GAEUpdata import testgaeip
 
 class BaseHTTPUtil(object):
     """Basic HTTP Request Class"""

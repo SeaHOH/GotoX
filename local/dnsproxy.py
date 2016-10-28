@@ -17,7 +17,7 @@ import gevent.monkey
 gevent.monkey.patch_all(subprocess=True)
 
 import time
-import clogging as logging
+from . import clogging as logging
 import heapq
 import socket
 import select

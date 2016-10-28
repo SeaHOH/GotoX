@@ -5,17 +5,17 @@ import os
 import sys
 import threading
 import re
-import clogging as logging
+from . import clogging as logging
 from time import time, sleep, strftime
-from compat import (
+from .compat import (
     thread,
     ConfigParser,
     xrange,
     Queue
     )
-from common import config_dir, testip, isip
-from common.dns import dns
-from GlobalConfig import GC
+from .common import config_dir, testip, isip
+from .common.dns import dns
+from .GlobalConfig import GC
 
 tLock = threading.Lock()
 fLock = threading.Lock()
@@ -121,11 +121,11 @@ def testipserver():
             testgaeip()
         sleep(60)
 
-from GAEFinder import (
+from .GAEFinder import (
     g_timesblock as timesblock,
     timeToDelay,
     getgaeip,
     readbadlist,
     savebadlist
     )
-from HTTPUtil import http_util
+from .HTTPUtil import http_util

@@ -1,21 +1,18 @@
 # coding:utf-8
 """Range Fetch Util"""
 
-from compat import (
-    Queue,
-    urlparse,
-    xrange
-    )
+
 import re
 import threading
 import random
-import clogging as logging
+from . import clogging as logging
 from time import time, sleep
-from common import onlytime, spawn_later, testip
-from GAEFetch import gae_urlfetch
-from GlobalConfig import GC
-from HTTPUtil import ssl_connection_cache
-from GAEUpdata import testgaeip
+from .compat import Queue, urlparse, xrange
+from .common import onlytime, spawn_later, testip
+from .GAEFetch import gae_urlfetch
+from .GlobalConfig import GC
+from .HTTPUtil import ssl_connection_cache
+from .GAEUpdata import testgaeip
 
 getrange = re.compile(r'bytes (\d+)-(\d+)/(\d+)').search
 

@@ -9,9 +9,9 @@ import base64
 import hashlib
 import random
 import OpenSSL
-import clogging as logging
+from . import clogging as logging
 from time import time
-from common import cert_dir
+from .common import cert_dir
 crypto = OpenSSL.crypto
 
 

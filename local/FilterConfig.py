@@ -3,9 +3,9 @@
 import os
 import re
 from functools import partial
-from compat import ConfigParser
-from common import config_dir, isipv4, isipv6
-from GlobalConfig import GC
+from .compat import ConfigParser
+from .common import config_dir, isipv4, isipv6
+from .GlobalConfig import GC
 
 BLOCK     = 1
 FORWARD   = 2

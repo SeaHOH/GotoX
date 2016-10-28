@@ -1,9 +1,9 @@
 # coding:utf-8
 
 from collections import OrderedDict
-from common import LRUCache
-from GlobalConfig import GC
-from FilterConfig import FAKECERT, numToAct, numToSSLAct, ACTION_FILTERS
+from .common import LRUCache
+from .GlobalConfig import GC
+from .FilterConfig import FAKECERT, numToAct, numToSSLAct, ACTION_FILTERS
 
 filters_cache = LRUCache(256)
 ssl_filters_cache = LRUCache(64)

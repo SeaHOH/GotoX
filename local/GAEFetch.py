@@ -3,9 +3,9 @@
 import zlib
 import io
 import struct
-from compat import PY3, httplib, Queue, xrange
-from GlobalConfig import GC
-from HTTPUtil import http_util
+from .compat import PY3, httplib, Queue, xrange
+from .GlobalConfig import GC
+from .HTTPUtil import http_util
 
 qGAE = Queue.Queue(GC.GAE_MAXREQUESTS)
 for i in xrange(GC.GAE_MAXREQUESTS):

@@ -20,9 +20,9 @@ import os
 #    os.chdir(cwdir)
 
 #这条代码负责导入依赖库路径，不要改变位置
-from common import NetWorkIOError
+from .common import NetWorkIOError
 
-import clogging as logging
+from . import clogging as logging
 try:
     import gevent
     import gevent.socket
@@ -44,14 +44,14 @@ import ssl
 import re
 import dnslib
 import OpenSSL
-from compat import (
+from .compat import (
     Queue,
     thread,
     SocketServer,
     xrange
     )
-from GlobalConfig import GC
-from ProxyHandler import GAEProxyHandler, AutoProxyHandler
+from .GlobalConfig import GC
+from .ProxyHandler import GAEProxyHandler, AutoProxyHandler
 
 
 class LocalProxyServer(SocketServer.ThreadingTCPServer):
@@ -83,8 +83,8 @@ class LocalProxyServer(SocketServer.ThreadingTCPServer):
 
 def main():
     def pre_start():
-        from common import isip, isipv4, isipv6
-        from common.dns import dns
+        from .common import isip, isipv4, isipv6
+        from .common.dns import dns, dns_remote_resolve
         def get_process_list():
             import collections
             Process = collections.namedtuple('Process', 'pid name exe')
@@ -145,7 +145,6 @@ def main():
         def resolve_iplist():
             def do_resolve(host, dnsservers, queue):
                 try:
-                    from common import dns_remote_resolve
                     iplist = dns_remote_resolve(host, dnsservers, GC.DNS_BLACKLIST, timeout=2)
                     queue.put((host, dnsservers, iplist or []))
                 except (socket.error, OSError) as e:
@@ -285,21 +284,16 @@ def main():
     pre_start()
     del pre_start, info
 
-    import CertUtil
+    from . import CertUtil
     CertUtil.check_ca()
 
-    from GAEUpdata import testipserver
+    from .GAEUpdata import testipserver
     thread.start_new_thread(testipserver, ())
-
-    #if GC.PAC_ENABLE:
-    #    from ProxyHandler import PACProxyHandler
-    #    server = LocalProxyServer((GC.PAC_IP, GC.PAC_PORT), PACProxyHandler)
-    #    thread.start_new_thread(server.serve_forever, ())
 
     if GC.DNS_ENABLE:
         try:
             sys.path += ['.']
-            from dnsproxy import DNSServer
+            from .dnsproxy import DNSServer
             host, port = GC.DNS_LISTEN.split(':')
             server = DNSServer((host, int(port)), dns_servers=GC.DNS_SERVERS, dns_blacklist=GC.DNS_BLACKLIST)
             thread.start_new_thread(server.serve_forever, ())
