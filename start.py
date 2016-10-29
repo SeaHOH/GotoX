@@ -3,6 +3,7 @@
 
 import os
 import sys
+sys.dont_write_bytecode = True
 
 __file__ = os.path.abspath(__file__)
 if os.path.islink(__file__):
