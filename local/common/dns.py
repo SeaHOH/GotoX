@@ -1,6 +1,6 @@
 # coding:utf-8
 
-from .. import clogging as logging
+from local import clogging as logging
 try:
     import dnslib
 except ImportError:
@@ -11,9 +11,9 @@ except ImportError:
 import socket
 from select import select
 from time import time
-from ..compat import xrange
+from local.compat import xrange
 from . import isip, isipv4, isipv6
-from ..GlobalConfig import GC
+from local.GlobalConfig import GC
 
 dns = {}
 
