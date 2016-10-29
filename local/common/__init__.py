@@ -33,34 +33,63 @@ NetWorkIOError = (socket.error, ssl.SSLError, OSError) if not OpenSSL else (sock
 
 
 class LRUCache(object):
-    """http://pypi.python.org/pypi/lru/"""
+    """Modified from http://pypi.python.org/pypi/lru/"""
 
-    def __init__(self, max_items=100):
+    def __init__(self, max_items, expire=None):
         self.cache = {}
+        self.max_items = int(max_items)
+        self.expire = expire
+        if expire:
+            self.key_expire = {}
         self.key_order = []
-        self.max_items = max_items
 
     def __setitem__(self, key, value):
         self.cache[key] = value
+        if self.expire:
+            self.key_expire[key] = int(time()) + self.expire
         self._mark(key)
 
     def __getitem__(self, key):
+        if self.expire:
+            self._expire_check(key)
         value = self.cache[key]
         self._mark(key)
         return value
 
-    def _mark(self, key):
-        if key in self.key_order:
+    def __contains__(self, key):
+        if self.expire:
+            self._expire_check(key)
+        return key in self.cache
+
+    def get(self, key, value=None):
+        if key in self:
+            return self[key]
+        return value
+
+    def _expire_check(self, key):
+        if key in self.cache and time() > self.key_expire[key]:
             self.key_order.remove(key)
-        self.key_order.insert(0, key)
-        if len(self.key_order) > self.max_items:
-            remove = self.key_order[self.max_items]
-            del self.cache[remove]
-            self.key_order.pop(self.max_items)
+            del self.key_expire[key]
+            del self.cache[key]
+
+    def _mark(self, key):
+        try:
+            self.key_order.remove(key)
+        except ValueError:
+            pass
+        self.key_order.append(key)
+        while len(self.key_order) > self.max_items:
+            key = self.key_order[0]
+            del self.key_order[0]
+            if self.expire:
+                del self.key_expire[key]
+            del self.cache[key]
 
     def clear(self):
-        self.cache = {}
-        self.key_order = []
+        self.cache.clear()
+        if self.expire:
+            self.key_expire.clear()
+        del self.key_order[:]
 
 import string
 def message_html(title, banner, detail=''):
@@ -98,13 +127,14 @@ def onlytime():
     return int(time())+random.random()
 
 class testip():
-    lastupdata = time()
     running = False
-    lasttest = lastupdata - 30
     lastactive = None
-    qcount = 0
     tested = {}
     queobj = Queue.Queue()
+    lastupdata = time()
+    lasttest = lastupdata - 30
+    outtimes = 0
+    qcount = 0
 
 import re
 isip = re.compile(r'(\d+\.){3}\d+$|(([a-f\d]{1,4}:){1,6}|:)([a-f\d]{1,4})?(:[a-f\d]{1,4}){1,6}$').match

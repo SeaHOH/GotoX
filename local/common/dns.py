@@ -12,10 +12,10 @@ import socket
 from select import select
 from time import time
 from local.compat import xrange
-from . import isip, isipv4, isipv6
+from . import LRUCache, isip, isipv4, isipv6
 from local.GlobalConfig import GC
 
-dns = {}
+dns = LRUCache(256, 90*60)
 
 def dns_resolve(host, dnsservers=[]):
     if isip(host):
