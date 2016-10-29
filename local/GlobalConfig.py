@@ -45,7 +45,7 @@ class GC():
     GAE_APPIDS = re.findall(r'[\w\-\.]+', CONFIG.get('gae', 'appid').replace('.appspot.com', ''))
     GAE_PASSWORD = CONFIG.get('gae', 'password').strip()
     GAE_PATH = CONFIG.get('gae', 'path')
-    GAE_LISTNAME = CONFIG.get('gae', 'listname')
+    GAE_LISTNAME = CONFIG.get('gae', 'listname').lower()
     GAE_MAXREQUESTS = min(CONFIG.getint('gae', 'maxrequsts'), 5) * len(GAE_APPIDS)
     GAE_SSLVERIFY = CONFIG.get('gae', 'sslverify')
     GAE_FETCHMAX = CONFIG.get('gae', 'fetchmax') or 2
@@ -84,7 +84,7 @@ class GC():
     #HTTP_FORCEHTTPS = set(CONFIG.get(http_section, 'forcehttps').split('|'))
     #HTTP_FAKEHTTPS = set(CONFIG.get(http_section, 'fakehttps').split('|'))
 
-    IPLIST_MAP = dict((k, v.split('|')) for k, v in CONFIG.items('iplist'))
+    IPLIST_MAP = dict((k.lower(), v.split('|')) for k, v in CONFIG.items('iplist'))
     #IPLIST_MAP.update((k, [k]) for k, v in HOSTS_MAP.items() if k == v)
 
     FILTER_ACTION = CONFIG.getint('filter', 'action')
@@ -109,7 +109,8 @@ class GC():
     #PAC_ADBLOCK = CONFIG.get('pac', 'adblock') if CONFIG.has_option('pac', 'adblock') else ''
     #PAC_EXPIRED = CONFIG.getint('pac', 'expired')
 
-    PROXY_ENABLE = CONFIG.getint('proxy', 'enable')
+    #PROXY_ENABLE = CONFIG.getint('proxy', 'enable')
+    PROXY_ENABLE = 0
     PROXY_AUTODETECT = CONFIG.getint('proxy', 'autodetect') if CONFIG.has_option('proxy', 'autodetect') else 0
     PROXY_HOST = CONFIG.get('proxy', 'host')
     PROXY_PORT = CONFIG.getint('proxy', 'port')

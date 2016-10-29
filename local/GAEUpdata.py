@@ -43,7 +43,7 @@ def refreship():
         #更新 IP
         _refreship(gaeip)
         # IP 慢速计数归零
-        http_util.outtimes = 0
+        testip.outtimes = 0
         #更新 proxy.user.ini
         cf = ConfigParser()
         cf.read(GC.CONFIG_USER_FILENAME)
@@ -78,7 +78,7 @@ def _testgaeip():
     logging.test(u'连接测试开始，超时：%d 毫秒', int(testip.timeout))
     testip.timeout = testip.timeout / 1000.0
     for ip in iplist:
-        thread.start_new_thread(http_util.create_ssl_connection, ((ip, 443), testip.timeout, testip.queobj))
+        thread.start_new_thread(http_gws.create_ssl_connection, ((ip, 443), testip.timeout, testip.queobj))
     for i in xrange(niplist):
         result = testip.queobj.get()
         if isinstance(result, Exception):
@@ -94,7 +94,7 @@ def _testgaeip():
         _refreship(iplist)
     logging.test(u'连接测试完毕%s', u'，Bad IP 已删除' if nbadip > 0 else '')
     # IP 慢速计数归零
-    http_util.outtimes = 0
+    testip.outtimes = 0
     testip.lasttest = time()
     testip.lastactive = testip.lasttest
     testip.running = False
@@ -128,4 +128,4 @@ from .GAEFinder import (
     readbadlist,
     savebadlist
     )
-from .HTTPUtil import http_util
+from .HTTPUtil import http_gws

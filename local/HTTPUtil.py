@@ -183,48 +183,14 @@ def check_connection_cache():
                     pass
                 else:
                     raise e
+thread.start_new_thread(check_connection_cache, ())
 
 class HTTPUtil(BaseHTTPUtil):
     """HTTP Request Class"""
 
     protocol_version = 'HTTP/1.1'
-    # Google video ip can act as Google FrontEnd if cipher suits not include
-    # RC4-SHA
-    # AES128-GCM-SHA256
-    # ECDHE-RSA-RC4-SHA
-    # ECDHE-RSA-AES128-GCM-SHA256
-    #不安全 cipher
-    # AES128-SHA
-    # ECDHE-RSA-AES128-SHA
-    ssl_ciphers = ':'.join([
-                            #defaultTLS ex
-                            'ECDHE-RSA-AES128-SHA256',
-                            'AES128-SHA256',
-                            #mixinCiphers ex
-                            'AES256-SHA256',
-                            #defaultTLS
-                            ##'AES128-SHA',
-                            #'AES256-SHA',
-                            ##'AES128-GCM-SHA256',
-                            'AES256-GCM-SHA384',
-                            #'ECDHE-ECDSA-AES128-SHA',
-                            'ECDHE-ECDSA-AES256-SHA',
-                            ##'ECDHE-RSA-AES128-SHA',
-                            'ECDHE-RSA-AES256-SHA',
-                            ##'ECDHE-RSA-AES128-GCM-SHA256',
-                            'ECDHE-RSA-AES256-GCM-SHA384',
-                            'ECDHE-ECDSA-AES128-GCM-SHA256',
-                            'ECDHE-ECDSA-AES256-GCM-SHA384',
-                            #mixinCiphers
-                            ##'RC4-SHA',
-                            #'DES-CBC3-SHA',
-                            ##'ECDHE-RSA-RC4-SHA',
-                            #'ECDHE-RSA-DES-CBC3-SHA',
-                            #'ECDHE-ECDSA-RC4-SHA',
-                            'TLS_EMPTY_RENEGOTIATION_INFO_SCSV'])
-    outtimes = 0
 
-    def __init__(self, max_window=4, max_timeout=8, max_retry=2, proxy=''):
+    def __init__(self, max_window=4, max_timeout=8, proxy='', ssl_ciphers=None, max_retry=2):
         # http://docs.python.org/dev/library/ssl.html
         # http://blog.ivanristic.com/2009/07/examples-of-the-information-collected-from-ssl-handshakes.html
         # http://src.chromium.org/svn/trunk/src/net/third_party/nss/ssl/sslenum.c
@@ -239,7 +205,7 @@ class HTTPUtil(BaseHTTPUtil):
         #    dns_resolve = self.__dns_resolve_withproxy
         #    self.create_connection = self.__create_connection_withproxy
         #    self.create_ssl_connection = self.__create_ssl_connection_withproxy
-        BaseHTTPUtil.__init__(self, GC.LINK_OPENSSL, os.path.join(cert_dir, 'cacert.pem'))
+        BaseHTTPUtil.__init__(self, GC.LINK_OPENSSL, os.path.join(cert_dir, 'cacert.pem'), ssl_ciphers)
 
     def create_connection(self, address, timeout=None, source_address=None, **kwargs):
         connection_cache_key = kwargs.get('cache_key')
@@ -381,11 +347,11 @@ class HTTPUtil(BaseHTTPUtil):
                 if 'google' in hostname or test:
                     #多次使用慢速或无效的 IP 刷新
                     if not test and ssl_sock.ssl_time > 1.5:
-                        if self.outtimes > max(min(len(GC.IPLIST_MAP[GC.GAE_LISTNAME])/2, 12), 6):
+                        if testip.outtimes > max(min(len(GC.IPLIST_MAP[GC.GAE_LISTNAME])/2, 12), 6):
                             logging.warning(u'连接过慢 %s: %d' %('.'.join(x.rjust(3) for x in ipaddr[0].split('.')), int(ssl_sock.ssl_time*1000)))
                             spawn_later(5, testgaeip)
                         else:
-                            self.outtimes += 1
+                            testip.outtimes += 1
                     cert = self.get_peercert(ssl_sock)
                     if not cert:
                         raise socket.error(u'没有获取到证书')
@@ -544,7 +510,7 @@ class HTTPUtil(BaseHTTPUtil):
         #    sock.sendall(request_data)
         #    sock.sendall(payload.read())
         #else:
-        #    raise TypeError('http_util.request(payload) must be a string or buffer, not %r' % type(payload))
+        #    raise TypeError('request(payload) must be a string or buffer, not %r' % type(payload))
 
         if need_crlf:
             try:
@@ -616,5 +582,43 @@ class HTTPUtil(BaseHTTPUtil):
                         testgaeip()
                 return None
 
-http_util = HTTPUtil(max_window=GC.LINK_WINDOW, max_timeout=GC.LINK_TIMEOUT, proxy=GC.proxy)
-thread.start_new_thread(check_connection_cache, ())
+# Google video ip can act as Google FrontEnd if cipher suits not include
+# RC4-SHA
+# AES128-GCM-SHA256
+# ECDHE-RSA-RC4-SHA
+# ECDHE-RSA-AES128-GCM-SHA256
+#不安全 cipher
+# AES128-SHA
+# ECDHE-RSA-AES128-SHA
+gws_ciphers = ':'.join([
+                        #defaultTLS ex
+                        'ECDHE-RSA-AES128-SHA256',
+                        'AES128-SHA256',
+                        #mixinCiphers ex
+                        'AES256-SHA256',
+                        #defaultTLS
+                        ##'AES128-SHA',
+                        #'AES256-SHA',
+                        ##'AES128-GCM-SHA256',
+                        'AES256-GCM-SHA384',
+                        #'ECDHE-ECDSA-AES128-SHA',
+                        'ECDHE-ECDSA-AES256-SHA',
+                        ##'ECDHE-RSA-AES128-SHA',
+                        'ECDHE-RSA-AES256-SHA',
+                        ##'ECDHE-RSA-AES128-GCM-SHA256',
+                        'ECDHE-RSA-AES256-GCM-SHA384',
+                        'ECDHE-ECDSA-AES128-GCM-SHA256',
+                        'ECDHE-ECDSA-AES256-GCM-SHA384',
+                        #mixinCiphers
+                        ##'RC4-SHA',
+                        #'DES-CBC3-SHA',
+                        ##'ECDHE-RSA-RC4-SHA',
+                        #'ECDHE-RSA-DES-CBC3-SHA',
+                        #'ECDHE-ECDSA-RC4-SHA',
+                        'TLS_EMPTY_RENEGOTIATION_INFO_SCSV'])
+def_ciphers = ssl._DEFAULT_CIPHERS
+res_ciphers = ssl._RESTRICTED_SERVER_CIPHERS
+
+# max_window=4, max_timeout=8, proxy='', ssl_ciphers=None, max_retry=2
+http_gws = HTTPUtil(GC.LINK_WINDOW, GC.LINK_TIMEOUT, GC.proxy, gws_ciphers)
+http_nor = HTTPUtil(GC.LINK_WINDOW, GC.LINK_FWDTIMEOUT, GC.proxy, res_ciphers)

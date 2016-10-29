@@ -34,21 +34,21 @@ def get_action(scheme, host, path):
     #除去主机部分
     path = path[path.find('//')+3:]
     path = path[path.find('/')+1:]
-    try:
+    if host in filters_cache:
         filters = filters_cache[host]
         if isinstance(filters, tuple):
             return filters
         for filter in filters:
             if filters[filter][1] in schemes and match_path_filter(filter, path):
                 return filters[filter][0]
-    except KeyError:
+    else:
         filter = None
         for filters in ACTION_FILTERS:
             if filters.action == FAKECERT:
                 continue
             for schemefilter, hostfilter, pathfilter, target in filters:
                 if match_host_filter(hostfilter, host):
-                    if host not in filters_cache.cache:
+                    if host not in filters_cache:
                         filters_cache[host] = OrderedDict()
                     if pathfilter not in filters_cache.cache[host]:
                         filters_cache.cache[host][pathfilter] = (numToAct[filters.action], target), schemefilter
@@ -57,17 +57,17 @@ def get_action(scheme, host, path):
         if filter:
             return filter
     filter = (numToAct[GC.FILTER_ACTION], None), ''
-    if host in filters_cache.cache:
-        filters_cache.cache[host][''] = filter
+    if host in filters_cache:
+        filters_cache[host][''] = filter
     else:
         filters_cache[host] = filter[0]
     return filter[0]
 
 def get_ssl_action(host):
     schemes = ('', 'https')
-    try:
+    if host in ssl_filters_cache:
         return ssl_filters_cache[host]
-    except KeyError:
+    else:
         for filters in ACTION_FILTERS:
             for schemefilter, hostfilter, _, target in filters:
                 if schemefilter in schemes and match_host_filter(hostfilter, host):

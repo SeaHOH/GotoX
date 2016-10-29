@@ -28,14 +28,18 @@ from .common import (
     message_html,
     onlytime,
     testip,
-    isip,
-    isipv4
+    isip
     )
 from .common.proxy import get_listen_ip
 from .common.dns import dns, dns_resolve
 from .GlobalConfig import GC
 from .GAEUpdata import testgaeip, addtoblocklist, _refreship as refreship
-from .HTTPUtil import tcp_connection_cache, ssl_connection_cache, http_util
+from .HTTPUtil import (
+    tcp_connection_cache,
+    ssl_connection_cache,
+    http_gws,
+    http_nor
+    )
 from .RangeFetch import RangeFetch
 from .GAEFetch import gae_urlfetch
 from .FilterUtil import (
@@ -222,6 +226,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_DIRECT(self):
         """Direct http relay"""
         hostname = self.set_DNS()
+        http_util = http_gws if 'google' in hostname else http_nor
         response = None
         noerror = True
         request_headers, payload = self.handle_request_headers(skip_headers_d)
@@ -232,20 +237,20 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             response = http_util.request(self.command, self.path, payload, request_headers, crlf=need_crlf, connection_cache_key=connection_cache_key, timeout=self.fwd_timeout)
             if not response:
                 if self.target is not None or path.endswith('ico'): #非默认规则、网站图标
-                    logging.warn(u'http_util.request "%s %s" 失败，返回 404', self.command, self.path)
+                    logging.warn(u'request "%s %s" 失败，返回 404', self.command, self.path)
                     self.write('HTTP/1.1 404 %s\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n%s' % self.responses[404])
                     return
                 else:
-                    logging.warn(u'http_util.request "%s %s" 失败，尝试使用 "GAE"', self.command, self.path)
+                    logging.warn(u'request "%s %s" 失败，尝试使用 "GAE"', self.command, self.path)
                     return self.go_GAE()
             _, data, need_chunked = self.handle_response_headers('DIRECT', response)
             self.write_response_content(0, data, response, need_chunked)
         except NetWorkIOError as e:
             noerror = False
             if e.args[0] in (errno.ECONNRESET, 10063, errno.ENAMETOOLONG):
-                logging.warn(u'%s http_util.request "%s %s" 失败：%r，返回 408', self.address_string(response), self.command, self.path, e)
+                logging.warn(u'%s request "%s %s" 失败：%r，返回 408', self.address_string(response), self.command, self.path, e)
                 self.write('HTTP/1.1 408 %s\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n%s' % self.responses[408])
-                #logging.warn('http_util.request "%s %s" failed:%s, try addto `withgae`', self.command, self.path, e)
+                #logging.warn('request "%s %s" failed:%s, try addto `withgae`', self.command, self.path, e)
                 #self.go_GAE()
             elif e.args[0] not in (errno.ECONNABORTED, errno.EPIPE):
                 raise
@@ -424,7 +429,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     logging.exception(u'%s do_GAE "%s %s" 失败：%r', self.address_string(response), self.command, self.path, e)
             finally:
                 if appid and appid not in self.appids:
-                    self.appids.append(appid)
+                    self.appids.insert(0, appid)
                 if response:
                     response.close()
                     if noerror:
@@ -439,6 +444,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_FORWARD(self):
         """Forward socket"""
         hostname = self.set_DNS()
+        http_util = http_gws if 'google' in hostname else http_nor
         host, port = self.host, self.port
         if not GC.PROXY_ENABLE:
             connection_cache_key = '%s:%d' % (hostname, port)
@@ -583,7 +589,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.do_GAE()
 
     def go_BAD(self):
-        logging.warn(u'http_util.request "%s %s" 失败：%r, 返回 404', self.command, self.path)
+        logging.warn(u'request "%s %s" 失败：%r, 返回 404', self.command, self.path)
         self.write(b'HTTP/1.0 404\r\nContent-Type: text/html\r\n\r\n')
         self.write(message_html(u'404 无法访问', u'不能 "%s %s"' % (self.command, self.path), u'无论是通过 GAE 还是 DIRECT 都无法访问成功').encode('utf-8'))
 
@@ -630,17 +636,20 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def set_DNS(self):
         """Maintain a self-DNS map"""
-        iporname = self.target or '' #替代默认 None
-        if self.host not in dns:
-            if isinstance(iporname, list):
-                dns[self.host] = iporname
-            elif iporname in GC.IPLIST_MAP:
-                dns[self.host] = GC.IPLIST_MAP[iporname]
-                return iporname
-            elif '.' in iporname or ':' in iporname:
-                dns[self.host] = iporname
-            else:
-                dns[self.host] = dns_resolve(self.host)
+        if self.host in dns:
+            return self.host
+        iporname = self.target or '' #替代默认的 None
+        if iporname in dns:
+            return iporname
+        if isinstance(iporname, list):
+            dns[self.host] = iporname
+        elif iporname in GC.IPLIST_MAP:
+            dns[self.host] = GC.IPLIST_MAP[iporname]
+            return iporname
+        elif '.' in iporname or ':' in iporname:
+            dns[self.host] = iporname
+        else:
+            dns[self.host] = dns_resolve(self.host)
         return self.host
 
     def get_ssl_context(self):
@@ -652,9 +661,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             nhost = len(hostsp)
             if nhost > 3 or (nhost == 3 and len(hostsp[-2]) > 3):
                 host = '.'.join(hostsp[1:])
-        try:
+        if host in self.ssl_context_cache:
             return self.ssl_context_cache[host]
-        except KeyError:
+        else:
             logging.debug('%s-%s first', host, ip)
             certfile, keyfile = CertUtil.get_cert(host, ip)
             self.ssl_context_cache[host] = ssl_context = ssl.SSLContext(GC.LINK_LOCALSSL)

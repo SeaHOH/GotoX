@@ -5,7 +5,7 @@ import io
 import struct
 from .compat import PY3, httplib, Queue, xrange
 from .GlobalConfig import GC
-from .HTTPUtil import http_util
+from .HTTPUtil import http_gws
 
 qGAE = Queue.Queue(GC.GAE_MAXREQUESTS)
 for i in xrange(GC.GAE_MAXREQUESTS):
@@ -60,7 +60,7 @@ def gae_urlfetch(method, url, headers, payload, appid, timeout=None, rangefetch=
     connection_cache_key = GC.GAE_LISTNAME + ':443'
     realurl = 'GAE-' + url
     qGAE.get() # get start from Queue
-    response = http_util.request('POST', fetchserver, payload, request_headers, connection_cache_key=connection_cache_key, timeout=timeout, rangefetch=rangefetch, realurl=realurl)
+    response = http_gws.request('POST', fetchserver, payload, request_headers, connection_cache_key=connection_cache_key, timeout=timeout, rangefetch=rangefetch, realurl=realurl)
     qGAE.put(True) # put back
     if response is None:
         return None
