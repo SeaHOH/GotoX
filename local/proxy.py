@@ -8,16 +8,9 @@
 
 __version__ = '3.3.0'
 
+import os
 import sys
 sys.dont_write_bytecode = True
-
-import os
-#if not sys.platform.startswith('win'):
-#    __file__ = os.path.abspath(__file__)
-#    if os.path.islink(__file__):
-#        __file__ = getattr(os, 'readlink', lambda x: x)(__file__)
-#    cwdir = os.path.dirname(os.path.abspath(__file__))
-#    os.chdir(cwdir)
 
 #这条代码负责导入依赖库路径，不要改变位置
 from .common import NetWorkIOError

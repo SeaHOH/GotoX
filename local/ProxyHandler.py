@@ -118,9 +118,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_CONNECT(self):
         """handle CONNECT cmmand, do a filtered action"""
-        self.ssl = True
         host, _, port = self.path.rpartition(':')
         self.host, self.port = self.headers.get('Host'), int(port)
+        if self.port != 80:
+            self.ssl = True
         if not self.host or self.host.startswith(self.localhosts):
             self.host = host
         self.action, self.target = get_ssl_action(self.host)
@@ -261,7 +262,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         if connection and connection.lower() != 'close':
                             self.close_connection = 0
                     #放入套接字缓存
-                    tcp_connection_cache[connection_cache_key].put((onlytime(), response.sock))
+                    if self.ssl:
+                        ssl_connection_cache[connection_cache_key].put((onlytime(), response.sock))
+                    else:
+                        tcp_connection_cache[connection_cache_key].put((onlytime(), response.sock))
 
     def do_GAE(self):
         """GAE http urlfetch"""
