@@ -591,11 +591,6 @@ class HTTPUtil(BaseHTTPUtil):
 # AES128-SHA
 # ECDHE-RSA-AES128-SHA
 gws_ciphers = ':'.join([
-                        #defaultTLS ex
-                        'ECDHE-RSA-AES128-SHA256',
-                        'AES128-SHA256',
-                        #mixinCiphers ex
-                        'AES256-SHA256',
                         #defaultTLS
                         ##'AES128-SHA',
                         #'AES256-SHA',
@@ -609,12 +604,17 @@ gws_ciphers = ':'.join([
                         'ECDHE-RSA-AES256-GCM-SHA384',
                         'ECDHE-ECDSA-AES128-GCM-SHA256',
                         'ECDHE-ECDSA-AES256-GCM-SHA384',
+                        #defaultTLS ex
+                        'AES128-SHA256',
+                        'ECDHE-RSA-AES128-SHA256',
                         #mixinCiphers
                         ##'RC4-SHA',
                         #'DES-CBC3-SHA',
                         ##'ECDHE-RSA-RC4-SHA',
                         #'ECDHE-RSA-DES-CBC3-SHA',
                         #'ECDHE-ECDSA-RC4-SHA',
+                        #mixinCiphers ex
+                        'AES256-SHA256',
                         'TLS_EMPTY_RENEGOTIATION_INFO_SCSV'])
 def_ciphers = ssl._DEFAULT_CIPHERS
 res_ciphers = ssl._RESTRICTED_SERVER_CIPHERS

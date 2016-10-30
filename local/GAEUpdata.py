@@ -28,10 +28,7 @@ def addtoblocklist(ip):
 
 def _refreship(gaeip):
         with tLock:
-            GC.IPLIST_MAP[GC.GAE_LISTNAME] = gaeip
-            for appid in GC.GAE_APPIDS:
-                host = '%s.appspot.com' % appid
-                dns[host] = gaeip
+            GC.IPLIST_MAP[GC.GAE_LISTNAME][:] = gaeip
         testip.lasttest = time()
 
 def refreship():
@@ -67,7 +64,7 @@ updataip.running = False
 
 def _testgaeip():
     iplist = GC.IPLIST_MAP[GC.GAE_LISTNAME]
-    niplist = len(iplist)
+    niplist = len(iplist or [])
     if niplist == 0:
         return updataip()
     if testip.qcount > niplist/3:  #未完成的 GAE 请求个数

@@ -33,7 +33,12 @@ from .common import (
 from .common.proxy import get_listen_ip
 from .common.dns import dns, dns_resolve
 from .GlobalConfig import GC
-from .GAEUpdata import testgaeip, addtoblocklist, _refreship as refreship
+from .GAEUpdata import (
+    tLock,
+    testgaeip,
+    addtoblocklist,
+    _refreship as refreship
+    )
 from .HTTPUtil import (
     tcp_connection_cache,
     ssl_connection_cache,
@@ -56,18 +61,7 @@ pypypath = partial(re.compile(r'(://[^/]+):\d+/').sub, r'\1/')
 getbytes = re.compile(r'bytes=(\d+)-').search
 getrange = re.compile(r'bytes (\d+)-(\d+)/(\d+)').search
 
-skip_headers_d = (
-    'Vary',
-    'Via',
-    'X-Forwarded-For',
-    'Proxy-Authorization',
-    'Proxy-Connection',
-    'Upgrade',
-    'X-Chrome-Variations',
-    'Connection'
-    )
-
-skip_headers_g = (
+skip_headers = (
     'Vary',
     'Via',
     'X-Forwarded-For',
@@ -76,7 +70,7 @@ skip_headers_g = (
     'Upgrade',
     'X-Chrome-Variations',
     'Connection',
-    'Cache-Control'
+    #'Cache-Control'
     )
 
 class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
@@ -177,7 +171,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.write(b'0\r\n\r\n')
             return start
 
-    def handle_request_headers(self, skip_headers):
+    def handle_request_headers(self):
         request_headers = dict((k.title(), v) for k, v in self.headers.items() if k.title() not in skip_headers)
         connection = self.headers.get('Connection') or self.headers.get('Proxy-Connection')
         if connection:
@@ -226,10 +220,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_DIRECT(self):
         """Direct http relay"""
         hostname = self.set_DNS()
+        if hostname is None:
+            logging.error(u'无法解析主机：%r，请检查是否输入正确！', self.host)
+            return
         http_util = http_gws if 'google' in hostname else http_nor
         response = None
         noerror = True
-        request_headers, payload = self.handle_request_headers(skip_headers_d)
+        request_headers, payload = self.handle_request_headers()
         path = self.url_parts.path
         try:
             need_crlf = hostname.startswith('google_') or self.host.endswith(GC.HTTP_CRLFSITES)
@@ -278,7 +275,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             logging.warn(u'GAE 不支持 "%s %s"，转用 DIRECT', self.command, self.path)
             self.action == 'do_DIRECT'
             return self.do_DIRECT()
-        request_headers, payload = self.handle_request_headers(skip_headers_g)
+        request_headers, payload = self.handle_request_headers()
         host = self.host
         path = self.url_parts.path
         #need_autorange = any(x(host) for x in GC.AUTORANGE_HOSTS_MATCH) or path.endswith(GC.AUTORANGE_ENDSWITH)
@@ -336,7 +333,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         #移除不可用 IP
                         ip = response.xip[0]
                         logging.warning(u'IP：%r 不支持 GAE 服务，正在删除……', ip)
-                        refreship(GC.IPLIST_MAP[GC.GAE_LISTNAME][:].remove(ip))
+                        with tLock:
+                            GC.IPLIST_MAP[GC.GAE_LISTNAME].remove(ip)
                         addtoblocklist(ip)
                         noerror = False
                         continue
@@ -444,6 +442,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_FORWARD(self):
         """Forward socket"""
         hostname = self.set_DNS()
+        if hostname is None:
+            logging.error(u'无法解析主机：%r，请检查是否输入正确！', self.host)
+            return
         http_util = http_gws if 'google' in hostname else http_nor
         host, port = self.host, self.port
         if not GC.PROXY_ENABLE:
@@ -639,8 +640,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if self.host in dns:
             return self.host
         iporname = self.target or '' #替代默认的 None
-        if iporname in dns:
-            return iporname
         if isinstance(iporname, list):
             dns[self.host] = iporname
         elif iporname in GC.IPLIST_MAP:
@@ -649,7 +648,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         elif '.' in iporname or ':' in iporname:
             dns[self.host] = iporname
         else:
-            dns[self.host] = dns_resolve(self.host)
+            dns[self.host] = iplist = dns_resolve(self.host)
+            if not iplist:
+                return
         return self.host
 
     def get_ssl_context(self):

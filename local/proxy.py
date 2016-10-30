@@ -241,9 +241,6 @@ def main():
         if 'uvent.loop' in sys.modules and isinstance(gevent.get_hub().loop, __import__('uvent').loop.UVLoop):
             logging.info('Uvent enabled, patch forward_socket')
             AutoProxyHandler.forward_socket = AutoProxyHandler.green_forward_socket
-        for appid in GC.GAE_APPIDS:
-            host = '%s.appspot.com' % appid
-            dns[host] = GC.IPLIST_MAP[GC.GAE_LISTNAME]
 
     logging.disable(0 if GC.LISTEN_DEBUGINFO else logging.DEBUG)
     if 0: #测试用
@@ -263,9 +260,6 @@ def main():
     info += u'*  链 接 模 式 : 远程 - %s/%s\n' % (GC.LINK_REMOTESSLTXT, 'openssl' if GC.LINK_OPENSSL else 'gevent')
     info += u'*                本地 - %s/gevent\n' % GC.LINK_LOCALSSLTXT
     info += u'*  链接 配置集 : %s\n' % GC.LINK_PROFILE if GC.LINK_PROFILE else ''
-    #if GC.PAC_ENABLE:
-    #    info += '* Pac Server       : http://%s:%d/%s\n' % (GC.PAC_IP, GC.PAC_PORT, GC.PAC_FILE)
-    #    info += '* Pac File         : file://%s\n' % os.path.join(cwdir, GC.PAC_FILE).replace('\\', '/')
     if GC.DNS_ENABLE:
         info += '* DNS Listen       : %s\n' % GC.DNS_LISTEN
         info += '* DNS Servers      : %s\n' % '|'.join(GC.DNS_SERVERS)
