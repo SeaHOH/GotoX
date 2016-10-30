@@ -11,19 +11,25 @@ except ImportError:
 import socket
 from select import select
 from time import time
-from local.compat import xrange
+from local.compat import xrange, exc_clear
 from . import LRUCache, isip, isipv4, isipv6
 from local.GlobalConfig import GC
 
-dns = LRUCache(256, 90*60)
+dns = LRUCache(256, 4*60*60)
 
 def dns_resolve(host, dnsservers=[]):
     if isip(host):
         return [host]
     iplist = dns.get(host)
     if not iplist:
+        if host.endswith('.appspot.com'):
+            dns[host] = iplist = GC.IPLIST_MAP[GC.GAE_LISTNAME]
+            return iplist
         if not dnsservers:
-            iplist = list(set(socket.gethostbyname_ex(host)[-1]) - GC.DNS_BLACKLIST)
+            try:
+                iplist = list(set(socket.gethostbyname_ex(host)[-1]) - GC.DNS_BLACKLIST)
+            except:
+                pass
         else:
             iplist = dns_remote_resolve(host, dnsservers, GC.DNS_BLACKLIST, timeout=2)
         if not iplist:
@@ -34,8 +40,6 @@ def dns_resolve(host, dnsservers=[]):
             elif GC.LINK_PROFILE == 'ipv6':
                 iplist = [ip for ip in iplist if isipv6(ip)]
             dns[host] = iplist = list(set(iplist))
-        else:
-            raise
     return iplist
 
 def dns_remote_resolve(qname, dnsservers, blacklist, timeout):
