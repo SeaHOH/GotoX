@@ -1,11 +1,11 @@
 # coding:utf-8
 
 import sys
-import thread
 import socket
 import errno
 import random
 from time import sleep
+from .compat import thread
 from . import clogging as logging
 
 localhosts = ('127.0.0.1', 'localhost')
