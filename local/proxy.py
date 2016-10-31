@@ -13,9 +13,8 @@ import sys
 sys.dont_write_bytecode = True
 
 #这条代码负责导入依赖库路径，不要改变位置
-from .common import NetWorkIOError
+from .common import logging
 
-from . import clogging as logging
 try:
     import gevent
     import gevent.socket
@@ -29,14 +28,12 @@ except TypeError:
     gevent.monkey.patch_all()
     logging.warning(u'警告：请更新 gevent 至 1.0 以上版本！')
 
-import errno
 import struct
 import threading
 import socket
 import ssl
 import re
-import dnslib
-import OpenSSL
+from OpenSSL import __version__ as opensslver
 from .compat import (
     Queue,
     thread,
@@ -44,38 +41,12 @@ from .compat import (
     xrange
     )
 from .GlobalConfig import GC
-from .ProxyHandler import GAEProxyHandler, AutoProxyHandler
-
-
-class LocalProxyServer(SocketServer.ThreadingTCPServer):
-    """Local Proxy Server"""
-    allow_reuse_address = True
-
-    def close_request(self, request):
-        try:
-            request.close()
-        except Exception:
-            pass
-
-    def finish_request(self, request, client_address):
-        try:
-            self.RequestHandlerClass(request, client_address, self)
-        except NetWorkIOError as e:
-            if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
-                raise
-
-    def handle_error(self, *args):
-        """make ThreadingTCPServer happy"""
-        exc_info = sys.exc_info()
-        error = exc_info and len(exc_info) and exc_info[1]
-        if isinstance(error, NetWorkIOError) and len(error.args) > 1 and 'bad write retry' in error.args[1]:
-            exc_info = error = None
-        else:
-            del exc_info, error
-            SocketServer.ThreadingTCPServer.handle_error(self, *args)
+from .ProxyServer import AutoProxy, GAEProxy
+from .ProxyHandler import AutoProxyHandler
 
 def main():
     def pre_start():
+        from .ProxyServer import network_test
         from .common import isip, isipv4, isipv6
         from .common.dns import dns, dns_remote_resolve
         def get_process_list():
@@ -181,27 +152,7 @@ def main():
                 logging.info(u'host 列表 %r 解析结果：iplist=%r', name, resolved_iplist)
                 GC.IPLIST_MAP[name] = resolved_iplist
 
-        def network_test():
-            from time import sleep
-            haserr = None
-            b = None
-            while not b:
-                try:
-                    b = socket.gethostbyname('baidu.com')
-                except:
-                    if not haserr:
-                        haserr = True
-                        logging.error(u'网络现在不可用，将每 10 秒检测一次……')
-                    sleep(10)
-            if haserr:
-                logging.info(u'网络已经可以使用，初始化继续……')
-            try:
-                AutoProxyHandler.localhosts = tuple(set(sum((x if isinstance(x, list) else [x] for x in socket.gethostbyname_ex(socket.gethostname())), list(AutoProxyHandler.localhosts))))
-                AutoProxyHandler.localhosts = tuple(set([get_listen_ip()] + list(AutoProxyHandler.localhosts)))
-            except:
-                pass
-
-        network_test()
+        network_test(True)
         if sys.platform == 'cygwin':
             logging.info('cygwin is not officially supported, please continue at your own risk :)')
             #sys.exit(-1)
@@ -249,7 +200,7 @@ def main():
         GC.LINK_OPENSSL = 1
         #GC.IPLIST_MAP[GC.GAE_LISTNAME] = []
     info = '==================================================================================\n'
-    info += u'* GotoX  版 本 : %s (python/%s %spyopenssl/%s)\n' % (__version__, sys.version.split(' ')[0], gevent and 'gevent/%s ' % gevent.__version__ or '', getattr(OpenSSL, '__version__', 'Disabled'))
+    info += u'* GotoX  版 本 : %s (python/%s %spyopenssl/%s)\n' % (__version__, sys.version.split(' ')[0], gevent and 'gevent/%s ' % gevent.__version__ or '', opensslver)
     info += '* Uvent Version    : %s (pyuv/%s libuv/%s)\n' % (__import__('uvent').__version__, __import__('pyuv').__version__, __import__('pyuv').LIBUV_VERSION) if all(x in sys.modules for x in ('pyuv', 'uvent')) else ''
     info += '* GAE    APPID : %s\n' % '|'.join(GC.GAE_APPIDS)
     info += u'* GAE 远程验证 : %s\n' % u'已启用' if GC.GAE_SSLVERIFY else u'未启用'
@@ -274,9 +225,6 @@ def main():
     from . import CertUtil
     CertUtil.check_ca()
 
-    from .GAEUpdata import testipserver
-    thread.start_new_thread(testipserver, ())
-
     if GC.DNS_ENABLE:
         try:
             sys.path += ['.']
@@ -288,21 +236,22 @@ def main():
             logging.exception('GotoX DNSServer requires dnslib and gevent 1.0')
             sys.exit(-1)
 
-    server = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_GAE_PORT), GAEProxyHandler)
     try:
-        thread.start_new_thread(server.serve_forever, ())
+        thread.start_new_thread(GAEProxy.serve_forever, ())
     except SystemError as e:
         if ' (libev) select: Unknown error' in repr(e):
-            logging.error('PLEASE START GotoX BY uvent.bat')
+            #logging.error('PLEASE START GotoX BY uvent.bat')
             sys.exit(-1)
 
-    server = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_AUTO_PORT), AutoProxyHandler)
     try:
-        server.serve_forever()
+        thread.start_new_thread(AutoProxy.serve_forever, ())
     except SystemError as e:
         if ' (libev) select: Unknown error' in repr(e):
-            logging.error('PLEASE START GotoX BY uvent.bat')
+            #logging.error('PLEASE START GotoX BY uvent.bat')
             sys.exit(-1)
+
+    from .GAEUpdata import testipserver
+    testipserver()
 
 if __name__ == '__main__':
     main()

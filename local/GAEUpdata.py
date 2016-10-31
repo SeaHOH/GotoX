@@ -16,6 +16,7 @@ from .compat import (
 from .common import config_dir, testip, isip
 from .common.dns import dns
 from .GlobalConfig import GC
+from .ProxyServer import network_test
 
 tLock = threading.Lock()
 fLock = threading.Lock()
@@ -35,6 +36,7 @@ def refreship():
     threading.current_thread().setName('Ping-IP')
     #检测当前 IP 并搜索新的 IP
     with fLock:
+        network_test()
         gaeip = getgaeip(set(GC.IPLIST_MAP[GC.GAE_LISTNAME]))
     if gaeip and len(gaeip) >= GC.FINDER_MINIPCNT:
         #更新 IP
@@ -74,6 +76,7 @@ def _testgaeip():
     testip.timeout = max(GC.FINDER_MAXTIMEOUT*1.5, 1000) + min(niplist, 20)*50 + timeToDelay[nowtime]
     logging.test(u'连接测试开始，超时：%d 毫秒', int(testip.timeout))
     testip.timeout = testip.timeout / 1000.0
+    network_test()
     for ip in iplist:
         thread.start_new_thread(http_gws.create_ssl_connection, ((ip, 443), testip.timeout, testip.queobj))
     for i in xrange(niplist):

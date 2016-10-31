@@ -30,7 +30,6 @@ from .common import (
     testip,
     isip
     )
-from .common.proxy import get_listen_ip
 from .common.dns import dns, dns_resolve
 from .GlobalConfig import GC
 from .GAEUpdata import (
@@ -78,10 +77,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     request_queue_size = 48
     fwd_timeout = GC.LINK_FWDTIMEOUT
     CAfile = 'http://gotox.net/ca'
-    localhosts = ('127.0.0.1', 'localhost')
 
     #可修改
-    ssl_context_cache = LRUCache(64)
+    ssl_context_cache = LRUCache(32)
     appids = GC.GAE_APPIDS[:]
 
     #默认值
@@ -114,19 +112,22 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             do_x()
 
-    def do_CONNECT(self):
-        """handle CONNECT cmmand, do a filtered action"""
+    def _do_CONNECT(self):
         host, _, port = self.path.rpartition(':')
         self.host, self.port = self.headers.get('Host'), int(port)
+        #某些 http 链接也可能会使用 CONNECT 方法
         if self.port != 80:
             self.ssl = True
         if not self.host or self.host.startswith(self.localhosts):
             self.host = host
+
+    def do_CONNECT(self):
+        """handle CONNECT cmmand, do a filtered action"""
+        self._do_CONNECT()
         self.action, self.target = get_ssl_action(self.host)
         self.do_count()
 
-    def do_METHOD(self):
-        """handle others cmmand, do a filtered action"""
+    def _do_METHOD(self):
         if HAS_PYPY:
             self.path = pypypath(self.path)
         self.host = self.headers.get('Host', '')
@@ -143,8 +144,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.port = int(port)
             else:
                 self.port = 80
-        self.action, self.target = get_action(self.url_parts.scheme, self.host, self.path)
-        self.do_count()
+        return True
+
+    def do_METHOD(self):
+        """handle others cmmand, do a filtered action"""
+        if self._do_METHOD():
+            self.action, self.target = get_action(self.url_parts.scheme, self.host, self.path)
+            self.do_count()
 
     do_GET = do_METHOD
     do_PUT = do_METHOD
@@ -702,35 +708,15 @@ class GAEProxyHandler(AutoProxyHandler):
 
     def do_CONNECT(self):
         """handle CONNECT cmmand, do a filtered action"""
-        self.ssl = True
-        host, _, port = self.path.rpartition(':')
-        self.host, self.port = self.headers.get('Host'), int(port)
-        if not self.host or self.host.startswith(self.localhosts):
-            self.host = host
+        self._do_CONNECT()
         self.action = 'do_FAKECERT'
         self.do_count()
 
     def do_METHOD(self):
         """handle others cmmand, do a filtered action"""
-        if HAS_PYPY:
-            self.path = pypypath(self.path)
-        self.host = self.headers.get('Host', '')
-        if self.host.startswith(self.localhosts):
-            return self.do_LOCAL()
-        if self.path[0] == '/':
-            self.path = '%s://%s%s' % ('https' if self.ssl else 'http', self.host, self.path)
-        if self.path.lower().startswith(self.CAfile):
-            return self.send_CA()
-        self.url_parts = urlparse.urlparse(self.path)
-        if not self.ssl:
-            if ':' in self.url_parts.netloc:
-                _, _, port = self.url_parts.netloc.rpartition(':')
-                self.port = int(port)
-            else:
-                self.port = 80
-        _, self.target = get_action(self.url_parts.scheme, self.host, self.path)
-        self.action = 'do_GAE'
-        self.do_count()
+        if self._do_METHOD():
+            self.action = 'do_GAE'
+            self.do_count()
 
     do_GET = do_METHOD
     do_PUT = do_METHOD
