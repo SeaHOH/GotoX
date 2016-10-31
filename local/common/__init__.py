@@ -11,12 +11,11 @@ web_dir = os.path.join(app_root, 'web')
 import glob
 import sys
 packages = os.path.join(py_dir, 'site-packages')
-#导入模块优先顺序
-#sys.path.insert(0, packages) #GotoX 自带
-sys.path.append(packages)     #当前运行 py 已安装
-if os.path.dirname(sys.executable) != py_dir: #是否加入 eeg
-    #sys.path = glob.glob('%s/*.egg' % packages) + sys.path #GotoX 自带
-    sys.path += glob.glob('%s/*.egg' % packages)           #当前运行 py 已安装
+#自带 py 已经添加
+if os.path.dirname(sys.executable) != py_dir:
+    #优先导入当前运行 py 已安装模块
+    sys.path.append(packages)
+    sys.path += glob.glob('%s/*.egg' % packages)
 
 from local import clogging as logging
 from time import time, sleep

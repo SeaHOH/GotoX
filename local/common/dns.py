@@ -4,6 +4,7 @@ from local import clogging as logging
 try:
     import dnslib
 except ImportError:
+    import sys
     from . import packages
     logging.error(u'无法找到 dnslib，请安装 dnslib-0.8.3 以上版本，或将相应 .egg 放到 %r 文件夹！', packages)
     sys.exit(-1)
