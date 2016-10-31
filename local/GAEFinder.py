@@ -156,36 +156,11 @@ def getservernamefromheader(header, headerend):
         return header[begin:end].strip(' \t')
     return ''
 
-from .HTTPUtil import BaseHTTPUtil
+from .HTTPUtil import BaseHTTPUtil, gws_ciphers
 class GAE_Finder(BaseHTTPUtil):
 
-    httpreq = b'GET / HTTP/1.1\r\nAccept: */*\r\nHost: www.google.com\r\nConnection: Close\r\n\r\n'
-    ssl_ciphers = ':'.join([
-                            #defaultTLS ex
-                            'ECDHE-RSA-AES128-SHA256',
-                            'AES128-SHA256',
-                            #mixinCiphers ex
-                            'AES256-SHA256',
-                            #defaultTLS
-                            #'AES128-SHA',
-                            'AES256-SHA',
-                            #'AES128-GCM-SHA256',
-                            'AES256-GCM-SHA384',
-                            #'ECDHE-ECDSA-AES128-SHA',
-                            'ECDHE-ECDSA-AES256-SHA',
-                            #'ECDHE-RSA-AES128-SHA',
-                            'ECDHE-RSA-AES256-SHA',
-                            #'ECDHE-RSA-AES128-GCM-SHA256',
-                            'ECDHE-RSA-AES256-GCM-SHA384',
-                            #'ECDHE-ECDSA-AES128-GCM-SHA256',
-                            'ECDHE-ECDSA-AES256-GCM-SHA384',
-                            #mixinCiphers
-                            #'RC4-SHA',
-                            #'DES-CBC3-SHA',
-                            #'ECDHE-RSA-RC4-SHA',
-                            #'ECDHE-RSA-DES-CBC3-SHA',
-                            #'ECDHE-ECDSA-RC4-SHA',
-                            'TLS_EMPTY_RENEGOTIATION_INFO_SCSV'])
+    httpreq = b'HEAD / HTTP/1.1\r\nAccept: */*\r\nHost: www.google.com\r\nConnection: Close\r\n\r\n'
+    ssl_ciphers = gws_ciphers
 
     def getssldomain(self, ip, retry=None):
         start_time = time()
@@ -229,21 +204,19 @@ class GAE_Finder(BaseHTTPUtil):
 
     def getservername(self, conn, sock, ip):
         try:
-            conn.send(self.httpreq)
-            data = ''
             begin = time()
-            d = conn.read(1024)
-            while d:
-                end = time()
-                costime = int(end-begin)
-                if costime >= g_timeout:
-                    WARNING(u'获取 http 响应超时(%ss)，ip：%s', costime, ip)
-                    return ''
-                data += d.decode() if PY3 else d
-                index = data.find('\r\n\r\n')
-                if index > 0:
-                    return getservernamefromheader(data, index)
-                d = conn.read(1024)
+            conn.send(self.httpreq)
+            data = conn.read(1024)
+            end = time()
+            costime = int(end-begin)
+            if costime >= g_timeout:
+                WARNING(u'获取 http 响应超时(%ss)，ip：%s', costime, ip)
+                return ''
+            if PY3:
+                data = data.decode()
+            index = data.find('\r\n\r\n')
+            if index > 0:
+                return getservernamefromheader(data, index)
             return ''
         except Exception as e:
             WARNING(u'从 %s 获取服务名称时发生错误：%r', ip, e)
