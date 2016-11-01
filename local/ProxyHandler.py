@@ -28,7 +28,8 @@ from .common import (
     message_html,
     onlytime,
     testip,
-    isip
+    isip,
+    isipv6
     )
 from .common.dns import dns, dns_resolve
 from .GlobalConfig import GC
@@ -113,13 +114,37 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             do_x()
 
     def _do_CONNECT(self):
-        host, _, port = self.path.rpartition(':')
-        self.host, self.port = self.headers.get('Host'), int(port)
-        #某些 http 链接也可能会使用 CONNECT 方法
-        if self.port != 80:
-            self.ssl = True
-        if not self.host or self.host.startswith(self.localhosts):
+        host = self.headers.get('Host')
+        port = None
+        if host:
+            # IPv6 端口包含在括号内
+            if '(' in host:
+                host, _, port = host.partition('(')
+                port = port[:-1]
+            # Host 头域可以省略端口号，需判断是否 IPv6
+            elif not isipv6(host):
+                host, _, port = host.partition(':')
+        if '(' in self.path:
+            chost, _, cport = self.path.partition('(')
+            cport = cport[:-1]
+        else:
+            #命令端口号不能省略，直接分解
+            chost, _, cport = self.path.rpartition(':')
+        #优先 Host 头域
+        #排除某些程序把本地地址当成主机名
+        if host and not host.startswith(self.localhosts):
             self.host = host
+        else:
+            self.host = chost
+        if port:
+            self.port = int(port)
+        elif cport:
+            self.port = int(cport)
+        else:
+            self.port = 443
+        #某些 http 链接也可能会使用 CONNECT 方法
+        #认为非 80 端口都是加密链接
+        self.ssl = self.port != 80
 
     def do_CONNECT(self):
         """handle CONNECT cmmand, do a filtered action"""
@@ -130,20 +155,33 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def _do_METHOD(self):
         if HAS_PYPY:
             self.path = pypypath(self.path)
-        self.host = self.headers.get('Host', '')
+        host = self.headers.get('Host')
+        port = None
+        if host:
+            # IPv6 端口包含在括号内
+            if '(' in host:
+                host, _, port = host.partition('(')
+                port = port[:-1]
+            # Host 头域可以省略端口号，需判断是否 IPv6
+            elif not isipv6(host):
+                host, _, port = host.partition(':')
+        if self.path[0] == '/':
+            self.path = '%s://%s%s' % ('https' if self.ssl else 'http', host, self.path)
+        self.url_parts = urlparse.urlparse(self.path)
+        if '(' in self.url_parts.netloc:
+            chost, _, cport = self.url_parts.netloc.partition('(')
+            cport = cport[:-1]
+        elif ':' in self.url_parts.netloc:
+            chost, _, cport = self.url_parts.netloc.rpartition(':')
+        else:
+            chost = self.url_parts.netloc
+            cport = 443 if self.ssl else 80
+        self.host = chost
+        self.port = int(port) if port else int(cport)
         if self.host.startswith(self.localhosts):
             return self.do_LOCAL()
-        if self.path[0] == '/':
-            self.path = '%s://%s%s' % ('https' if self.ssl else 'http', self.host, self.path)
         if self.path.lower().startswith(self.CAfile):
             return self.send_CA()
-        self.url_parts = urlparse.urlparse(self.path)
-        if not self.ssl:
-            if ':' in self.url_parts.netloc:
-                _, _, port = self.url_parts.netloc.rpartition(':')
-                self.port = int(port)
-            else:
-                self.port = 80
         return True
 
     def do_METHOD(self):
@@ -462,7 +500,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         break
                     elif i == 0:
                         #只提示第一次链接失败
-                        logging.error(u'create_connection((%r), hostname:%r) 超时', self.path, hostname or '')
+                        logging.warnig(u'转发失败，create_connection((%r), hostname:%r) 超时', self.path, hostname or '')
                 except NetWorkIOError as e:
                     if e.args[0] == 9:
                         logging.error(u'%s 转发到 %r 失败', remote.xip[0], self.path)
@@ -565,10 +603,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         self.write(data)
                         data = fp.read(1048576)
             except Exception as e:
-                logging.info('%s "%s %s HTTP/1.1" 403 -', self.address_string(), self.command, self.path)
+                logging.warning(u'%s "%s %s HTTP/1.1" 403 -，无法打开本地文件：%r', self.address_string(), self.command, self.path, filename)
                 self.write('HTTP/1.1 403\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nopen %r failed: %r' % (filename, e))
         else:
-            logging.info('%s "%s %s HTTP/1.1" 404 -', self.address_string(), self.command, self.path)
+            logging.warning(u'%s "%s %s HTTP/1.1" 404 -，无法找到本地文件：%r', self.address_string(), self.command, self.path, filename)
             self.write(b'HTTP/1.1 404\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n404 Not Found')
 
     def do_BLOCK(self):
@@ -607,6 +645,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             http_headers = ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.items())
             rebuilt_request = '%s\r\n%s\r\n' % (self.requestline, http_headers)
+            if not isinstance(rebuilt_request, bytes):
+                rebuilt_request = rebuilt_request.encode()
             remote.sendall(rebuilt_request)
         local = self.connection
         buf = bytearray(65536) # 64K
