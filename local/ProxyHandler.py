@@ -114,7 +114,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def _do_CONNECT(self):
         host, _, port = self.path.rpartition(':')
-        self.host, self.port = self.headers.get('Host'), int(port)
+        self.host, _, _ = self.headers.get('Host').partition(':')
+        self.port = int(port)
         #某些 http 链接也可能会使用 CONNECT 方法
         if self.port != 80:
             self.ssl = True
