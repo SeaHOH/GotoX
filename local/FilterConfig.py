@@ -80,7 +80,7 @@ for s in sections:
     #order = int(order)
     filters = classlist()
     filters.action = actToNum[action]
-    print('[%s]' % s, filters.action)
+    #print('[%s]' % s, filters.action)
     for k, v in CONFIG.items(s):
         scheme = ''
         if k.find('://', 0, 9) > 0 :
@@ -104,9 +104,17 @@ for s in sections:
             replaces = replaces.lstrip(' \t')
             if patterns[0] == '@':
                 patterns = patterns[1:].lstrip(' \t')
-                v = partial(re.compile(patterns).sub, replaces)
+                if replaces[0] == '@':
+                    replaces = replaces[1:].lstrip(' \t')
+                    v = partial(re.compile(patterns).sub, replaces), True
+                else:
+                    v = partial(re.compile(patterns).sub, replaces), False
             else:
-                v = patterns, replaces, 1
+                if replaces[0] == '@':
+                    replaces = replaces[1:].lstrip(' \t')
+                    v = (patterns, replaces, 1), True
+                else:
+                    v = (patterns, replaces, 1), False
         #print host, path, v
         #print ('@'+host.__self__.pattern if isinstance(host, dir.__class__) else host,
         #       '@'+url.__self__.pattern if isinstance(url, dir.__class__) else url,

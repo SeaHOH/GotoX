@@ -13,6 +13,7 @@ from . import CertUtil
 from . import clogging as logging
 from select import select
 from time import time, sleep
+from urllib import unquote
 from functools import partial
 from .compat import (
     PY3,
@@ -22,6 +23,7 @@ from .compat import (
     xrange
     )
 from .common import (
+    config_dir,
     web_dir,
     NetWorkIOError,
     LRUCache,
@@ -61,7 +63,7 @@ pypypath = partial(re.compile(r'(://[^/]+):\d+/').sub, r'\1/')
 getbytes = re.compile(r'bytes=(\d+)-').search
 getrange = re.compile(r'bytes (\d+)-(\d+)/(\d+)').search
 
-skip_headers = (
+skip_request_headers = (
     'Vary',
     'Via',
     'X-Forwarded-For',
@@ -71,6 +73,12 @@ skip_headers = (
     'X-Chrome-Variations',
     'Connection',
     #'Cache-Control'
+    )
+
+skip_response_headers = (
+    'Transfer-Encoding',
+    'Content-MD5',
+    'Upgrade'
     )
 
 class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
@@ -176,12 +184,14 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             chost = self.url_parts.netloc
             cport = 443 if self.ssl else 80
+        #直接使用重建路径中的主机名
         self.host = chost
         self.port = int(port) if port else int(cport)
         if self.host.startswith(self.localhosts):
             return self.do_LOCAL()
         if self.path.lower().startswith(self.CAfile):
             return self.send_CA()
+        #不是本地地址则继续
         return True
 
     def do_METHOD(self):
@@ -216,7 +226,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return start
 
     def handle_request_headers(self):
-        request_headers = dict((k.title(), v) for k, v in self.headers.items() if k.title() not in skip_headers)
+        request_headers = dict((k.title(), v) for k, v in self.headers.items() if k.title() not in skip_request_headers)
         connection = self.headers.get('Connection') or self.headers.get('Proxy-Connection')
         if connection:
             request_headers['Connection'] = connection
@@ -229,8 +239,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 raise
         return request_headers, payload
 
-    def handle_response_headers(self, action, response):
-        response_headers = dict((k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding')
+    def handle_response_headers(self, response):
+        response_headers = dict((k.title(), v) for k, v in response.getheaders() if k.title() not in skip_response_headers)
         length = response_headers.get('Content-Length', '0')
         length = int(length) if length.isdigit() else 0
         if hasattr(response, 'data'):
@@ -256,9 +266,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.close_connection = 3
         logging.debug('headers_data=%s', headers_data)
         if response.status == 304:
-            logging.debug('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), action, self.command, self.path, response.status, length or '-')
+            logging.debug('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), self.action[3:], self.command, self.path, response.status, length or '-')
         else:
-            logging.info('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), action, self.command, self.path, response.status, length or '-')
+            logging.info('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), self.action[3:], self.command, self.path, response.status, length or '-')
         return length, data, need_chunked
 
     def do_DIRECT(self):
@@ -284,7 +294,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 else:
                     logging.warn(u'request "%s %s" 失败，尝试使用 "GAE"', self.command, self.path)
                     return self.go_GAE()
-            _, data, need_chunked = self.handle_response_headers('DIRECT', response)
+            _, data, need_chunked = self.handle_response_headers(response)
             self.write_response_content(0, data, response, need_chunked)
         except NetWorkIOError as e:
             noerror = False
@@ -414,7 +424,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         return
                 #输出服务端返回的错误信息
                 if response.app_status != 200:
-                    _, data, need_chunked = self.handle_response_headers('GAE', response)
+                    _, data, need_chunked = self.handle_response_headers(response)
                     self.write_response_content(0, data, response, need_chunked)
                     return
                 #处理 goproxy 错误信息（Bad Gateway）
@@ -438,7 +448,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         sleep(2.5)
                         rangefetch = RangeFetch(self, request_headers, payload, response)
                         return rangefetch.fetch()
-                    length, data, need_chunked = self.handle_response_headers('GAE', response)
+                    length, data, need_chunked = self.handle_response_headers(response)
                     headers_sent = True
                 content_range = response.getheader('Content-Range', '')
                 if content_range:
@@ -536,22 +546,25 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_REDIRECT(self):
         """Redirect http"""
-        self.get_redirect()
-        logging.info(u'%s 重定向 %r 到 %r', self.address_string(), self.path, self.target)
-        self.write('HTTP/1.1 301\r\nLocation: %s\r\n\r\n' % self.target)
+        target = self.get_redirect()
+        if not target:
+            return
+        logging.info(u'%s 重定向 %r 到 %r', self.address_string(), self.path, target)
+        self.write('HTTP/1.1 301\r\nLocation: %s\r\n\r\n' % target)
 
     def do_IREDIRECT(self):
         """Redirect http without 30X"""
-        self.get_redirect()
-        if self.target.startswith('file://'):
-            filename = self.target.lstrip('file:').lstrip('/')
+        target = self.get_redirect()
+        if not target:
+            return
+        if target.startswith('file://'):
+            filename = target.lstrip('file:').lstrip('/')
             logging.info(u'%s %r 匹配本地文件 %r', self.address_string(), self.path, filename)
             self.do_LOCAL(filename)
         else:
-            logging.info(u'%s 内部重定向 %r 到 %r', self.address_string(), self.path, self.target)
+            logging.info(u'%s 内部重定向 %r 到 %r', self.address_string(), self.path, target)
             #重设 path
-            self.path = self.target
-            self.target = ''
+            self.path = target
             #重设 host
             self.url_parts = urlparse.urlparse(self.path)
             self.headers['Host'] = self.host = self.url_parts.netloc
@@ -720,10 +733,14 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def get_redirect(self):
         '''Get the redirect target'''
-        if isinstance(self.target, partial):
-            self.target = self.target(self.path, 1)
-        elif isinstance(self.target, tuple):
-            self.target = self.path.replace(*self.target)
+        if isinstance(self.target[0], partial):
+            target = self.target[0](self.path, 1)
+        elif isinstance(self.target[0], tuple):
+            target = self.path.replace(*self.target[0])
+        else:
+            logging.error(u'%r 匹配重定向规则 %r，解析错误，请检查你的配置文件："%s/ActionFilter.ini"', self.path, self.target, config_dir)
+            return
+        return unquote(target) if self.target[1] else target
 
     def send_CA(self):
         """Return CA cert file"""
