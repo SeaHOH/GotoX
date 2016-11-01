@@ -462,7 +462,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         break
                     elif i == 0:
                         #只提示第一次链接失败
-                        logging.error(u'create_connection((%r), hostname:%r) 超时', self.path, hostname or '')
+                        logging.warnig(u'转发失败，create_connection((%r), hostname:%r) 超时', self.path, hostname or '')
                 except NetWorkIOError as e:
                     if e.args[0] == 9:
                         logging.error(u'%s 转发到 %r 失败', remote.xip[0], self.path)
@@ -565,10 +565,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         self.write(data)
                         data = fp.read(1048576)
             except Exception as e:
-                logging.info('%s "%s %s HTTP/1.1" 403 -', self.address_string(), self.command, self.path)
+                logging.warning(u'%s "%s %s HTTP/1.1" 403 -，无法打开本地文件：%r', self.address_string(), self.command, self.path, filename)
                 self.write('HTTP/1.1 403\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nopen %r failed: %r' % (filename, e))
         else:
-            logging.info('%s "%s %s HTTP/1.1" 404 -', self.address_string(), self.command, self.path)
+            logging.warning(u'%s "%s %s HTTP/1.1" 404 -，无法找到本地文件：%r', self.address_string(), self.command, self.path, filename)
             self.write(b'HTTP/1.1 404\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n404 Not Found')
 
     def do_BLOCK(self):
@@ -607,6 +607,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             http_headers = ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.items())
             rebuilt_request = '%s\r\n%s\r\n' % (self.requestline, http_headers)
+            if not isinstance(rebuilt_request, bytes):
+                rebuilt_request = rebuilt_request.encode()
             remote.sendall(rebuilt_request)
         local = self.connection
         buf = bytearray(65536) # 64K
