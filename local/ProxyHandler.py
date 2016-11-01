@@ -28,7 +28,8 @@ from .common import (
     message_html,
     onlytime,
     testip,
-    isip
+    isip,
+    isipv6
     )
 from .common.dns import dns, dns_resolve
 from .GlobalConfig import GC
@@ -113,14 +114,37 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             do_x()
 
     def _do_CONNECT(self):
-        host, _, port = self.path.rpartition(':')
-        self.host, _, _ = self.headers.get('Host').partition(':')
-        self.port = int(port)
-        #某些 http 链接也可能会使用 CONNECT 方法
-        if self.port != 80:
-            self.ssl = True
-        if not self.host or self.host.startswith(self.localhosts):
+        host = self.headers.get('Host')
+        port = None
+        if host:
+            # IPv6 端口包含在括号内
+            if '(' in host:
+                host, _, port = host.partition('(')
+                port = port[:-1]
+            # Host 头域可以省略端口号，需判断是否 IPv6
+            elif not isipv6(host):
+                host, _, port = host.partition(':')
+        if '(' in self.path:
+            chost, _, cport = self.path.partition('(')
+            cport = cport[:-1]
+        else:
+            #命令端口号不能省略，直接分解
+            chost, _, cport = self.path.rpartition(':')
+        #优先 Host 头域
+        #排除某些程序把本地地址当成主机名
+        if host and not host.startswith(self.localhosts):
             self.host = host
+        else:
+            self.host = chost
+        if port:
+            self.port = int(port)
+        elif cport:
+            self.port = int(cport)
+        else:
+            self.port = 443
+        #某些 http 链接也可能会使用 CONNECT 方法
+        #认为非 80 端口都是加密链接
+        self.ssl = self.port != 80
 
     def do_CONNECT(self):
         """handle CONNECT cmmand, do a filtered action"""
@@ -131,20 +155,33 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def _do_METHOD(self):
         if HAS_PYPY:
             self.path = pypypath(self.path)
-        self.host = self.headers.get('Host', '')
+        host = self.headers.get('Host')
+        port = None
+        if host:
+            # IPv6 端口包含在括号内
+            if '(' in host:
+                host, _, port = host.partition('(')
+                port = port[:-1]
+            # Host 头域可以省略端口号，需判断是否 IPv6
+            elif not isipv6(host):
+                host, _, port = host.partition(':')
+        if self.path[0] == '/':
+            self.path = '%s://%s%s' % ('https' if self.ssl else 'http', host, self.path)
+        self.url_parts = urlparse.urlparse(self.path)
+        if '(' in self.url_parts.netloc:
+            chost, _, cport = self.url_parts.netloc.partition('(')
+            cport = cport[:-1]
+        elif ':' in self.url_parts.netloc:
+            chost, _, cport = self.url_parts.netloc.rpartition(':')
+        else:
+            chost = self.url_parts.netloc
+            cport = 443 if self.ssl else 80
+        self.host = chost
+        self.port = int(port) if port else int(cport)
         if self.host.startswith(self.localhosts):
             return self.do_LOCAL()
-        if self.path[0] == '/':
-            self.path = '%s://%s%s' % ('https' if self.ssl else 'http', self.host, self.path)
         if self.path.lower().startswith(self.CAfile):
             return self.send_CA()
-        self.url_parts = urlparse.urlparse(self.path)
-        if not self.ssl:
-            if ':' in self.url_parts.netloc:
-                _, _, port = self.url_parts.netloc.rpartition(':')
-                self.port = int(port)
-            else:
-                self.port = 80
         return True
 
     def do_METHOD(self):
