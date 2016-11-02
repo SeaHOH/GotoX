@@ -16,7 +16,7 @@ from local.compat import xrange, exc_clear
 from . import LRUCache, isip, isipv4, isipv6
 from local.GlobalConfig import GC
 
-dns = LRUCache(256, 4*60*60)
+dns = LRUCache(128, 4*60*60)
 
 def dns_resolve(host, dnsservers=[]):
     if isip(host):
