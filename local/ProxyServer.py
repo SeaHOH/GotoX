@@ -17,7 +17,6 @@ testhosts = (
     'www.baidu.com',
     'download.windowsupdate.com'
     )
-AutoProxy = GAEProxy = None
 
 def network_test(first=None):
     haserr = None

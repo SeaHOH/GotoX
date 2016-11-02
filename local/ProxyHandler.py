@@ -13,7 +13,6 @@ from . import CertUtil
 from . import clogging as logging
 from select import select
 from time import time, sleep
-from urllib import unquote
 from functools import partial
 from .compat import (
     PY3,
@@ -50,6 +49,7 @@ from .HTTPUtil import (
 from .RangeFetch import RangeFetch
 from .GAEFetch import gae_urlfetch
 from .FilterUtil import (
+    numToAct,
     filters_cache,
     ssl_filters_cache,
     get_action,
@@ -157,7 +157,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_CONNECT(self):
         """handle CONNECT cmmand, do a filtered action"""
         self._do_CONNECT()
-        self.action, self.target = get_ssl_action(self.host)
+        self.action, self.target = get_ssl_action(self.ssl, self.host)
         self.do_count()
 
     def _do_METHOD(self):
@@ -294,11 +294,17 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 else:
                     logging.warn(u'request "%s %s" 失败，尝试使用 "GAE"', self.command, self.path)
                     return self.go_GAE()
+            if response.status == 403:
+                logging.warn(u'request "%s %s" 链接被拒绝，尝试使用 "GAE"', self.command, self.path)
+                return self.go_GAE()
             _, data, need_chunked = self.handle_response_headers(response)
             self.write_response_content(0, data, response, need_chunked)
         except NetWorkIOError as e:
             noerror = False
-            if e.args[0] in (errno.ECONNRESET, 10063, errno.ENAMETOOLONG):
+            if e.args[0] == errno.ECONNRESET:
+                logging.warn(u'request "%s %s" 链接被重置，尝试使用 "GAE"', self.command, self.path)
+                return self.go_GAE()
+            elif e.args[0] in (10063, errno.ENAMETOOLONG):
                 logging.warn(u'%s request "%s %s" 失败：%r，返回 408', self.address_string(response), self.command, self.path, e)
                 self.write('HTTP/1.1 408 %s\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n%s' % self.responses[408])
                 #logging.warn('request "%s %s" failed:%s, try addto `withgae`', self.command, self.path, e)
@@ -642,7 +648,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if self.command not in ('GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'PATCH'):
             return go_BAD(self)
         #自动多线程不持续使用 GAE，下一次仍尝试默认设置
-        filters_cache[self.host][GC.AUTORANGE_ENDSWITH] = ('do_GAE', ''), ''
+        filters_cache[self.host][''] = (numToAct[GC.FILTER_ACTION], GC.AUTORANGE_ENDSWITH), ''
         self.action = 'do_GAE'
         self.do_GAE()
 
@@ -740,7 +746,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             logging.error(u'%r 匹配重定向规则 %r，解析错误，请检查你的配置文件："%s/ActionFilter.ini"', self.path, self.target, config_dir)
             return
-        return unquote(target) if self.target[1] else target
+        return urlparse.unquote(target) if self.target[1] else target
 
     def send_CA(self):
         """Return CA cert file"""
