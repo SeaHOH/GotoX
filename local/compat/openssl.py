@@ -2,7 +2,7 @@
 '''OpenSSL Connection Wrapper'''
 
 import socket
-import OpenSSL
+from OpenSSL import SSL
 from select import select
 from . import PY3, exc_clear
 
@@ -12,7 +12,7 @@ class SSLConnection(object):
     def __init__(self, context, sock):
         self._context = context
         self._sock = sock
-        self._connection = OpenSSL.SSL.Connection(context, sock)
+        self._connection = SSL.Connection(context, sock)
         self._io_refs = 0
 
     def __del__(self):
@@ -30,21 +30,21 @@ class SSLConnection(object):
         while self._connection:
             try:
                 return io_func(*args, **kwargs)
-            except (OpenSSL.SSL.WantReadError, OpenSSL.SSL.WantX509LookupError):
+            except (SSL.WantReadError, SSL.WantX509LookupError):
                 exc_clear()
                 rd, _, ed = select([fd], [], [fd], timeout)
                 if ed:
                     raise socket.error(ed)
                 if not rd:
                     raise socket.timeout('The read operation timed out')
-            except OpenSSL.SSL.WantWriteError:
+            except SSL.WantWriteError:
                 exc_clear()
                 _, wd, ed = select([], [fd], [fd], timeout)
                 if ed:
                     raise socket.error(ed)
                 if not wd:
                     raise socket.timeout('The write operation timed out')
-            except OpenSSL.SSL.SysCallError as e:
+            except SSL.SysCallError as e:
                 if e.args[0] == 10035 and 'WSAEWOULDBLOCK' in e.args[1]:
                     exc_clear()
                     rd, wd, ed = select([fd], [fd], [fd], timeout)
@@ -72,7 +72,7 @@ class SSLConnection(object):
     def send(self, data, flags=0):
         try:
             return self.__iowait(self._connection.send, data)
-        except OpenSSL.SSL.SysCallError as e:
+        except SSL.SysCallError as e:
             if e.args[0] == -1 and not data:
                 return 0
             raise socket.error(str(e))
@@ -93,11 +93,11 @@ class SSLConnection(object):
             return self._connection.recv(min(pending, bufsiz))
         try:
             return self.__iowait(self._connection.recv, bufsiz, flags)
-        except OpenSSL.SSL.ZeroReturnError as e:
-            if self._connection.get_shutdown() == OpenSSL.SSL.RECEIVED_SHUTDOWN:
+        except SSL.ZeroReturnError as e:
+            if self._connection.get_shutdown() == SSL.RECEIVED_SHUTDOWN:
                 return b''
             raise e
-        except OpenSSL.SSL.SysCallError as e:
+        except SSL.SysCallError as e:
             if e.args[0] == -1 and 'Unexpected EOF' in e.args[1]:
                 return b''
             elif e.args[0] in (10053, 10054, 10038):
@@ -108,11 +108,11 @@ class SSLConnection(object):
     def recv_into(self, buffer, nbytes=None, flags=None):
         try:
             return self.__iowait(self._connection.recv_into, buffer, nbytes, flags)
-        except OpenSSL.SSL.ZeroReturnError as e:
-            if self._connection.get_shutdown() == OpenSSL.SSL.RECEIVED_SHUTDOWN:
+        except SSL.ZeroReturnError as e:
+            if self._connection.get_shutdown() == SSL.RECEIVED_SHUTDOWN:
                 return 0
             raise e
-        except OpenSSL.SSL.SysCallError as e:
+        except SSL.SysCallError as e:
             if e.args[0] == -1 and 'Unexpected EOF' in e.args[1]:
                 return 0
             elif e.args[0] in (10053, 10054, 10038):
