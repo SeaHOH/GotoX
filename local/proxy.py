@@ -174,8 +174,7 @@ def main():
                 if name.startswith('google_'):
                     resolved_iplist = list(set(resolved_iplist) - set(google_blacklist))
                 if len(resolved_iplist) == 0:
-                    logging.error(u'host 列表 %r 解析结果为空，请重试！', name)
-                    sys.exit(-1)
+                    logging.warning(u'host 列表 %r 解析结果为空，马上查找新的 IP ……', name)
                 if GC.LINK_PROFILE == 'ipv4':
                     resolved_iplist = [ip for ip in resolved_iplist if isipv4(ip)]
                 elif GC.LINK_PROFILE == 'ipv6':

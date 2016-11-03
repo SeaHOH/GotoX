@@ -89,15 +89,12 @@ def WARNING(fmt, *args, **kwargs):
 def readiplist(badlist, nowgaelist):
     #判断是否屏蔽
     blocklist = set()
-    lowlist = set()
+    lowlist = []
     for ip in badlist:
         if badlist[ip][0] > g_timesblock:
             blocklist.add(ip)
         else:
-            lowlist.add(ip)
-    #正在使用的 IP 列外
-    blocklist = blocklist - nowgaelist
-    lowlist = lowlist - nowgaelist
+            lowlist.append(ip)
     #整合优先检测 IP
     iplist = []
     if os.path.exists(g_ipfile + 'ex'):
@@ -110,9 +107,13 @@ def readiplist(badlist, nowgaelist):
                     iplist.append(line.strip('\r\n'))
     #手动屏蔽列表
     for i in xrange(len(iplist) - 1, -1, -1):
-        for ip in g_block:
-            if iplist[i].startswith(ip):
-                del iplist[i]
+        if iplist[i].startswith(g_block):
+            del iplist[i]
+    for i in xrange(len(lowlist) - 1, -1, -1):
+        if lowlist[i].startswith(g_block):
+            del lowlist[i]
+    #正在使用的 IP 列外
+    lowlist = set(lowlist) - nowgaelist
     iplist = set(iplist) - blocklist - lowlist - nowgaelist
     return list(iplist), list(lowlist)
 
@@ -322,7 +323,7 @@ def getgaeip(*args):
     if n > 0:
         #补齐个数
         g.gaelistbak.sort(key = lambda x: x[1])
-        g.gaelist += g.gaelistbak[:n]
+        g.gaelist += [x[0] for x in g.gaelistbak[:n]]
         n -= g.maxgaeipcnt - len(g.gaelist)
         PRINT(u'未找到足够的优质 GAE IP，添加 %d 个备选 IP：\n %s', n, ' | '.join(g.gaelist))
     else:

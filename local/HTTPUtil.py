@@ -125,7 +125,7 @@ class BaseHTTPUtil(object):
     def get_openssl_peercert(self, sock):
         return sock.get_peer_certificate()
 
-keeptime = 90
+keeptime = 60
 import collections
 tcp_connection_time = collections.defaultdict(float)
 tcp_connection_cache = collections.defaultdict(Queue.PriorityQueue)

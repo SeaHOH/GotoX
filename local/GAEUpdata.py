@@ -115,7 +115,7 @@ def testipserver():
     while True:
         if not testip.lastactive:                    #启动时
             testgaeip()
-        elif (time() - testip.lastactive > 60 * 6 or # X 分钟未使用
+        elif (time() - testip.lastactive > 60 * 3 or # X 分钟未使用
                 time() - testip.lasttest > 60 * 9):  #强制 X 分钟检测
                 #and not GC.PROXY_ENABLE              #无代理
             testgaeip()
