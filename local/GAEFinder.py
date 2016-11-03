@@ -87,35 +87,36 @@ def WARNING(fmt, *args, **kwargs):
 
 #读取 checkgoogleip 输出 ip.txt
 def readiplist(badlist, nowgaelist):
-    #判断是否屏蔽
     blocklist = set()
-    lowlist = []
+    lowlist = set()
+    #判断是否屏蔽
     for ip in badlist:
         if badlist[ip][0] > g_timesblock:
             blocklist.add(ip)
         else:
-            lowlist.append(ip)
-    #整合优先检测 IP
-    iplist = []
+            if not ip.startswith(g_block):
+                lowlist.add(ip)
+    #读取待捡 IP
+    ipexlist = set()
+    iplist = set()
     if os.path.exists(g_ipfile + 'ex'):
             with open(g_ipfile + 'ex', "r") as fd:
                 for line in fd:
-                    iplist.append(line.strip('\r\n'))
+                    if not line.startswith(g_block):
+                        ipexlist.add(line.strip('\r\n'))
     if os.path.exists(g_ipfile):
             with open(g_ipfile, 'r') as fd:
                 for line in fd:
-                    iplist.append(line.strip('\r\n'))
-    #手动屏蔽列表
-    for i in xrange(len(iplist) - 1, -1, -1):
-        if iplist[i].startswith(g_block):
-            del iplist[i]
-    for i in xrange(len(lowlist) - 1, -1, -1):
-        if lowlist[i].startswith(g_block):
-            del lowlist[i]
-    #正在使用的 IP 列外
-    lowlist = set(lowlist) - nowgaelist
-    iplist = set(iplist) - blocklist - lowlist - nowgaelist
-    return list(iplist), list(lowlist)
+                    if not line.startswith(g_block):
+                        iplist.add(line.strip('\r\n'))
+    #自动屏蔽列表、正在使用的 IP
+    ipexlist = ipexlist - blocklist - nowgaelist
+    iplist = iplist - blocklist - nowgaelist - ipexlist
+    #排除非当前配置的遗留 IP
+    lowlist = lowlist & (iplist | ipexlist)
+    ipexlist = ipexlist - lowlist
+    iplist = iplist - lowlist
+    return list(ipexlist), list(iplist), list(lowlist)
 
 def readbadlist():
     ipdict = {}
@@ -284,8 +285,17 @@ def _randomip(iplist):
     return ip
 
 def randomip():
-    ip = _randomip(g.iplist)
-    if not ip:
+    if g.ipexlist:
+        ip = _randomip(g.ipexlist)
+    elif g.ipexlist:
+        ip = _randomip(g.iplist)
+    else:
+        ip = _randomip(g.lowlist)
+    if g.ipexlist and not ip:
+        g.ipexlist = False
+        ip = _randomip(g.iplist)
+    if g.iplist and not ip:
+        g.iplist = False
         ip = _randomip(g.lowlist)
     return ip
 
@@ -300,7 +310,7 @@ def getgaeip(*args):
     nowgaelist = args[0] if len(args) > 0 else set() #提取 IP 列表
     g.maxgaeipcnt = g_maxgaeipcnt - len(nowgaelist)
     g.badlist = readbadlist()
-    g.iplist, g.lowlist = readiplist(g.badlist, nowgaelist)
+    g.ipexlist, g.iplist, g.lowlist = readiplist(g.badlist, nowgaelist)
     g.gaelist = []
     g.gaelistbak = []
     g.pingcnt = 0
