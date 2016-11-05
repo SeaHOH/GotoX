@@ -20,11 +20,12 @@ dns = LRUCache(128, 4*60*60)
 
 def dns_resolve(host, dnsservers=[]):
     if isip(host):
-        return [host]
+        return [host,]
     iplist = dns.get(host)
     if not iplist:
         if host.endswith('.appspot.com'):
-            dns[host] = iplist = GC.IPLIST_MAP[GC.GAE_LISTNAME]
+            #已经在查找 IP 时过滤 IP 版本
+            dns[host] = iplist = GC.IPLIST_MAP['google_gws']
             return iplist
         if not dnsservers:
             try:
