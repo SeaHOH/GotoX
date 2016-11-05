@@ -27,16 +27,15 @@ class RangeFetch(object):
     waitsize = GC.AUTORANGE_WAITSIZE or 2
     lowspeed = GC.AUTORANGE_LOWSPEED or 1024*32
     timeout = min(max(GC.LINK_TIMEOUT-2, 1.5), 3)
-    connection_cache_key = GC.GAE_LISTNAME + ':443'
 
-    def __init__(self, handler, headers, payload, response):
+    def __init__(self, handler, url, headers, payload, response):
         self.tLock = threading.Lock()
         self.expect_begin = 0
         self._stopped = False
         self.teston = False
         self._last_app_status = {}
         self.lastupdata = testip.lastupdata
-        self.iplist = GC.IPLIST_MAP[GC.GAE_LISTNAME][:]
+        self.iplist = GC.IPLIST_MAP['google_gws'][:]
         self.appids = Queue.Queue()
         for id in GC.GAE_APPIDS:
             self.appids.put(id)
@@ -44,8 +43,8 @@ class RangeFetch(object):
         self.handler = handler
         self.wfile = handler.wfile
         self.command = handler.command
-        self.url = handler.path
         self.host = handler.host
+        self.url = url
         self.headers = headers
         self.payload = payload
         self.response = response
@@ -132,7 +131,7 @@ class RangeFetch(object):
                 with self.tLock:
                     if self.lastupdata != testip.lastupdata:
                         self.lastupdata = testip.lastupdata
-                        self.iplist = GC.IPLIST_MAP[GC.GAE_LISTNAME][:]
+                        self.iplist = GC.IPLIST_MAP['google_gws'][:]
                 noerror = True
                 response = None
                 starttime = None
@@ -221,4 +220,4 @@ class RangeFetch(object):
                                 self.iplist.remove(response.xip[0])
                                 logging.warning(u'RangeFetch 移除慢速 ip %s', response.xip[0])
                         #放入套接字缓存
-                        ssl_connection_cache[self.connection_cache_key].put((onlytime(), response.sock))
+                        ssl_connection_cache['google_gws:443'].put((onlytime(), response.sock))

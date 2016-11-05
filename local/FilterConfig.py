@@ -53,6 +53,7 @@ if GC.LINK_PROFILE == 'ipv4':
     ipnotuse = isipv6
 elif GC.LINK_PROFILE == 'ipv46':
     pickip = re.compile(r'(?<=\s|\|)((?:\d+\.){3}\d+|(?:(?:[a-f\d]{1,4}:){1,6}|:)(?:[a-f\d]{1,4})?(?::[a-f\d]{1,4}){1,6})(?=$|\s|\|)').findall
+    #还要使用字符名称，所以不用验证
     ipnotuse = lambda x: False
 elif GC.LINK_PROFILE == 'ipv6':
     pickip = re.compile(r'(?<=\s|\|)(?:(?:[a-f\d]{1,4}:){1,6}|:)(?:[a-f\d]{1,4})?(?::[a-f\d]{1,4}){1,6}(?=$|\s|\|)').findall

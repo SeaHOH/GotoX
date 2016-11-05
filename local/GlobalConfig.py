@@ -45,7 +45,6 @@ class GC():
     GAE_APPIDS = re.findall(r'[\w\-\.]+', CONFIG.get('gae', 'appid').replace('.appspot.com', ''))
     GAE_PASSWORD = CONFIG.get('gae', 'password').strip()
     GAE_PATH = CONFIG.get('gae', 'path')
-    GAE_LISTNAME = CONFIG.get('gae', 'listname').lower()
     GAE_MAXREQUESTS = min(CONFIG.getint('gae', 'maxrequsts'), 5) * len(GAE_APPIDS)
     GAE_SSLVERIFY = CONFIG.get('gae', 'sslverify')
     GAE_FETCHMAX = CONFIG.get('gae', 'fetchmax') or 2

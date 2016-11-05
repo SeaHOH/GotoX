@@ -28,9 +28,6 @@ def match_path_filter(filter, path):
 
 def get_action(scheme, host, path):
     schemes = ('', scheme)
-    #除去主机部分
-    path = path[path.find('//')+3:]
-    path = path[path.find('/')+1:]
     if host in filters_cache:
         #以缓存规则进行匹配
         filters = filters_cache[host]

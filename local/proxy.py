@@ -148,7 +148,7 @@ def main():
             # https://support.google.com/websearch/answer/186669?hl=zh-Hans
             google_blacklist = ['216.239.32.20', '74.125.127.102', '74.125.155.102', '74.125.39.102', '74.125.39.113', '209.85.229.138']
             for name, need_resolve_hosts in list(GC.IPLIST_MAP.items()):
-                if all(isip(x) for x in need_resolve_hosts):
+                if name in ('google_gws', 'google_com', 'google_yt', 'google_gs') or all(isip(x) for x in need_resolve_hosts):
                     continue
                 need_resolve_remote = [x for x in need_resolve_hosts if ':' not in x and not isipv4(x)]
                 resolved_iplist = [x for x in need_resolve_hosts if x not in need_resolve_remote]
@@ -166,7 +166,7 @@ def main():
                         logging.warn(u'远程解析超时，尝试本地解析')
                         resolved_iplist += sum([socket.gethostbyname_ex(x)[-1] for x in need_resolve_remote], [])
                         break
-                if name.startswith('google_') and name not in ('google_cn', 'google_hk'):
+                if name.startswith('google_'):
                     iplist_prefix = re.split(r'[\.:]', resolved_iplist[0])[0]
                     resolved_iplist = list(set(x for x in resolved_iplist if x.startswith(iplist_prefix)))
                 else:
@@ -174,7 +174,8 @@ def main():
                 if name.startswith('google_'):
                     resolved_iplist = list(set(resolved_iplist) - set(google_blacklist))
                 if len(resolved_iplist) == 0:
-                    logging.warning(u'host 列表 %r 解析结果为空，马上查找新的 IP ……', name)
+                    logging.warning(u'自定义 host 列表 %r 解析结果为空，请检查你的配置 %r。', name, GC.CONFIG_FILENAME)
+                    sys.exit(-1)
                 if GC.LINK_PROFILE == 'ipv4':
                     resolved_iplist = [ip for ip in resolved_iplist if isipv4(ip)]
                 elif GC.LINK_PROFILE == 'ipv6':
@@ -217,7 +218,7 @@ def main():
         if os.name == 'nt' and not GC.DNS_ENABLE:
             any(GC.DNS_SERVERS.insert(0, x) for x in [y for y in win32dns_query_dnsserver_list() if y not in GC.DNS_SERVERS])
         if not GC.PROXY_ENABLE:
-            logging.info(u'开始将 GC.IPLIST_MAP names=%s 解析为 IP 列表', list(GC.IPLIST_MAP))
+            #logging.info(u'开始将 GC.IPLIST_MAP names=%s 解析为 IP 列表', list(GC.IPLIST_MAP))
             resolve_iplist()
         if 'uvent.loop' in sys.modules and isinstance(gevent.get_hub().loop, __import__('uvent').loop.UVLoop):
             logging.info('Uvent enabled, patch forward_socket')
@@ -228,7 +229,7 @@ def main():
         GC.LISTEN_AUTO_PORT = 1111
         GC.LISTEN_GAE_PORT = 1112
         GC.LINK_OPENSSL = 1
-        #GC.IPLIST_MAP[GC.GAE_LISTNAME] = []
+        #GC.IPLIST_MAP['google_gws'] = []
     info = '==================================================================================\n'
     info += u'* GotoX  版 本 : %s (python/%s %spyopenssl/%s)\n' % (__version__, sys.version.split(' ')[0], gevent and 'gevent/%s ' % gevent.__version__ or '', opensslver)
     info += '* Uvent Version    : %s (pyuv/%s libuv/%s)\n' % (__import__('uvent').__version__, __import__('pyuv').__version__, __import__('pyuv').LIBUV_VERSION) if all(x in sys.modules for x in ('pyuv', 'uvent')) else ''

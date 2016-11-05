@@ -21,36 +21,56 @@ from .ProxyServer import network_test
 tLock = threading.Lock()
 fLock = threading.Lock()
 
+def removeip(ip):
+    with tLock:
+        GC.IPLIST_MAP['google_gws'].remove(ip)
+        try:
+            GC.IPLIST_MAP['google_com'].remove(ip)
+        except:
+            pass
+        try:
+            GC.IPLIST_MAP['google_yt'].remove(ip)
+        except:
+            pass
+        try:
+            GC.IPLIST_MAP['google_gs'].remove(ip)
+        except:
+            pass
+
 def addtoblocklist(ip):
+    removeip(ip)
     with fLock:
         badlist = readbadlist()
-        badlist[ip] = [timesblock+1, time()]
+        badlist[ip] = [timesblock+1, int(time())]
         savebadlist(badlist)
 
 def _refreship(gaeip):
-        with tLock:
-            GC.IPLIST_MAP[GC.GAE_LISTNAME][:] = gaeip
-        testip.lasttest = time()
+    with tLock:
+        for name in gaeip:
+            GC.IPLIST_MAP[name][:] = gaeip[name]
+    testip.lasttest = time()
 
 def refreship():
     threading.current_thread().setName('Ping-IP')
     #检测当前 IP 并搜索新的 IP
     with fLock:
         network_test()
-        gaeip = getgaeip(set(GC.IPLIST_MAP[GC.GAE_LISTNAME]))
-    if gaeip and len(gaeip) >= GC.FINDER_MINIPCNT:
-        #更新 IP
+        gaeip = getgaeip(GC.IPLIST_MAP['google_gws'])
+    #更新 IP
+    n = len(gaeip['google_gws'])
+    if n > 0:
         _refreship(gaeip)
         # IP 慢速计数归零
         testip.outtimes = 0
         #更新 proxy.user.ini
         cf = ConfigParser()
         cf.read(GC.CONFIG_USER_FILENAME)
-        cf.set("iplist", GC.GAE_LISTNAME, '|'.join(x for x in gaeip))
+        for name in gaeip:
+            cf.set("iplist", name, '|'.join(x for x in gaeip[name]))
         cf.write(open(GC.CONFIG_USER_FILENAME, "w"))
         logging.test(u'GAE IP 更新完毕')
         testip.lastupdata = testip.lastactive = testip.lasttest
-    else:
+    if n < GC.FINDER_MINIPCNT:
         logging.warning(u'没有检测到足够数量符合要求的 GAE IP，请重新设定参数！')
     #更新完毕
     sleep(10)
@@ -65,7 +85,7 @@ def updataip():
 updataip.running = False
 
 def _testgaeip():
-    iplist = GC.IPLIST_MAP[GC.GAE_LISTNAME]
+    iplist = GC.IPLIST_MAP['google_gws']
     niplist = len(iplist or [])
     if niplist == 0:
         return updataip()
@@ -90,8 +110,8 @@ def _testgaeip():
     #删除 bad IP
     nbadip = len(badip)
     if nbadip > 0:
-        iplist = list(set(iplist) - badip)
-        _refreship(iplist)
+        for ip in badip:
+            removeip(ip)
     logging.test(u'连接测试完毕%s', u'，Bad IP 已删除' if nbadip > 0 else '')
     # IP 慢速计数归零
     testip.outtimes = 0
@@ -115,7 +135,7 @@ def testipserver():
     while True:
         if not testip.lastactive:                    #启动时
             testgaeip()
-        elif (time() - testip.lastactive > 60 * 3 or # X 分钟未使用
+        elif (time() - testip.lastactive > 60 * 4 or # X 分钟未使用
                 time() - testip.lasttest > 60 * 9):  #强制 X 分钟检测
                 #and not GC.PROXY_ENABLE              #无代理
             testgaeip()

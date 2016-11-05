@@ -11,22 +11,34 @@ qGAE = Queue.Queue(GC.GAE_MAXREQUESTS)
 for i in xrange(GC.GAE_MAXREQUESTS):
     qGAE.put(True)
 
-def gae_urlfetch(method, url, headers, payload, appid, timeout=None, rangefetch=None, **kwargs):
-    def make_errinfo(htmltxt):
-        if not isinstance(htmltxt, bytes):
-            htmltxt = htmltxt.encode()
-        response.msg['Content-Type'] = 'text/html'
-        response.fp = io.BytesIO(htmltxt)
-        response.read = response.fp.read
-        return response
+def make_errinfo(htmltxt):
+    if not isinstance(htmltxt, bytes):
+        htmltxt = htmltxt.encode()
+    response.msg['Content-Type'] = 'text/html'
+    response.fp = io.BytesIO(htmltxt)
+    response.read = response.fp.read
+    return response
 
+class gae_params():
+    ssl = True
+    command = 'POST'
+    fetchserver = 'https://%s.appspot.com%s'
+    fetchhost = '%s.appspot.com'
+    port = 443
+    path = GC.GAE_PATH
+
+    def __init__(self, appid):
+        self.host = self.fetchhost % appid
+        self.url = self.fetchserver % (appid, self.path)
+
+def gae_urlfetch(method, url, headers, payload, appid, timeout=None, rangefetch=None, **kwargs):
     if GC.GAE_PASSWORD:
         kwargs['Password'] = GC.GAE_PASSWORD
     if GC.GAE_SSLVERIFY:
         kwargs['SSLVerify'] = kwargs['validate'] = 1
     if GC.GAE_MAXSIZE:
         kwargs['MaxSize'] = kwargs['fetchmaxsize'] = GC.GAE_MAXSIZE
-    # GAE donot allow set `Host` header
+    # GAE 代理请求不允许设置 Host 头域
     if 'Host' in headers:
         del headers['Host']
     #if payload:
@@ -56,11 +68,11 @@ def gae_urlfetch(method, url, headers, payload, appid, timeout=None, rangefetch=
         payload = struct.pack('!h', len(metadata)) + metadata
     request_headers = {'User-Agent': 'a', 'Content-Length': str(len(payload))}
     # post data
-    fetchserver = 'https://%s.appspot.com%s?' % (appid, GC.GAE_PATH)
-    connection_cache_key = GC.GAE_LISTNAME + ':443'
+    request_params = gae_params(appid)
+    connection_cache_key = 'google_gws:443'
     realurl = 'GAE-' + url
     qGAE.get() # get start from Queue
-    response = http_gws.request('POST', fetchserver, payload, request_headers, connection_cache_key=connection_cache_key, timeout=timeout, rangefetch=rangefetch, realurl=realurl)
+    response = http_gws.request(request_params, payload, request_headers, connection_cache_key=connection_cache_key, timeout=timeout, rangefetch=rangefetch, realurl=realurl)
     qGAE.put(True) # put back
     if response is None:
         return None

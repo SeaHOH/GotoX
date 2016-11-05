@@ -347,7 +347,7 @@ class HTTPUtil(BaseHTTPUtil):
                 if 'google' in hostname or test:
                     #多次使用慢速或无效的 IP 刷新
                     if not test and ssl_sock.ssl_time > 1.5:
-                        if testip.outtimes > max(min(len(GC.IPLIST_MAP[GC.GAE_LISTNAME])/2, 12), 6):
+                        if testip.outtimes > max(min(len(GC.IPLIST_MAP['google_gws'])/2, 12), 6):
                             logging.warning(u'连接过慢 %s: %d' %('.'.join(x.rjust(3) for x in ipaddr[0].split('.')), int(ssl_sock.ssl_time*1000)))
                             spawn_later(5, testgaeip)
                         else:
@@ -356,13 +356,13 @@ class HTTPUtil(BaseHTTPUtil):
                     if not cert:
                         raise socket.error(u'没有获取到证书')
                     subject = cert.get_subject()
-                    if not subject.O == 'Google Inc':
+                    if subject.O != 'Google Inc':
                         raise ssl.SSLError(u'%s 证书的公司名称（%s）不是以 "Google" 开头' % (address[0], subject.O))
                 # sometimes, we want to use raw tcp socket directly(select/epoll), so setattr it to ssl socket.
                 ssl_sock.sock = sock
                 ssl_sock.xip = ipaddr
                 if test:
-                    ssl_connection_cache[GC.GAE_LISTNAME + ':443'].put((onlytime(), ssl_sock))
+                    ssl_connection_cache['google_gws:443'].put((onlytime(), ssl_sock))
                     return test.put((ipaddr[0], ssl_sock.ssl_time))
                 # put ssl socket object to output queobj
                 queobj.put(ssl_sock)
@@ -528,17 +528,12 @@ class HTTPUtil(BaseHTTPUtil):
         response.sock = sock
         return response
 
-    def request(self, method, url, payload=None, headers={}, bufsize=8192, crlf=None, connection_cache_key=None, timeout=None, rangefetch=None, realurl=None):
-        scheme, netloc, path, _, query, _ = urlparse.urlparse(url)
-        if netloc.rfind(':') <= netloc.rfind(']'):
-            # no port number
-            host = netloc
-            port = 443 if scheme == 'https' else 80
-        else:
-            host, _, port = netloc.rpartition(':')
-            port = int(port)
-        if query:
-            path += '?' + query
+    def request(self, request_params, payload=None, headers={}, bufsize=8192, crlf=None, connection_cache_key=None, timeout=None, rangefetch=None, realurl=None):
+        ssl = request_params.ssl
+        host = request_params.host
+        port = request_params.port
+        method = request_params.command
+        url = request_params.url
 
         if 'Host' not in headers:
             headers['Host'] = host
@@ -553,12 +548,12 @@ class HTTPUtil(BaseHTTPUtil):
             ssl_sock = None
             ip = ''
             try:
-                if scheme == 'https':
+                if ssl:
                     ssl_sock = self.create_ssl_connection((host, port), timeout or self.max_timeout, cache_key=connection_cache_key, rangefetch=rangefetch)
                     crlf = 0
                 else:
                     sock = self.create_connection((host, port), timeout or self.max_timeout, cache_key=connection_cache_key)
-                response =  self._request(ssl_sock or sock, method, path, self.protocol_version, headers, payload, bufsize=bufsize, crlf=crlf)
+                response =  self._request(ssl_sock or sock, method, request_params.path, self.protocol_version, headers, payload, bufsize=bufsize, crlf=crlf)
                 return response
             except Exception as e:
                 if ssl_sock:
