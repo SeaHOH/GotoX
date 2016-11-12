@@ -37,7 +37,7 @@
 #      s2marine0         <s2marine0@gmail.com>
 #      Toshio Xiang      <snachx@gmail.com>
 
-__version__ = '3.3.0'
+__version__ = '3.3.1'
 
 import os
 import sys
