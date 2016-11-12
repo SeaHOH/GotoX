@@ -1,5 +1,6 @@
 # coding:utf-8
 
+from time import time
 from collections import OrderedDict
 from .common import LRUCache
 from .GlobalConfig import GC
@@ -33,11 +34,15 @@ def get_action(scheme, host, path):
         filters = filters_cache[host]
         for filter in filters:
             if filters[filter][1] in schemes and match_path_filter(filter, path):
-                #是否默认或临时规则
-                if filter == '':
-                    action, target = filters[filter][0]
-                    #临时 GAE 规则不包含元组元素（媒体文件）
-                    if action == numToAct[GC.FILTER_ACTION] and isinstance(target, tuple) and not any(x in path for x in target):
+                #是否临时规则
+                target = filters[filter][0][1]
+                if isinstance(target, float):
+                    # 15 分钟后恢复默认规则
+                    if time() - target > 900:
+                        filters[filter] = (numToAct[GC.FILTER_ACTION], None), ''
+                    #自动多线程不持续使用临时 GAE 规则，仍尝试默认设置
+                    #不包含元组元素（媒体文件）
+                    elif not any(x in path for x in GC.AUTORANGE_ENDSWITH):
                         return 'do_GAE', ''
                 return filters[filter][0]
     else:

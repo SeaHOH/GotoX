@@ -7,8 +7,8 @@ from .compat import PY3, httplib, Queue, xrange
 from .GlobalConfig import GC
 from .HTTPUtil import http_gws
 
-qGAE = Queue.Queue(GC.GAE_MAXREQUESTS)
-for i in xrange(GC.GAE_MAXREQUESTS):
+qGAE = Queue.LifoQueue()
+for i in xrange(GC.GAE_MAXREQUESTS * len(GC.GAE_APPIDS)):
     qGAE.put(True)
 
 def make_errinfo(htmltxt):

@@ -8,11 +8,11 @@ import random
 from . import clogging as logging
 from time import time, sleep
 from .compat import Queue, urlparse, xrange
-from .common import onlytime, spawn_later, testip
+from .common import spawn_later
 from .GAEFetch import gae_urlfetch
 from .GlobalConfig import GC
 from .HTTPUtil import ssl_connection_cache
-from .GAEUpdata import testgaeip
+from .GAEUpdata import testip, testallgaeip
 
 getrange = re.compile(r'bytes (\d+)-(\d+)/(\d+)').search
 
@@ -23,7 +23,6 @@ class RangeFetch(object):
     bufsize = GC.AUTORANGE_BUFSIZE or 8192
     threads = GC.AUTORANGE_THREADS or 2
     minip = max(threads-2, 3)
-    testcnt = minip + 2
     waitsize = GC.AUTORANGE_WAITSIZE or 2
     lowspeed = GC.AUTORANGE_LOWSPEED or 1024*32
     timeout = min(max(GC.LINK_TIMEOUT-2, 1.5), 3)
@@ -32,7 +31,6 @@ class RangeFetch(object):
         self.tLock = threading.Lock()
         self.expect_begin = 0
         self._stopped = False
-        self.teston = False
         self._last_app_status = {}
         self.lastupdata = testip.lastupdata
         self.iplist = GC.IPLIST_MAP['google_gws'][:]
@@ -41,7 +39,7 @@ class RangeFetch(object):
             self.appids.put(id)
 
         self.handler = handler
-        self.wfile = handler.wfile
+        self.write = handler.write
         self.command = handler.command
         self.host = handler.host
         self.url = url
@@ -63,13 +61,18 @@ class RangeFetch(object):
             response_headers['Content-Length'] = str(length-start)
 
         logging.info(u'>>>>>>>>>>>>>>> RangeFetch 开始 %r %d-%d', self.url, start, end)
-        self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k, v) for k, v in response_headers.items()))))
+        self.write(('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k, v) for k, v in response_headers.items()))))
 
         data_queue = Queue.PriorityQueue()
         range_queue = Queue.PriorityQueue()
         range_queue.put((start, end))
         for begin in xrange(end+1, length, self.maxsize):
             range_queue.put((begin, min(begin+self.maxsize-1, length-1)))
+
+        #开始多线程时先测试一遍 IP
+        if testallgaeip(True):
+            sleep(3)
+
         for i in xrange(self.threads):
             range_delay_size = int((self.threads-i) * self.maxsize * self.threads * 0.66)
             spawn_later(i*self.waitsize, self.__fetchlet, range_queue, data_queue, range_delay_size, i+1)
@@ -103,7 +106,7 @@ class RangeFetch(object):
                 logging.error('data_queue peek timeout, break')
                 break
             try:
-                self.wfile.write(data)
+                self.write(data)
                 self.expect_begin += len(data)
             except Exception as e:
                 logging.info(u'RangeFetch %r 本地链接断开：%r', self.host, e)
@@ -120,14 +123,6 @@ class RangeFetch(object):
         headers['Connection'] = 'close'
         while True:
             try:
-                if not self.teston:
-                    with self.tLock:
-                        self.teston = True
-                    if len(self.iplist) < self.testcnt:
-                        testgaeip(True)
-                        sleep(3)
-                        testip.lastupdata = time()
-                    self.teston = False
                 with self.tLock:
                     if self.lastupdata != testip.lastupdata:
                         self.lastupdata = testip.lastupdata
@@ -143,7 +138,7 @@ class RangeFetch(object):
                     appid = self.appids.get()
                     if self._last_app_status.get(appid, 200) >= 500:
                         sleep(2)
-                    while start - self.expect_begin > self.maxsize and data_queue.maxsize * self.bufsize > range_delay_size:
+                    while start - self.expect_begin > self.maxsize and data_queue.qsize() * self.bufsize > range_delay_size:
                         sleep(0.1)
                     if self.response:
                         response = self.response
@@ -220,4 +215,4 @@ class RangeFetch(object):
                                 self.iplist.remove(response.xip[0])
                                 logging.warning(u'RangeFetch 移除慢速 ip %s', response.xip[0])
                         #放入套接字缓存
-                        ssl_connection_cache['google_gws:443'].put((onlytime(), response.sock))
+                        ssl_connection_cache['google_gws:443'].append((time(), response.sock))

@@ -116,9 +116,9 @@ for s in sections:
                     v = (patterns, replaces, 1), True
                 else:
                     v = (patterns, replaces, 1), False
-        #print host, path, v
-        #print ('@'+host.__self__.pattern if isinstance(host, dir.__class__) else host,
-        #       '@'+url.__self__.pattern if isinstance(url, dir.__class__) else url,
-        #       v)
+        #print(host, path, v)
+        #print('@'+host.__self__.pattern if isinstance(host, dir.__class__) else host,
+        #      '@'+url.__self__.pattern if isinstance(url, dir.__class__) else url,
+        #      v)
         filters.append((scheme.lower(), host, path, v))
     ACTION_FILTERS.append(filters)

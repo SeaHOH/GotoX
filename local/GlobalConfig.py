@@ -8,7 +8,7 @@ import sys
 import re
 import fnmatch
 from .compat import ConfigParser
-from .common import config_dir
+from .common import config_dir, data_dir
 #from .common.proxy import get_system_proxy, parse_proxy
 
 SSLv = {
@@ -27,8 +27,9 @@ CONFIG._optcre = re.compile(r'(?P<option>[^=\s]+)\s*(?P<vi>=?)\s*(?P<value>.*)')
 class GC():
 
     CONFIG_FILENAME = os.path.join(config_dir, 'Config.ini')
+    CONFIG_IPDB = os.path.join(data_dir, 'ip.use')
     CONFIG_USER_FILENAME = re.sub(r'\.ini$', '.user.ini', CONFIG_FILENAME)
-    CONFIG.read([CONFIG_FILENAME, CONFIG_USER_FILENAME])
+    CONFIG.read([CONFIG_FILENAME, CONFIG_USER_FILENAME, CONFIG_IPDB])
 
     #load config from environment
     #for key, value in os.environ.items():
@@ -45,7 +46,9 @@ class GC():
     GAE_APPIDS = re.findall(r'[\w\-\.]+', CONFIG.get('gae', 'appid').replace('.appspot.com', ''))
     GAE_PASSWORD = CONFIG.get('gae', 'password').strip()
     GAE_PATH = CONFIG.get('gae', 'path')
-    GAE_MAXREQUESTS = min(CONFIG.getint('gae', 'maxrequsts'), 5) * len(GAE_APPIDS)
+    GAE_KEEPALIVE = CONFIG.getboolean('gae', 'keepalive')
+    GAE_KEEPTIME = CONFIG.getint('gae', 'keeptime')
+    GAE_MAXREQUESTS = min(CONFIG.getint('gae', 'maxrequsts'), 5)
     GAE_SSLVERIFY = CONFIG.get('gae', 'sslverify')
     GAE_FETCHMAX = CONFIG.get('gae', 'fetchmax') or 2
     GAE_MAXSIZE = CONFIG.get('gae', 'maxsize')
@@ -64,6 +67,7 @@ class GC():
     LINK_REMOTESSL = max(SSLv[LINK_REMOTESSLTXT]+1, 4) if LINK_OPENSSL else max(SSLv[LINK_REMOTESSLTXT], 3)
     LINK_TIMEOUT = max(CONFIG.getint('link', 'timeout'), 3)
     LINK_FWDTIMEOUT = max(CONFIG.getint('link', 'fwd_timeout'), 2)
+    LINK_KEEPTIME = CONFIG.getint('link', 'keeptime')
 
     hosts_section, http_section = '%s/hosts' % LINK_PROFILE, '%s/http' % LINK_PROFILE
     #HOSTS_MAP = collections.OrderedDict((k, v or k) for k, v in CONFIG.items(hosts_section) if '\\' not in k and ':' not in k and not k.startswith('.'))
@@ -83,7 +87,7 @@ class GC():
     #HTTP_FORCEHTTPS = set(CONFIG.get(http_section, 'forcehttps').split('|'))
     #HTTP_FAKEHTTPS = set(CONFIG.get(http_section, 'fakehttps').split('|'))
 
-    IPLIST_MAP = dict((k.lower(), v.split('|')) for k, v in CONFIG.items('iplist'))
+    IPLIST_MAP = dict((k.lower(), [x for x in v.split('|') if x]) for k, v in CONFIG.items('iplist'))
     #IPLIST_MAP.update((k, [k]) for k, v in HOSTS_MAP.items() if k == v)
 
     FILTER_ACTION = CONFIG.getint('filter', 'action')
