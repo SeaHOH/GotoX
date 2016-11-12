@@ -18,8 +18,8 @@ if os.path.dirname(sys.executable) != py_dir:
     sys.path += glob.glob('%s/*.egg' % packages)
 
 from local import clogging as logging
-from time import time, sleep
-from local.compat import thread, Queue
+from time import time
+from local.compat import thread
 
 try:
     import OpenSSL
@@ -121,19 +121,9 @@ def message_html(title, banner, detail=''):
     '''
     return string.Template(MESSAGE_TEMPLATE).substitute(title=title, banner=banner, detail=detail)
 
-import random
-def onlytime():
-    return int(time())+random.random()
-
-class testip():
-    running = False
-    lastactive = None
-    tested = {}
-    queobj = Queue.Queue()
-    lastupdata = time()
-    lasttest = lastupdata - 30
-    outtimes = 0
-    qcount = 0
+#import random
+#def onlytime():
+#    return int(time())+random.random()
 
 import re
 isip = re.compile(r'(\d+\.){3}\d+$|(([a-f\d]{1,4}:){1,6}|:)([a-f\d]{1,4})?(:[a-f\d]{1,4}){1,6}$').match
@@ -142,6 +132,6 @@ isipv6 = re.compile(r'(([a-f\d]{1,4}:){1,6}|:)([a-f\d]{1,4})?(:[a-f\d]{1,4}){1,6
 
 def spawn_later(seconds, target, *args, **kwargs):
     def wrap(*args, **kwargs):
-        sleep(seconds)
-        return target(*args, **kwargs)
-    return thread.start_new_thread(wrap, args, kwargs)
+        __import__('time').sleep(seconds)
+        target(*args, **kwargs)
+    thread.start_new_thread(wrap, args, kwargs)
