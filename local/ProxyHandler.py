@@ -688,10 +688,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 rebuilt_request = rebuilt_request.encode()
             remote.sendall(rebuilt_request)
         local = self.connection
-        buf = bytearray(65536) # 64K
+        buf = bytearray(32768) # 32K
         maxpong = maxpong or timeout
         allins = [local, remote]
-        zeroretry = 2
         timecount = timeout
         try:
             while allins and timecount > 0:
@@ -705,11 +704,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if ndata:
                         other = local if sock is remote else remote
                         other.sendall(buf[:ndata])
-                        zeroretry = min(zeroretry+1, 2)
                         timecount = min(timecount*2, maxpong)
-                    elif zeroretry:
-                        zeroretry  -= 1
-                        logging.debug('Forward "%s" zero retry %d', self.path, zeroretry)
                     else:
                         allins.remove(sock)
         except NetWorkIOError as e:

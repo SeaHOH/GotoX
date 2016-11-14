@@ -26,6 +26,7 @@ class RangeFetch(object):
     waitsize = GC.AUTORANGE_WAITSIZE or 2
     lowspeed = GC.AUTORANGE_LOWSPEED or 1024*32
     timeout = min(max(GC.LINK_TIMEOUT-2, 1.5), 3)
+    sleeptime = GC.FINDER_MAXTIMEOUT/500.0
 
     def __init__(self, handler, url, headers, payload, response):
         self.tLock = threading.Lock()
@@ -71,7 +72,7 @@ class RangeFetch(object):
 
         #开始多线程时先测试一遍 IP
         if testallgaeip(True):
-            sleep(3)
+            sleep(self.sleeptime)
 
         for i in xrange(self.threads):
             range_delay_size = int((self.threads-i) * self.maxsize * self.threads * 0.66)

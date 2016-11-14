@@ -33,7 +33,7 @@ import select
 import random
 import OpenSSL
 from . import clogging as logging
-from time import time, strftime
+from time import time, localtime, strftime
 from .common import cert_dir, data_dir, NetWorkIOError, isip, isipv4, isipv6
 from .compat import PY3, xrange
 from .GlobalConfig import GC
@@ -42,13 +42,14 @@ from .GlobalConfig import GC
 #最大 IP 延时，单位：毫秒
 g_maxhandletimeout = GC.FINDER_MAXTIMEOUT or 1000
 #扫描得到的可用 IP 数量
-g_maxgaeipcnt = GC.FINDER_IPCNT or 12
+g_maxgaeipcnt = GC.FINDER_MINIPCNT or 12
 #扫描 IP 的线程数量
 g_maxthreads = GC.FINDER_THREADS or 10
 #容忍 badip 的次数
 g_timesblock = GC.FINDER_TIMESBLOCK or 2
 #屏蔽 badip 的时限，单位：小时
 g_blocktime = GC.FINDER_BLOCKTIME or 36
+g_blocktime *= 3600
 #是否允许 gvs IP: 0否，1是
 g_gvs = 1
 #连接超时设置，单位：秒
@@ -65,8 +66,7 @@ g_ipfile = os.path.join(data_dir, "ip.txt")
 g_ipexfile = os.path.join(data_dir, "ipex.txt")
 g_badfile = os.path.join(data_dir, "ip_bad.txt")
 g_badfilebak = os.path.join(data_dir, "ip_badbak.txt")
-g_statisticsfile = os.path.join(data_dir, "statistics.txt")
-g_statisticsfilebak = os.path.join(data_dir, "statisticsbak.txt")
+g_statisticsfilebak = os.path.join(data_dir, "statisticsbak")
 
 #加各时段 IP 延时，单位：毫秒
 timeToDelay = {    0 :   0,
@@ -96,30 +96,65 @@ elif GC.LINK_PROFILE == 'ipv46':
     ipnotuse = lambda x: not isip(x)
 
 def readstatistics():
+    def getnames():
+        now = time()
+        names = []
+        #生成统计文件名
+        for i in xrange(GC.FINDER_STATDAYS):
+            n = strftime('%y%j', localtime(now-3600*24*i))
+            name = os.path.join(data_dir, 'statistics'+n)
+            names.append(name)
+        #新建当日统计文件
+        if not os.path.exists(names[0]):
+            with open(names[0], 'w'): pass
+        #删除过期的统计文件
+        sfiles = [g_statisticsfilebak,]
+        sfiles.extend(names)
+        for file in os.listdir(data_dir):
+            if file.startswith('statistics'):
+                isdel = True
+                for sfile in sfiles:
+                    if sfile.endswith(file):
+                        isdel = False
+                        break
+                if isdel:
+                    os.remove(file)
+        return tuple(names)
+
+    print('stat read......')
     ipdict = {}
-    if os.path.exists(g_statisticsfile):
-        with open(g_statisticsfile, 'r') as fd:
-            for line in fd:
-                ips = line.split('*')
-                if len(ips) == 3:
-                    ip = ips[0].strip(' ')
-                    good = int(ips[1].strip(' '))
-                    bad = int(ips[2].strip('\r\n '))
-                    ipdict[ip] = good, bad
-    return ipdict
+    ipdicttoday = None
+    g.statisticsfiles = statisticsfiles = getnames()
+    for file in statisticsfiles:
+        if os.path.exists(file):
+            with open(file, 'r') as fd:
+                for line in fd:
+                    ips = line.split('*')
+                    if len(ips) == 3:
+                        ip = ips[0].strip(' ')
+                        if ip in ipdict:
+                            good = int(ips[1].strip(' ')) + ipdict[ip][0]
+                            bad = int(ips[2].strip('\r\n ')) + ipdict[ip][1]
+                        else:
+                            good = int(ips[1].strip(' '))
+                            bad = int(ips[2].strip('\r\n '))
+                        ipdict[ip] = good, bad
+        #复制当日统计数据
+        if ipdicttoday is None:
+            ipdicttoday = ipdict.copy()
+    return ipdict, ipdicttoday
 
 def savestatistics(statistics=None):
-    if os.path.exists(g_statisticsfile):
+    statisticsfile = g.statisticsfiles[0]
+    if os.path.exists(statisticsfile):
         if os.path.exists(g_statisticsfilebak):
             os.remove(g_statisticsfilebak)
-        os.rename(g_statisticsfile, g_statisticsfilebak)
-    statistics = statistics or g.statistics
+        os.rename(statisticsfile, g_statisticsfilebak)
+    statistics = statistics or g.statistics[1]
     statistics = [(ip, statistics[ip][0], statistics[ip][1]) for ip in statistics]
     statistics.sort(key=lambda x: (-(x[1] or 0.9)*1.7/(x[2]*x[2] or 0.1), x[2]))
-    op = 'wb'
-    if PY3:
-        op = 'w'
-    with open(g_statisticsfile, op) as f:
+    op = 'w' if PY3 else 'wb'
+    with open(statisticsfile, op) as f:
         for ip in statistics:
             f.write(str(ip[0]).rjust(15))
             f.write(' * ')
@@ -130,7 +165,8 @@ def savestatistics(statistics=None):
 
 #读取 checkgoogleip 输出 ip.txt
 def readiplist(nowgaeset):
-    goodset = set(g.statistics)
+    g.reloadlist = False
+    goodset = set(g.statistics[0])
     baddict = g.baddict
     blockset = set()
     weakset = set()
@@ -174,7 +210,7 @@ def readbadlist():
                 if len(ips) == 3:
                     onblocktime = int(ips[2])
                     blockedtime = int(time()) - onblocktime
-                    if blockedtime < g_blocktime * 3600:
+                    if blockedtime < g_blocktime:
                         ipdict[ips[0]] = int(ips[1]), onblocktime
     return ipdict
 
@@ -184,9 +220,7 @@ def savebadlist(baddict=None):
             os.remove(g_badfilebak)
         os.rename(g_badfile, g_badfilebak)
     baddict = baddict or g.baddict
-    op = 'wb'
-    if PY3:
-        op = 'w'
+    op = 'w' if PY3 else 'wb'
     with open(g_badfile, op) as f:
         for ip in baddict:
             f.write(' * '.join([ip, str(baddict[ip][0]), str(baddict[ip][1])]))
@@ -318,15 +352,17 @@ def runfinder(ip):
         else:
             #备用
             g.gaelistbak.append((ip, costtime, com, yt, gs))
-            if ip in statistics:
-                good = max(statistics[ip][0]-1, 0)
-                if good == 0:
-                    del statistics[ip]
-                else:
-                   statistics[ip] = good, statistics[ip][1]
+            for ipdict in statistics:
+                if ip in ipdict:
+                    good = max(ipdict[ip][0]-1, 0)
+                    if good == 0:
+                        del ipdict[ip]
+                    else:
+                        ipdict[ip] = good, ipdict[ip][1]
     else:
-        if ip in statistics:
-            statistics[ip] = statistics[ip][0], statistics[ip][1]+1
+        for ipdict in statistics:
+            if ip in ipdict:
+                ipdict[ip] = ipdict[ip][0], ipdict[ip][1]+1
         if ip in baddict: # badip 容忍次数 +1
             baddict[ip] = baddict[ip][0]+1, int(time())
         else: #记录检测到 badip 的时间
@@ -374,6 +410,7 @@ def randomip():
     return
 
 g.running = False
+g.reloadlist = False
 g.ipmtime = 0
 g.ipexmtime = 0
 g.statistics = readstatistics()
@@ -405,9 +442,14 @@ def getgaeip(nowgaelist=[], needcomcnt=0, threads=None):
         g.ipexlist, g.iplist, g.weaklist = readiplist(nowgaeset)
     elif (len(g.weaklist) < g.halfweak or    # 上一次加载 IP 时出过错的 IP
              time() - g.readtime > 8*3600 or # n 小时强制重载 IP
+             g.reloadlist or
              len(g.ipexlist) == len(g.iplist) == len(g.weaklist) == 0):
         g.ipexlist, g.iplist, g.weaklist = readiplist(nowgaeset)
-    statistics = g.statistics
+    #日期变更、重新加载统计文件
+    if not g.statisticsfiles[0].endswith(strftime('%y%j')):
+        savestatistics()
+        g.statistics = readstatistics()
+    statistics = g.statistics[0]
     statistics = [(ip, statistics[ip][0], statistics[ip][1]) for ip in statistics if ip not in nowgaeset]
     #根据统计数据排序（bad 降序、good 升序）供 pop 使用
     statistics.sort(key=lambda x: ((x[1] or 0.9)*1.7/(x[2]*x[2] or 0.1), -x[2]))
@@ -415,7 +457,7 @@ def getgaeip(nowgaelist=[], needcomcnt=0, threads=None):
     del nowgaelist, nowgaeset, statistics
     g.getgood = 0
     g.gaelist = []
-    g.gaelistbak = []
+    g.gaelistbak = gaelistbak = []
     g.pingcnt = 0
     PRINT(u'==================== 开始查找 GAE IP ====================')
     PRINT(u'需要查找 IP 数：%d/%d，待检测 IP 数：%d', needcomcnt, needgwscnt if needgwscnt > needcomcnt else needcomcnt, len(g.goodlist)+len(g.ipexlist)+len(g.iplist)+len(g.weaklist))
@@ -431,20 +473,21 @@ def getgaeip(nowgaelist=[], needcomcnt=0, threads=None):
         p.join()
     #结果
     savebadlist()
+    savestatistics()
     m = g.needcomcnt
-    if m > 0 and g.gaelistbak:
+    if m > 0 and gaelistbak:
         #补齐个数，以 google_com 为准
-        g.gaelistbak.sort(key=lambda x: (-x[2], x[1]))
-        comlistbak, g.gaelistbak = g.gaelistbak[:m], g.gaelistbak[m:]
+        gaelistbak.sort(key=lambda x: (-x[2], x[1]))
+        comlistbak, gaelistbak = gaelistbak[:m], gaelistbak[m:]
         g.gaelist.extend(comlistbak)
         m = len(comlistbak)
     else:
         m = 0
     n = g.needgwscnt - m
-    if n > 0 and g.gaelistbak:
+    if n > 0 and gaelistbak:
         #补齐个数
-        g.gaelistbak.sort(key=lambda x: x[1])
-        gwslistbak = g.gaelistbak[:m]
+        gaelistbak.sort(key=lambda x: x[1])
+        gwslistbak = gaelistbak[:m]
         g.gaelist.extend(gwslistbak)
         n = len(gwslistbak)
     else:

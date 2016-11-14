@@ -96,11 +96,11 @@ class GC():
     FILTER_SSLACTION = FILTER_SSLACTION if FILTER_SSLACTION in (1, 2, 3, 4) else 2
 
     FINDER_MINIPCNT = CONFIG.getint('finder', 'minipcnt')
-    FINDER_IPCNT = max(CONFIG.getint('finder', 'ipcnt'), FINDER_MINIPCNT)
     FINDER_MAXTIMEOUT = CONFIG.getint('finder', 'maxtimeout') or 1000
     FINDER_THREADS = CONFIG.getint('finder', 'threads')
     FINDER_BLOCKTIME = CONFIG.getint('finder', 'blocktime')
     FINDER_TIMESBLOCK = CONFIG.getint('finder', 'timesblock')
+    FINDER_STATDAYS = max(min(CONFIG.getint('finder', 'statdays'), 5), 2)
     FINDER_BLOCK = CONFIG.get('finder', 'block')
     FINDER_BLOCK = tuple(FINDER_BLOCK.split('|')) if FINDER_BLOCK else ()
 
