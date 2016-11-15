@@ -564,9 +564,10 @@ class HTTPUtil(BaseHTTPUtil):
                     logging.warning(u'%s create_%sconnection %r 失败：%r', ip, '' if port == 80 else 'ssl_', realurl or url, e)
                 else:
                     logging.warning(u'%s _request "%s %s" 失败：%r', ip, method, realurl or url, e)
-            if i == self.max_retry - 1:
-                logging.warning(u'%s request "%s %s" 失败', ip, method, realurl or url)
-                return None
+                if not realurl and e.args[0] == errno.ECONNRESET:
+                    raise e
+            #if i == self.max_retry - 1:
+            #    logging.warning(u'%s request "%s %s" 失败', ip, method, realurl or url)
 
 # Google video ip can act as Google FrontEnd if cipher suits not include
 # RC4-SHA

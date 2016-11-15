@@ -388,7 +388,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if response is None:
                     if retry == GC.GAE_FETCHMAX - 1:
                         self.write(b'HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n')
-                        self.write(message_html(u'502 资源获取失败', u'本地从 %r 获取资源失败' % self.url, str(errors)).encode('utf-8'))
+                        self.write(message_html(u'502 资源获取失败', u'本地从 GAE 获取 %r 失败' % self.url, str(errors)).encode('utf-8'))
                         return
                     else:
                         logging.warning(u'do_GAE 超时，url=%r，重试', self.url)
