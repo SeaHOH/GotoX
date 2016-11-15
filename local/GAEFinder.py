@@ -121,7 +121,7 @@ def readstatistics():
                     os.remove(file)
         return tuple(names)
 
-    print('stat read......')
+    print('stats read......')
     ipdict = {}
     ipdicttoday = None
     g.statisticsfiles = statisticsfiles = getnames()
@@ -133,8 +133,11 @@ def readstatistics():
                     if len(ips) == 3:
                         ip = ips[0].strip(' ')
                         if ip in ipdict:
-                            good = int(ips[1].strip(' ')) + ipdict[ip][0]
-                            bad = int(ips[2].strip('\r\n ')) + ipdict[ip][1]
+                            good, bad = ipdict[ip]
+                            # 小于 0 表示已删除、不加载之前的数据
+                            if good < 0: continue
+                            good += int(ips[1].strip(' '))
+                            bad += int(ips[2].strip('\r\n '))
                         else:
                             good = int(ips[1].strip(' '))
                             bad = int(ips[2].strip('\r\n '))
@@ -151,7 +154,7 @@ def savestatistics(statistics=None):
             os.remove(g_statisticsfilebak)
         os.rename(statisticsfile, g_statisticsfilebak)
     statistics = statistics or g.statistics[1]
-    statistics = [(ip, statistics[ip][0], statistics[ip][1]) for ip in statistics]
+    statistics = [(ip, stats[0], stats[1]) for ip, stats in statistics.items()]
     statistics.sort(key=lambda x: (-(x[1] or 0.9)*1.7/(x[2]*x[2] or 0.1), x[2]))
     op = 'w' if PY3 else 'wb'
     with open(statisticsfile, op) as f:
@@ -166,7 +169,7 @@ def savestatistics(statistics=None):
 #读取 checkgoogleip 输出 ip.txt
 def readiplist(nowgaeset):
     g.reloadlist = False
-    goodset = set(g.statistics[0])
+    goodset = set(g.goodlist)
     baddict = g.baddict
     blockset = set()
     weakset = set()
@@ -354,15 +357,17 @@ def runfinder(ip):
             g.gaelistbak.append((ip, costtime, com, yt, gs))
             for ipdict in statistics:
                 if ip in ipdict:
-                    good = max(ipdict[ip][0]-1, 0)
-                    if good == 0:
-                        del ipdict[ip]
-                    else:
-                        ipdict[ip] = good, ipdict[ip][1]
+                    ipdict[ip] = max(ipdict[ip][0]-1, 0), ipdict[ip][1]
     else:
         for ipdict in statistics:
             if ip in ipdict:
-                ipdict[ip] = ipdict[ip][0], ipdict[ip][1]+1
+                 good, bad = ipdict[ip]
+                 if good < 0: break
+                 #失败次数超出预期，设置 -1 表示删除
+                 if bad/max(good, 1) > 10:
+                     ipdict[ip] = -1, 0
+                 else:
+                     ipdict[ip] = max(good-1, 0), bad+1
         if ip in baddict: # badip 容忍次数 +1
             baddict[ip] = baddict[ip][0]+1, int(time())
         else: #记录检测到 badip 的时间
@@ -418,18 +423,25 @@ g.baddict = readbadlist()
 def getgaeip(nowgaelist=[], needcomcnt=0, threads=None):
     if g.running:
         return
-    #初始化
+    #获取参数
     g.running = True
     nowgaeset = set(nowgaelist)
-    needgwscnt = g_maxgaeipcnt - len(nowgaeset)
-    g.needgwscnt = needgwscnt = needgwscnt if needgwscnt > 0 else 0
-    g.needcomcnt = needcomcnt = needcomcnt if needcomcnt > 0 else 0
-    threads = threads or g_maxthreads
+    g.needgwscnt = needgwscnt = max(g_maxgaeipcnt - len(nowgaeset), 0)
+    g.needcomcnt = needcomcnt
     if needgwscnt == needcomcnt == 0:
         g.running = False
         return
-    nowtime = int(strftime('%H'))
-    g.maxhandletimeout = g_maxhandletimeout + timeToDelay[nowtime]
+    threads = threads or g_maxthreads
+    #日期变更、重新加载统计文件
+    if not g.statisticsfiles[0].endswith(strftime('%y%j')):
+        savestatistics()
+        g.statistics = readstatistics()
+    statistics = g.statistics[0]
+    statistics = [(ip, stats[0], stats[1]) for ip, stats in statistics.items() if ip not in nowgaeset and stats[0] >= 0]
+    #根据统计数据排序（bad 降序、good 升序）供 pop 使用
+    statistics.sort(key=lambda x: ((x[1] or 0.9)*1.7/(x[2]*x[2] or 0.1), -x[2]))
+    g.goodlist = [ip[0] for ip in statistics]
+    #检查 IP 数据修改时间
     ipmtime = ipexmtime = 0
     if os.path.exists(g_ipfile):
         ipmtime = os.path.getmtime(g_ipfile)
@@ -445,20 +457,12 @@ def getgaeip(nowgaelist=[], needcomcnt=0, threads=None):
              g.reloadlist or
              len(g.ipexlist) == len(g.iplist) == len(g.weaklist) == 0):
         g.ipexlist, g.iplist, g.weaklist = readiplist(nowgaeset)
-    #日期变更、重新加载统计文件
-    if not g.statisticsfiles[0].endswith(strftime('%y%j')):
-        savestatistics()
-        g.statistics = readstatistics()
-    statistics = g.statistics[0]
-    statistics = [(ip, statistics[ip][0], statistics[ip][1]) for ip in statistics if ip not in nowgaeset]
-    #根据统计数据排序（bad 降序、good 升序）供 pop 使用
-    statistics.sort(key=lambda x: ((x[1] or 0.9)*1.7/(x[2]*x[2] or 0.1), -x[2]))
-    g.goodlist = [ip[0] for ip in statistics]
     del nowgaelist, nowgaeset, statistics
     g.getgood = 0
     g.gaelist = []
     g.gaelistbak = gaelistbak = []
     g.pingcnt = 0
+    g.maxhandletimeout = g_maxhandletimeout + timeToDelay[int(strftime('%H'))]
     PRINT(u'==================== 开始查找 GAE IP ====================')
     PRINT(u'需要查找 IP 数：%d/%d，待检测 IP 数：%d', needcomcnt, needgwscnt if needgwscnt > needcomcnt else needcomcnt, len(g.goodlist)+len(g.ipexlist)+len(g.iplist)+len(g.weaklist))
     #多线程搜索
