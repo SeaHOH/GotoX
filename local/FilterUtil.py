@@ -29,13 +29,14 @@ def match_path_filter(filter, path):
 
 def get_action(scheme, host, path):
     schemes = ('', scheme)
-    if host in filters_cache:
+    key = scheme + host
+    if key in filters_cache:
         #以缓存规则进行匹配
-        filters = filters_cache[host]
-        for filter in filters:
-            if filters[filter][1] in schemes and match_path_filter(filter, path):
+        filters = filters_cache[key]
+        for filter, rule in filters.items():
+            if rule[1] in schemes and match_path_filter(filter, path):
                 #是否临时规则
-                target = filters[filter][0][1]
+                target = rule[0][1]
                 if isinstance(target, float):
                     # 15 分钟后恢复默认规则
                     if time() - target > 900:
@@ -44,31 +45,31 @@ def get_action(scheme, host, path):
                     #不包含元组元素（媒体文件）
                     elif not any(x in path for x in GC.AUTORANGE_ENDSWITH):
                         return 'do_GAE', ''
-                return filters[filter][0]
+                return rule[0]
     else:
         filter = None
         for filters in ACTION_FILTERS:
             if filters.action == FAKECERT:
                 continue
             for schemefilter, hostfilter, pathfilter, target in filters:
-                if match_host_filter(hostfilter, host):
+                if schemefilter in schemes and match_host_filter(hostfilter, host):
                     #建立主机条目
-                    if host not in filters_cache:
-                        filters_cache[host] = OrderedDict()
+                    if key not in filters_cache:
+                        filters_cache[key] = OrderedDict()
                     #填充规则到缓存
-                    if pathfilter not in filters_cache.cache[host]:
-                        filters_cache.cache[host][pathfilter] = (numToAct[filters.action], target), schemefilter
+                    if pathfilter not in filters_cache.cache[key]:
+                        filters_cache.cache[key][pathfilter] = (numToAct[filters.action], target), schemefilter
                     #匹配第一个，后面忽略
-                    if not filter and schemefilter in schemes and match_path_filter(pathfilter, path):
+                    if not filter and match_path_filter(pathfilter, path):
                         filter = numToAct[filters.action], target
         if filter:
             return filter
     #构建默认规则
     filter = (numToAct[GC.FILTER_ACTION], None), ''
-    if host not in filters_cache:
+    if key not in filters_cache:
         #只有一条规则使用普通字典
-        filters_cache[host] = {}
-    filters_cache[host][''] = filter
+        filters_cache[key] = {}
+    filters_cache[key][''] = filter
     return filter[0]
 
 def get_ssl_action(ssl, host):
