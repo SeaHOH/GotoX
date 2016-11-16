@@ -431,7 +431,7 @@ def getgaeip(nowgaelist=[], needcomcnt=0, threads=None):
     if needgwscnt == needcomcnt == 0:
         g.running = False
         return
-    threads = threads or g_maxthreads
+    threads = int(threads) or g_maxthreads
     #日期变更、重新加载统计文件
     if not g.statisticsfiles[0].endswith(strftime('%y%j')):
         savestatistics()
