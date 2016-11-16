@@ -71,9 +71,9 @@ g_statisticsfilebak = os.path.join(data_dir, "statisticsbak")
 #加各时段 IP 延时，单位：毫秒
 timeToDelay = {    0 :   0,
          1 :   0,  2 :   0,  3 :   0,  4 :   0,  5 :   0,  6 :   0, 
-         7 :  50,  8 : 100,  9 :  50, 10 : 150, 11 : 250, 12 : 350,
-        13 : 350, 14 : 300, 15 : 200, 16 : 250, 17 : 300, 18 : 350, 
-        19 : 350, 20 : 300, 21 : 150, 22 :  50, 23 :   0, 24 :   0
+         7 :   0,  8 :   0,  9 :  50, 10 :  50, 11 :  50, 12 : 100,
+        13 : 100, 14 : 100, 15 :  50, 16 :  50, 17 : 100, 18 : 100, 
+        19 : 150, 20 : 150, 21 : 150, 22 :  50, 23 :  50, 24 :   0
         }
 
 #全局可读写数据
@@ -118,7 +118,7 @@ def readstatistics():
                         isdel = False
                         break
                 if isdel:
-                    os.remove(file)
+                    os.remove(os.path.join(data_dir, file))
         return tuple(names)
 
     print('stats read......')
