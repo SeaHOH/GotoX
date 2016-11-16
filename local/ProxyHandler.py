@@ -83,12 +83,12 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     nLock = threading.Lock()
     nappid = 0
 
-    request_queue_size = 48
     fwd_timeout = GC.LINK_FWDTIMEOUT
     CAfile = 'http://gotox.net/ca'
 
     #可修改
     ssl_context_cache = LRUCache(32)
+    badhost = LRUCache(8, 120)
 
     #默认值
     ssl = False
@@ -294,10 +294,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.write('HTTP/1.1 404 %s\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n%s' % self.responses[404])
                     return
                 else:
-                    logging.warn(u'request "%s %s" 失败，尝试加入 "GAE" 规则 15 分钟', self.command, self.url)
+                    logging.warn(u'request "%s %s" 失败，尝试使用 "GAE" 规则。', self.command, self.url)
                     return self.go_GAE()
             if response.status == 403:
-                logging.warn(u'request "%s %s" 链接被拒绝，尝试加入 "GAE" 规则 15 分钟', self.command, self.url)
+                logging.warn(u'request "%s %s" 链接被拒绝，尝试使用 "GAE" 规则。', self.command, self.url)
                 return self.go_GAE()
             _, data, need_chunked = self.handle_response_headers(response)
             _, err = self.write_response_content(0, data, response, need_chunked)
@@ -306,7 +306,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         except NetWorkIOError as e:
             noerror = False
             if e.args[0] == errno.ECONNRESET:
-                logging.warn(u'request "%s %s" 链接被重置，尝试加入 "GAE" 规则 15 分钟', self.command, self.url)
+                logging.warn(u'request "%s %s" 链接被重置，尝试使用 "GAE" 规则。', self.command, self.url)
                 return self.go_GAE()
             elif e.args[0] in (10063, errno.ENAMETOOLONG):
                 logging.warn(u'%s request "%s %s" 失败：%r，返回 408', self.address_string(response), self.command, self.url, e)
@@ -667,8 +667,14 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def go_GAE(self):
         if self.command not in ('GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'PATCH'):
             return go_BAD(self)
-        #记录临时规则加入时间
-        filters_cache[self.host][''] = (numToAct[GC.FILTER_ACTION], time()), ''
+        host = self.host
+        #最近是否失败（缓存设置超时两分钟）
+        if host in self.badhost:
+            #记录临时规则加入时间
+            filters_cache[host][''] = (numToAct[GC.FILTER_ACTION], time()), ''
+            logging.warning(u'将 %r 加入 "GAE" 规则 15 分钟。', host)
+        else:
+            self.badhost[host] = True
         self.action = 'do_GAE'
         self.do_GAE()
 

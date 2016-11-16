@@ -54,6 +54,7 @@ from .ProxyHandler import AutoProxyHandler, GAEProxyHandler
 class LocalProxyServer(SocketServer.ThreadingTCPServer):
     """Local Proxy Server"""
     allow_reuse_address = True
+    request_queue_size = 48
 
     def close_request(self, request):
         try:
