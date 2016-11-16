@@ -7,7 +7,7 @@ import threading
 import random
 from . import clogging as logging
 from time import time, sleep
-from .compat import Queue, urlparse, xrange
+from .compat import Queue, thread, urlparse, xrange
 from .common import spawn_later
 from .GAEFetch import gae_urlfetch
 from .GlobalConfig import GC
@@ -23,7 +23,6 @@ class RangeFetch(object):
     bufsize = GC.AUTORANGE_BUFSIZE or 8192
     threads = GC.AUTORANGE_THREADS or 2
     minip = max(threads-2, 3)
-    waitsize = GC.AUTORANGE_WAITSIZE or 2
     lowspeed = GC.AUTORANGE_LOWSPEED or 1024*32
     timeout = min(max(GC.LINK_TIMEOUT-2, 1.5), 3)
     sleeptime = GC.FINDER_MAXTIMEOUT/500.0
@@ -64,19 +63,28 @@ class RangeFetch(object):
         logging.info(u'>>>>>>>>>>>>>>> RangeFetch 开始 %r %d-%d', self.url, start, end)
         self.write(('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k, v) for k, v in response_headers.items()))))
 
+        #开始多线程时先测试一遍 IP
+        sleeptime = self.sleeptime if testallgaeip(True) else 0
+
         data_queue = Queue.PriorityQueue()
         range_queue = Queue.PriorityQueue()
         range_queue.put((start, end))
-        for begin in xrange(end+1, length, self.maxsize):
-            range_queue.put((begin, min(begin+self.maxsize-1, length-1)))
-
-        #开始多线程时先测试一遍 IP
-        if testallgaeip(True):
-            sleep(self.sleeptime)
+        # py2 弃用，xrange 参数太大时会出错，range 不出错但耗时太多
+        #for begin in range(end+1, length, self.maxsize):
+        #    range_queue.put((begin, min(begin+self.maxsize-1, length-1)))
+        a = end + 1
+        b = end
+        n = (length-a)//self.maxsize
+        for i in xrange(n):
+            b += self.maxsize
+            range_queue.put((a, b))
+            a = b + 1
+        if length > a:
+            range_queue.put((a, length-1))
 
         for i in xrange(self.threads):
             range_delay_size = int((self.threads-i) * self.maxsize * self.threads * 0.66)
-            spawn_later(i*self.waitsize, self.__fetchlet, range_queue, data_queue, range_delay_size, i+1)
+            spawn_later(sleeptime if i else 0, self.__fetchlet, range_queue, data_queue, range_delay_size, i+1)
         has_peek = hasattr(data_queue, 'peek')
         peek_timeout = 120
         self.expect_begin = start
