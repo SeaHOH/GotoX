@@ -590,8 +590,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             #重设网址
             self.url = target
             #重设主机
-            self.url_parts = url_parts = urlparse.urlsplit(self.url)
+            self.url_parts = url_parts = urlparse.urlsplit(target)
             self.headers['Host'] = self.host = url_parts.netloc
+            #重设协议
+            self.ssl = url_parts.scheme == 'https'
             #重设路径
             self.path = self.url[self.url.find('/', self.url.find('//')+3):]
             #重设 action
@@ -724,23 +726,24 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def set_DNS(self):
         """Maintain a self-DNS map"""
         iporname = self.target or '' #替代默认的 None
-        if self.host in dns:
+        host = self.host
+        if host in dns:
             if isinstance(iporname, str) and iporname in GC.IPLIST_MAP:
                 return iporname
             else:
-                return self.host
+                return host
         if isinstance(iporname, list):
-            dns[self.host] = iporname
+            dns[host] = iporname
         elif iporname in GC.IPLIST_MAP:
-            dns[self.host] = GC.IPLIST_MAP[iporname]
+            dns[host] = GC.IPLIST_MAP[iporname]
             return iporname
         elif '.' in iporname or ':' in iporname:
-            dns[self.host] = iporname
+            dns[host] = iporname
         else:
-            dns[self.host] = iplist = dns_resolve(self.host)
+            dns[host] = iplist = dns_resolve(host)
             if not iplist:
                 return
-        return self.host
+        return host
 
     def get_ssl_context(self):
         """Keep a ssl_context cache"""
