@@ -23,18 +23,17 @@ from .compat import (
     xrange
     )
 from .common import (
-    config_dir,
     web_dir,
     NetWorkIOError,
     LRUCache,
     message_html,
     isip
     )
-from .common.dns import dns, dns_resolve
+from .common.dns import set_DNS, dns_resolve
 from .GlobalConfig import GC
 from .GAEUpdata import (
     testip,
-    addtoblocklist,
+    testipuseable,
     _refreship as refreship
     )
 from .HTTPUtil import (
@@ -46,9 +45,7 @@ from .HTTPUtil import (
 from .RangeFetch import RangeFetch
 from .GAEFetch import qGAE, gae_urlfetch
 from .FilterUtil import (
-    numToAct,
     filters_cache,
-    ssl_filters_cache,
     get_action,
     get_ssl_action
     )
@@ -105,8 +102,15 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.write = self.wfile.write
 
     def do_action(self):
-        """Log gws connects active time"""
-        if self.action == 'do_GAE' or self.action in ('do_DIRECT', 'do_FORWARD') and self.target and 'google' in self.target:
+        """Record gws connections active time"""
+        if self.action in ('do_DIRECT', 'do_FORWARD'):
+            self.hostname = hostname = set_DNS(self.host, self.target)
+            if hostname is None:
+                logging.error(u'无法解析主机：%r，请检查是否输入正确！', self.host)
+                return
+            elif hostname.startswith('google'):
+                testip.lastactive = time()
+        elif self.action == 'do_GAE':
             testip.lastactive = time()
         getattr(self, self.action)()
 
@@ -197,7 +201,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_METHOD(self):
         """handle others cmmand, do a filtered action"""
         if self._do_METHOD():
-            self.action, self.target = get_action(self.url_parts.scheme, self.host, self.path[1:])
+            self.action, self.target = get_action(self.url_parts.scheme, self.host, self.path[1:], self.url)
             self.do_action()
 
     do_GET = do_METHOD
@@ -208,7 +212,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     do_OPTIONS = do_METHOD
     do_PATCH = do_METHOD
 
-    def write_response_content(self, start, data, response, need_chunked):
+    def write_response_content(self, data, response, need_chunked):
+        wrote = 0
         err = None
         try:
             while data:
@@ -219,14 +224,14 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.write(b'\r\n')
                 else:
                     self.write(data)
-                    start += len(data)
+                    wrote += len(data)
                 data = response.read(8192)
         except Exception as e:
             err = e
         finally:
             if need_chunked:
                 self.write(b'0\r\n\r\n')
-            return start, err
+            return wrote, err
 
     def handle_request_headers(self):
         request_headers = dict((k.title(), v) for k, v in self.headers.items() if k.title() not in skip_request_headers)
@@ -276,11 +281,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_DIRECT(self):
         """Direct http relay"""
-        hostname = self.set_DNS()
-        if hostname is None:
-            logging.error(u'无法解析主机：%r，请检查是否输入正确！', self.host)
-            return
-        http_util = http_gws if 'google' in hostname else http_nor
+        hostname = self.hostname
+        http_util = http_gws if hostname.startswith('google') else http_nor
         response = None
         noerror = True
         request_headers, payload = self.handle_request_headers()
@@ -300,7 +302,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 logging.warn(u'request "%s %s" 链接被拒绝，尝试使用 "GAE" 规则。', self.command, self.url)
                 return self.go_GAE()
             _, data, need_chunked = self.handle_response_headers(response)
-            _, err = self.write_response_content(0, data, response, need_chunked)
+            _, err = self.write_response_content(data, response, need_chunked)
             if err:
                 raise err
         except NetWorkIOError as e:
@@ -329,7 +331,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             self.close_connection = 0
                     #放入套接字缓存
                     if self.ssl:
-                        if GC.GAE_KEEPALIVE or 'google' not in connection_cache_key:
+                        if GC.GAE_KEEPALIVE or not connection_cache_key.startswith('google'):
                             #放入套接字缓存
                             ssl_connection_cache[connection_cache_key].append((time(), response.sock))
                         else:
@@ -342,8 +344,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         """GAE http urlfetch"""
         if self.command not in ('GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'PATCH'):
             logging.warn(u'GAE 不支持 "%s %s"，转用 DIRECT', self.command, self.url)
-            self.action == 'do_DIRECT'
-            return self.do_DIRECT()
+            self.action = 'do_DIRECT'
+            return self.do_action()
         request_headers, payload = self.handle_request_headers()
         host = self.host
         path = self.url_parts.path
@@ -397,16 +399,15 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if response.app_status == 504:
                     logging.warning('do_GAE 网关错误，url=%r，重试', self.url)
                     continue
-                #无法提供 GAE 服务（Found｜Forbidden｜Bad Gateway｜Method Not Allowed）
+                #无法提供 GAE 服务（Found｜Forbidden｜Method Not Allowed｜Bad Gateway）
                 if response.app_status in (302, 403, 405, 502):
                     if hasattr(response, 'app_reason'):
                         #密码错误
                         logging.error(response.app_reason)
                     else:
-                        #移除不可用 IP
+                        #检查 IP 可用性
                         ip = response.xip[0]
-                        logging.warning(u'IP：%r 不支持 GAE 服务，正在删除……', ip)
-                        addtoblocklist(ip)
+                        testipuseable(ip)
                         noerror = False
                         continue
                 #当前 appid 流量完结(Service Unavailable)
@@ -446,7 +447,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 #输出服务端返回的错误信息
                 if response.app_status != 200:
                     _, data, need_chunked = self.handle_response_headers(response)
-                    self.write_response_content(0, data, response, need_chunked)
+                    self.write_response_content(data, response, need_chunked)
                     return
                 #处理 goproxy 错误信息（Bad Gateway）
                 if response.status == 502:
@@ -477,7 +478,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     start, end = 0, length-1
                 else:
                     start = 0
-                start, err = self.write_response_content(start, data, response, need_chunked)
+                wrote, err = self.write_response_content(data, response, need_chunked)
+                start += wrote
                 if err:
                     raise err
                 return
@@ -519,17 +521,14 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_FORWARD(self):
         """Forward socket"""
-        hostname = self.set_DNS()
-        if hostname is None:
-            logging.error(u'无法解析主机：%r，请检查是否输入正确！', self.host)
-            return
-        http_util = http_gws if 'google' in hostname else http_nor
+        hostname = self.hostname
+        http_util = http_gws if hostname.startswith('google') else http_nor
         host, port = self.host, self.port
         if not GC.PROXY_ENABLE:
             connection_cache_key = '%s:%d' % (hostname, port)
             for i in xrange(5):
                 try:
-                    remote = http_util.create_connection((host, port), self.fwd_timeout, cache_key=connection_cache_key)
+                    remote = http_util.create_connection((host, port), connection_cache_key, self.fwd_timeout)
                     if remote is not None:
                         break
                     elif i == 0:
@@ -570,7 +569,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_REDIRECT(self):
         """Redirect http"""
-        target = self.get_redirect()
+        target = self.target
         if not target:
             return
         logging.info(u'%s 重定向 %r 到 %r', self.address_string(), self.url, target)
@@ -578,7 +577,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_IREDIRECT(self):
         """Redirect http without 30X"""
-        target = self.get_redirect()
+        target = self.target
         if not target:
             return
         if target.startswith('file://'):
@@ -595,9 +594,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             #重设协议
             self.ssl = url_parts.scheme == 'https'
             #重设路径
-            self.path = self.url[self.url.find('/', self.url.find('//')+3):]
+            self.path = target[target.find('/', target.find('//')+3):]
             #重设 action
-            self.action, self.target = get_action(self.url_parts.scheme, self.host, self.path[1:])
+            self.action, self.target = get_action(self.url_parts.scheme, self.host, self.path[1:], target)
             self.do_action()
 
     def do_FAKECERT(self):
@@ -673,7 +672,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         #最近是否失败（缓存设置超时两分钟）
         if host in self.badhost:
             #记录临时规则加入时间
-            filters_cache[host][''] = (numToAct[GC.FILTER_ACTION], time()), ''
+            key = self.url_parts.scheme + host
+            filters_cache[key][-1] = '', '', 'do_GAE', time()
             logging.warning(u'将 %r 加入 "GAE" 规则 15 分钟。', host)
         else:
             self.badhost[host] = True
@@ -723,28 +723,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             remote.close()
             self.close_connection = 1
 
-    def set_DNS(self):
-        """Maintain a self-DNS map"""
-        iporname = self.target or '' #替代默认的 None
-        host = self.host
-        if host in dns:
-            if isinstance(iporname, str) and iporname in GC.IPLIST_MAP:
-                return iporname
-            else:
-                return host
-        if isinstance(iporname, list):
-            dns[host] = iporname
-        elif iporname in GC.IPLIST_MAP:
-            dns[host] = GC.IPLIST_MAP[iporname]
-            return iporname
-        elif '.' in iporname or ':' in iporname:
-            dns[host] = iporname
-        else:
-            dns[host] = iplist = dns_resolve(host)
-            if not iplist:
-                return
-        return host
-
     def get_ssl_context(self):
         """Keep a ssl_context cache"""
         host = self.host
@@ -763,20 +741,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             ssl_context.verify_mode = ssl.CERT_NONE
             ssl_context.load_cert_chain(certfile, keyfile)
             return ssl_context
-
-    def get_redirect(self):
-        '''Get the redirect target'''
-        rule = self.target[0]
-        if isinstance(rule, partial):
-            target = rule(self.url, 1)
-        elif isinstance(rule, tuple):
-            target = self.url.replace(*rule)
-        elif isinstance(rule, str) and self.target.find('://') < 9:
-            return self.target
-        else:
-            logging.error(u'%r 匹配重定向规则 %r，解析错误，请检查你的配置文件："%s/ActionFilter.ini"', self.url, self.target, config_dir)
-            return
-        return urlparse.unquote(target) if self.target[1] else target
 
     def send_CA(self):
         """Return CA cert file"""
