@@ -18,6 +18,28 @@ from local.GlobalConfig import GC
 
 dns = LRUCache(128, 4*60*60)
 
+def set_DNS(host, iporname):
+    iporname = iporname or ()
+    if host in dns:
+        if isinstance(iporname, str) and iporname in GC.IPLIST_MAP:
+            return iporname
+        else:
+            return host
+    if isinstance(iporname, list):
+        dns[host] = iporname
+    elif iporname in GC.IPLIST_MAP:
+        dns[host] = GC.IPLIST_MAP[iporname]
+        return iporname
+    elif '.' in iporname or ':' in iporname:
+        dns[host] = iporname
+    else:
+        iplist = dns_resolve(host)
+        if iplist:
+            dns[host] = iplist
+        else:
+            return
+    return host
+
 def dns_resolve(host, dnsservers=[]):
     if isip(host):
         return [host,]
@@ -86,4 +108,3 @@ def dns_remote_resolve(qname, dnsservers, blacklist, timeout):
     finally:
         for sock in socks:
             sock.close()
-
