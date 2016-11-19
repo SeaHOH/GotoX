@@ -19,7 +19,7 @@ from .GAEFinder import (
     timeToDelay,
     getgaeip,
     savestatistics,
-    savebadlist
+    #savebadlist
     )
 
 lLock = threading.Lock()
@@ -40,11 +40,11 @@ def removeip(ip):
             except:
                 pass
 
-def addtoblocklist(ip):
-    removeip(ip)
-    finder.baddict[ip] = [GC.FINDER_TIMESBLOCK+1, int(time())]
-    finder.reloadlist = True
-    savebadlist()
+#def addtoblocklist(ip):
+#    removeip(ip)
+#    finder.baddict[ip] = GC.FINDER_TIMESBLOCK+1, int(time())
+#    finder.reloadlist = True
+#    savebadlist()
 
 def _refreship(gaeip):
     with lLock:
@@ -60,7 +60,7 @@ def refreship(needcom=None, threads=None):
         needcom = max(GC.FINDER_MINIPCNT/3 - len(GC.IPLIST_MAP['google_com']), 0) 
     gaeip = getgaeip(GC.IPLIST_MAP['google_gws'], needcom, threads)
     #更新 IP
-    if gaeip and len(gaeip['google_gws']) > 0:
+    if gaeip and gaeip['google_gws']:
         _refreship(gaeip)
         #更新 proxy.user.ini
         cf = ConfigParser()
@@ -88,6 +88,15 @@ def gettimeout():
     timeout = max(GC.FINDER_MAXTIMEOUT*1.3, 1000) + min(len(GC.IPLIST_MAP['google_gws']), 20)*10 + timeToDelay[nowtime]
     return int(timeout)
 
+def testipuseable(ip):
+    timeout = gettimeout()
+    queobj = Queue.Queue()
+    http_gws.create_ssl_connection((ip, 443), 'google_gws:443', timeout/1000.0, queobj)
+    result = queobj.get()
+    if isinstance(result, Exception):
+        removeip(ip)
+        logging.warning(u'IP：%r 暂时不可用，已经删除', ip)
+
 def _testallgaeip():
     iplist = GC.IPLIST_MAP['google_gws']
     niplist = len(iplist or [])
@@ -99,7 +108,7 @@ def _testallgaeip():
     network_test()
     testip.queobj.queue.clear()
     for ip in iplist:
-        thread.start_new_thread(http_gws.create_ssl_connection, ((ip, 443), timeout/1000.0, testip.queobj))
+        thread.start_new_thread(http_gws.create_ssl_connection, ((ip, 443), 'google_gws:443', timeout/1000.0, testip.queobj))
     for i in xrange(niplist):
         result = testip.queobj.get()
         if isinstance(result, Exception):
@@ -152,7 +161,7 @@ def testonegaeip(again=False):
     statistics = finder.statistics
     network_test()
     testip.queobj.queue.clear()
-    http_gws.create_ssl_connection((ip, 443), timeout/1000.0, testip.queobj)
+    http_gws.create_ssl_connection((ip, 443), 'google_gws:443', timeout/1000.0, testip.queobj)
     result = testip.queobj.get()
     if isinstance(result, Exception):
         logging.warning(u'测试失败（超时：%d 毫秒）%s：%s，Bad IP 已删除' % (timeout,  '.'.join(x.rjust(3) for x in ip.split('.')), result.args[0]))

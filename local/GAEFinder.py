@@ -121,9 +121,9 @@ def readstatistics():
                     os.remove(os.path.join(data_dir, file))
         return tuple(names)
 
-    print('stats read......')
     ipdict = {}
     ipdicttoday = None
+    deledipset = set()
     g.statisticsfiles = statisticsfiles = getnames()
     for file in statisticsfiles:
         if os.path.exists(file):
@@ -132,15 +132,17 @@ def readstatistics():
                     ips = line.split('*')
                     if len(ips) == 3:
                         ip = ips[0].strip(' ')
+                        good = int(ips[1].strip(' '))
+                        bad = int(ips[2].strip('\r\n '))
+                        # 小于 0 表示已删除
+                        if good < 0:
+                            deledipset.add(ip)
                         if ip in ipdict:
-                            good, bad = ipdict[ip]
-                            # 小于 0 表示已删除、不加载之前的数据
-                            if good < 0: continue
-                            good += int(ips[1].strip(' '))
-                            bad += int(ips[2].strip('\r\n '))
-                        else:
-                            good = int(ips[1].strip(' '))
-                            bad = int(ips[2].strip('\r\n '))
+                            if ip in deledipset:
+                                continue
+                            cgood, cbad = ipdict[ip]
+                            good += cgood
+                            bad += cbad
                         ipdict[ip] = good, bad
         #复制当日统计数据
         if ipdicttoday is None:
@@ -155,7 +157,7 @@ def savestatistics(statistics=None):
         os.rename(statisticsfile, g_statisticsfilebak)
     statistics = statistics or g.statistics[1]
     statistics = [(ip, stats[0], stats[1]) for ip, stats in statistics.items()]
-    statistics.sort(key=lambda x: (-(x[1] or 0.9)*1.7/(x[2]*x[2] or 0.1), x[2]))
+    statistics.sort(key=lambda x: -(x[1]+1.0)/(x[2]**2+0.1))
     op = 'w' if PY3 else 'wb'
     with open(statisticsfile, op) as f:
         for ip in statistics:
@@ -168,7 +170,7 @@ def savestatistics(statistics=None):
 
 #读取 checkgoogleip 输出 ip.txt
 def readiplist(nowgaeset):
-    g.reloadlist = False
+    #g.reloadlist = False
     goodset = set(g.goodlist)
     baddict = g.baddict
     blockset = set()
@@ -415,7 +417,7 @@ def randomip():
     return
 
 g.running = False
-g.reloadlist = False
+#g.reloadlist = False
 g.ipmtime = 0
 g.ipexmtime = 0
 g.statistics = readstatistics()
@@ -439,7 +441,7 @@ def getgaeip(nowgaelist=[], needcomcnt=0, threads=None):
     statistics = g.statistics[0]
     statistics = [(ip, stats[0], stats[1]) for ip, stats in statistics.items() if ip not in nowgaeset and stats[0] >= 0]
     #根据统计数据排序（bad 降序、good 升序）供 pop 使用
-    statistics.sort(key=lambda x: ((x[1] or 0.9)*1.7/(x[2]*x[2] or 0.1), -x[2]))
+    statistics.sort(key=lambda x: (x[1]+1.0)/(x[2]**2+0.1))
     g.goodlist = [ip[0] for ip in statistics]
     #检查 IP 数据修改时间
     ipmtime = ipexmtime = 0
@@ -454,7 +456,7 @@ def getgaeip(nowgaelist=[], needcomcnt=0, threads=None):
         g.ipexlist, g.iplist, g.weaklist = readiplist(nowgaeset)
     elif (len(g.weaklist) < g.halfweak or    # 上一次加载 IP 时出过错的 IP
              time() - g.readtime > 8*3600 or # n 小时强制重载 IP
-             g.reloadlist or
+             #g.reloadlist or
              len(g.ipexlist) == len(g.iplist) == len(g.weaklist) == 0):
         g.ipexlist, g.iplist, g.weaklist = readiplist(nowgaeset)
     del nowgaelist, nowgaeset, statistics
