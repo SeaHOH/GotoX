@@ -30,7 +30,8 @@ import ssl
 import socket
 NetWorkIOError = (socket.error, ssl.SSLError, OSError) if not OpenSSL else (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
 
-
+import threading
+import collections
 class LRUCache(object):
     """Modified from http://pypi.python.org/pypi/lru/"""
 
@@ -38,57 +39,66 @@ class LRUCache(object):
         self.cache = {}
         self.max_items = int(max_items)
         self.expire = expire
-        if expire:
-            self.key_expire = {}
-        self.key_order = []
+        self.key_expire = {}
+        self.key_order = collections.deque()
+        self.lock = threading.Lock()
 
-    def __setitem__(self, key, value):
-        self.cache[key] = value
-        if self.expire:
-            self.key_expire[key] = int(time()) + self.expire
-        self._mark(key)
+    def __setitem__(self, key, value, expire=None):
+        expire = expire or self.expire
+        with self.lock:
+            if expire:
+                self.key_expire[key] = int(time()) + expire
+            self._mark(key)
+            self.cache[key] = value
 
     def __getitem__(self, key):
-        if self.expire:
+        with self.lock:
             self._expire_check(key)
-        value = self.cache[key]
-        self._mark(key)
-        return value
+            if key in self.cache:
+                self._mark(key)
+                return self.cache[key]
+            else:
+                raise KeyError(key)
 
     def __contains__(self, key):
-        if self.expire:
+        with self.lock:
             self._expire_check(key)
-        return key in self.cache
+            return key in self.cache
 
     def get(self, key, value=None):
-        if key in self:
-            return self[key]
-        return value
+        with self.lock:
+            self._expire_check(key)
+            if key in self.cache:
+                self._mark(key)
+                return self.cache[key]
+            else:
+                return value
 
     def _expire_check(self, key):
-        if key in self.cache and time() > self.key_expire[key]:
+        if key in self.key_expire and time() > self.key_expire[key]:
             self.key_order.remove(key)
             del self.key_expire[key]
             del self.cache[key]
 
     def _mark(self, key):
-        try:
-            self.key_order.remove(key)
-        except ValueError:
-            pass
-        self.key_order.append(key)
-        while len(self.key_order) > self.max_items:
-            key = self.key_order[0]
-            del self.key_order[0]
-            if self.expire:
+        key_order = self.key_order
+        if key in self.cache:
+            try:
+                key_order.remove(key)
+            except ValueError:
+                pass
+        key_order.appendleft(key)
+        while len(key_order) > self.max_items:
+            key = key_order.pop()
+            if key in self.key_expire:
                 del self.key_expire[key]
             del self.cache[key]
 
     def clear(self):
-        self.cache.clear()
-        if self.expire:
+        with self.lock:
+            self.cache.clear()
             self.key_expire.clear()
-        del self.key_order[:]
+            self.key_order.clear()
 
 import string
 def message_html(title, banner, detail=''):
