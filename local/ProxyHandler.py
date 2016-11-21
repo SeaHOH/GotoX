@@ -376,10 +376,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 logging.warning(u'do_GAE 由于有上传数据 "%s %s" 终止重试', self.command, self.url)
                 return
             with self.nLock:
-                self.__class__.nappid += 1
-                if self.__class__.nappid >= len(GC.GAE_APPIDS):
-                    self.__class__.nappid = 0
-                appid = GC.GAE_APPIDS[self.__class__.nappid]
+                nappid = self.__class__.nappid + 1
+                if nappid >= len(GC.GAE_APPIDS):
+                    nappid = 0
+                self.__class__.nappid = nappid
+                appid = GC.GAE_APPIDS[nappid]
             noerror = True
             need_chunked = False
             data = b''
@@ -415,7 +416,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if len(GC.GAE_APPIDS) > 1:
                         GC.GAE_APPIDS.remove(appid)
                         for i in xrange(GC.GAE_MAXREQUESTS):
-                            qGAE.get(True)
+                            qGAE.get()
                         #appid = None
                         logging.info(u'当前 appid[%s] 流量使用完毕，切换下一个…', appid)
                         self.do_GAE()
@@ -434,7 +435,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if len(GC.GAE_APPIDS) > 1:
                         GC.GAE_APPIDS.remove(appid)
                         for i in xrange(GC.GAE_MAXREQUESTS):
-                            qGAE.get(True)
+                            qGAE.get()
                         #appid = None
                         logging.warning(u'APPID %r 不存在，将被移除', appid)
                         continue
@@ -504,6 +505,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     #重试请求失败
                     logging.exception(u'%s do_GAE "%s %s" 失败：%r', self.address_string(response), self.command, self.url, e)
             finally:
+                qGAE.put(True)
                 if response:
                     response.close()
                     if noerror:

@@ -73,7 +73,6 @@ def gae_urlfetch(method, url, headers, payload, appid, timeout=None, rangefetch=
     realurl = 'GAE-' + url
     qGAE.get() # get start from Queue
     response = http_gws.request(request_params, payload, request_headers, connection_cache_key=connection_cache_key, timeout=timeout, rangefetch=rangefetch, realurl=realurl)
-    qGAE.put(True) # put back
     if response is None:
         return None
     response.app_status = response.status

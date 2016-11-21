@@ -9,7 +9,7 @@ from . import clogging as logging
 from time import time, sleep
 from .compat import Queue, thread, urlparse, xrange
 from .common import spawn_later
-from .GAEFetch import gae_urlfetch
+from .GAEFetch import qGAE, gae_urlfetch
 from .GlobalConfig import GC
 from .HTTPUtil import ssl_connection_cache
 from .GAEUpdata import testip, testallgaeip
@@ -150,6 +150,7 @@ class RangeFetch(object):
                     while start - self.expect_begin > self.maxsize and data_queue.qsize() * self.bufsize > range_delay_size:
                         sleep(0.1)
                     if self.response:
+                        qGAE.get()
                         response = self.response
                         self.response = None
                     else:
@@ -213,6 +214,7 @@ class RangeFetch(object):
                 logging.exception(u'RangeFetch._fetchlet 错误：%r', e)
                 raise
             finally:
+                qGAE.put(True)
                 if appid:
                     self.appids.put(appid)
                 if response:

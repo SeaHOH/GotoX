@@ -21,7 +21,7 @@ from .compat import (
     thread,
     httplib,
     urlparse,
-    xrange,
+    xrange
     )
 from .common.dns import dns, dns_resolve
 from .common.proxy import parse_proxy
@@ -126,7 +126,7 @@ linkkeeptime = GC.LINK_KEEPTIME
 gaekeeptime = GC.GAE_KEEPTIME
 cachetimeout = GC.FINDER_MAXTIMEOUT * 1.2 / 1000
 import collections
-from common import LRUCache
+from .common import LRUCache
 tcp_connection_time = LRUCache(256)
 ssl_connection_time = LRUCache(256)
 tcp_connection_cache = collections.defaultdict(collections.deque)
@@ -210,6 +210,16 @@ def check_ssl_connection_cache():
 thread.start_new_thread(check_tcp_connection_cache, ())
 thread.start_new_thread(check_ssl_connection_cache, ())
 
+connect_limiter = LRUCache(512)
+def set_connect_start(ip):
+    if ip not in connect_limiter:
+        #只是限制同时正在发起的链接数，并不限制链接的总数，所以设定尽量小的数字
+        connect_limiter[ip] = Queue.LifoQueue(3)
+    connect_limiter[ip].put(True)
+
+def set_connect_finish(ip):
+    connect_limiter[ip].get()
+
 class HTTPUtil(BaseHTTPUtil):
     """HTTP Request Class"""
 
@@ -235,6 +245,7 @@ class HTTPUtil(BaseHTTPUtil):
     def create_connection(self, address, cache_key, timeout=None, source_address=None, **kwargs):
         def _create_connection(ipaddr, timeout, queobj):
             sock = None
+            ip = ipaddr[0]
             try:
                 # create a ipv4/ipv6 socket object
                 sock = socket.socket(socket.AF_INET if ':' not in ipaddr[0] else socket.AF_INET6)
@@ -248,6 +259,7 @@ class HTTPUtil(BaseHTTPUtil):
                 sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
                 # set a short timeout to trigger timeout retry more quickly.
                 sock.settimeout(1)
+                set_connect_start(ip)
                 # start connection time record
                 start_time = time()
                 # TCP connect
@@ -267,6 +279,8 @@ class HTTPUtil(BaseHTTPUtil):
                 tcp_connection_time[ipaddr] = self.max_timeout+random.random()
                 # close tcp socket
                 sock.close()
+            finally:
+                set_connect_finish(ip)
         def _close_connection(count, queobj, first_tcp_time):
             now = time()
             tcp_time_threshold = max(min(1.5, 1.5 * first_tcp_time), 0.5)
@@ -274,12 +288,11 @@ class HTTPUtil(BaseHTTPUtil):
             for i in xrange(count):
                 sock = queobj.get()
                 if isinstance(sock, socket.socket):
-                    if sock.tcp_time < tcp_time_threshold:
+                    if False and sock.tcp_time < tcp_time_threshold:
                         cache.append((now, sock))
                     else:
                         sock.close()
 
-        host, port = address
         try:
             keeptime = gaekeeptime if cache_key.startswith('google') else linkkeeptime
             cache = tcp_connection_cache[cache_key]
@@ -289,20 +302,16 @@ class HTTPUtil(BaseHTTPUtil):
                 if rd or ed or time()-ctime > keeptime:
                     sock.close()
                 else:
-                    cport = sock.xip[1]
-                    if cport == port:
-                        logging.debug('%r%r',cport,address)
-                        return sock
-                    else:
-                        sock.close()
+                    return sock
         except IndexError:
             pass
         result = None
+        host, port = address
         addresses = [(x, port) for x in dns_resolve(host)]
         if port == 443:
-            get_connection_time = lambda addr: tcp_connection_time.get(addr) or ssl_connection_time.get(addr)
+            get_connection_time = lambda addr: tcp_connection_time.get(addr, False) or ssl_connection_time.get(addr, False)
         else:
-            get_connection_time = tcp_connection_time.get
+            get_connection_time = lambda addr: tcp_connection_time.get(addr, False)
         for i in xrange(self.max_retry):
             addresseslen = len(addresses)
             addresses.sort(key=get_connection_time)
@@ -322,7 +331,7 @@ class HTTPUtil(BaseHTTPUtil):
                     #临时移除 badip
                     try:
                         addresses.remove(addr)
-                    except Exception:
+                    except ValueError:
                         pass
                     if i == 0:
                         #only output first error
@@ -338,6 +347,7 @@ class HTTPUtil(BaseHTTPUtil):
         def _create_ssl_connection(ipaddr, timeout, queobj, retry=None):
             sock = None
             ssl_sock = None
+            ip = ipaddr[0]
             try:
                 # create a ipv4/ipv6 socket object
                 sock = socket.socket(socket.AF_INET if ':' not in ipaddr[0] else socket.AF_INET6)
@@ -355,6 +365,7 @@ class HTTPUtil(BaseHTTPUtil):
                 ssl_sock = self.get_ssl_socket(sock, server_hostname)
                 # set a short timeout to trigger timeout retry more quickly.
                 ssl_sock.settimeout(1)
+                set_connect_start(ip)
                 # start connection time record
                 start_time = time()
                 # TCP connect
@@ -402,6 +413,8 @@ class HTTPUtil(BaseHTTPUtil):
                         return _create_ssl_connection(ipaddr, timeout, test, True)
                     return test.put(e)
                 queobj.put(e)
+            finally:
+                set_connect_finish(ip)
 
         def _close_ssl_connection(count, queobj, first_ssl_time):
             now = time()
@@ -435,7 +448,7 @@ class HTTPUtil(BaseHTTPUtil):
         addresses = [(x, port) for x in dns_resolve(host)]
         for i in xrange(self.max_retry):
             addresseslen = len(addresses)
-            addresses.sort(key=ssl_connection_time.get)
+            addresses.sort(key=lambda addr: ssl_connection_time.get(addr, False))
             if rangefetch:
                 #按线程数量获取排序靠前的 IP
                 addrs = addresses[:GC.AUTORANGE_THREADS+1]
@@ -457,7 +470,7 @@ class HTTPUtil(BaseHTTPUtil):
                     #临时移除 badip
                     try:
                         addresses.remove(addr)
-                    except Exception:
+                    except ValueError:
                         pass
                     if i == 0:
                         #only output first error
@@ -549,10 +562,19 @@ class HTTPUtil(BaseHTTPUtil):
         #        logging.exception('crlf skip read')
         #        raise e
 
-        response = httplib.HTTPResponse(sock) if PY3 else httplib.HTTPResponse(sock, buffering=True)
-        response.begin()
+        try:
+            response = httplib.HTTPResponse(sock) if PY3 else httplib.HTTPResponse(sock, buffering=True)
+            #exc_clear()
+            response.begin()
+        except Exception as e:
+            #这里有时会捕捉到奇怪的异常，找不到来源路径
+            # py2 的 raise 不带参数会导致捕捉到错误的异常，但使用 exc_clear 或换用 py3 还是会出现
+            if hasattr(e, 'xip'):
+                #logging.warning('4444 %r | %r | %r', sock.getpeername(), sock.xip, e.xip)
+                del e.xip
+            raise e
 
-        response.xip = sock.xip
+        response.xip =  sock.xip
         response.sock = sock
         return response
 
@@ -593,7 +615,7 @@ class HTTPUtil(BaseHTTPUtil):
                     sock.close()
                 if hasattr(e, 'xip'):
                     ip = e.xip
-                    logging.warning(u'%s create_%sconnection %r 失败：%r', ip[0], '' if port == 80 else 'ssl_', realurl or url, e)
+                    logging.warning(u'%s create_%s connection %r 失败：%r', ip[0], '' if port == 80 else 'ssl_', realurl or url, e)
                 else:
                     logging.warning(u'%s _request "%s %s" 失败：%r', ip[0], method, realurl or url, e)
                     if realurl:
