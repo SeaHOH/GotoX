@@ -151,7 +151,7 @@ def testonegaeip(again=False):
     if not again:
         with tLock:
             if (updataip.running
-                    or time() - testip.lasttest < 6  #强制 x 秒间隔
+                    or time() - testip.lasttest < 120/(len(GC.IPLIST_MAP['google_gws']) or 1)  #强制 x 秒间隔
                     or testip.running):
                 return
             testip.running = 1
@@ -199,7 +199,7 @@ def testipserver():
         try:
             if not testip.lastactive:                    #启动时
                 testallgaeip()
-            elif (time() - testip.lastactive > 150/(len(GC.IPLIST_MAP['google_gws']) or 1) or # X 秒钟未使用
+            elif (time() - testip.lastactive > 6 or # X 秒钟未使用
                     time() - testip.lasttest > 30):  #强制 X 秒钟检测
                     #and not GC.PROXY_ENABLE              #无代理
                 testonegaeip()
