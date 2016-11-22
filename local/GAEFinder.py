@@ -332,6 +332,8 @@ def runfinder(ip):
         remain = len(g.goodlist) + len(g.ipexlist) + len(g.iplist) + len(g.weaklist) + g.pingcnt
     #判断是否可用
     if isgaeserver(servername):
+        with gLock:
+            g.testedok += 1
         if ip in baddict: #删除未到容忍次数的 badip
             del baddict[ip]
         PRINT(u'剩余：%s，%s，%sms，%s', str(remain).rjust(4), ip.rjust(15),
@@ -374,8 +376,8 @@ def runfinder(ip):
             baddict[ip] = baddict[ip][0]+1, int(time())
         else: #记录检测到 badip 的时间
             baddict[ip] = 1, int(time())
-    #满足数量后停止
-    if g.needcomcnt < 1 and g.needgwscnt < 1:
+    #测试了足够多 IP 数目或达标 IP 满足数量后停止
+    if g.testedok > g.testok or g.needgwscnt < 1 and g.needcomcnt < 1:
         return True
 
 class Finder(threading.Thread):
@@ -464,6 +466,8 @@ def getgaeip(nowgaelist=[], needcomcnt=0, threads=None):
     g.gaelist = []
     g.gaelistbak = gaelistbak = []
     g.pingcnt = 0
+    g.testedok = 0
+    g.testok = g.needgwscnt * 8
     g.maxhandletimeout = g_maxhandletimeout + timeToDelay[int(strftime('%H'))]
     PRINT(u'==================== 开始查找 GAE IP ====================')
     PRINT(u'需要查找 IP 数：%d/%d，待检测 IP 数：%d', needcomcnt, needgwscnt if needgwscnt > needcomcnt else needcomcnt, len(g.goodlist)+len(g.ipexlist)+len(g.iplist)+len(g.weaklist))
@@ -493,7 +497,7 @@ def getgaeip(nowgaelist=[], needcomcnt=0, threads=None):
     if n > 0 and gaelistbak:
         #补齐个数
         gaelistbak.sort(key=lambda x: x[1])
-        gwslistbak = gaelistbak[:m]
+        gwslistbak = gaelistbak[:n]
         g.gaelist.extend(gwslistbak)
         n = len(gwslistbak)
     else:
