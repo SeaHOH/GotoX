@@ -467,10 +467,10 @@ def getgaeip(nowgaelist=[], needcomcnt=0, threads=None):
     g.gaelistbak = gaelistbak = []
     g.pingcnt = 0
     g.testedok = 0
-    g.testok = g.needgwscnt * 8
+    g.testok = max(needgwscnt * 8, g.needcomcnt * 16)
     g.maxhandletimeout = g_maxhandletimeout + timeToDelay[int(strftime('%H'))]
     PRINT(u'==================== 开始查找 GAE IP ====================')
-    PRINT(u'需要查找 IP 数：%d/%d，待检测 IP 数：%d', needcomcnt, needgwscnt if needgwscnt > needcomcnt else needcomcnt, len(g.goodlist)+len(g.ipexlist)+len(g.iplist)+len(g.weaklist))
+    PRINT(u'需要查找 IP 数：%d/%d，待检测 IP 数：%d', needcomcnt, max(needgwscnt, needcomcnt), len(g.goodlist)+len(g.ipexlist)+len(g.iplist)+len(g.weaklist))
     #多线程搜索
     threadiplist = []
     for i in xrange(threads):
