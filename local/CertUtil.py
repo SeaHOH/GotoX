@@ -14,7 +14,6 @@ from time import time
 from .common import cert_dir
 crypto = OpenSSL.crypto
 
-
 ca_vendor = 'GotoX'
 ca_certfile = os.path.join(cert_dir, 'CA.crt')
 ca_keyfile = os.path.join(cert_dir, 'CAkey.pem')
@@ -27,7 +26,7 @@ sub_keyfile = os.path.join(cert_dir, 'subkey.pem')
 sub_key = None
 sub_lock = threading.Lock()
 sub_serial = 3600*24*365*46
-sub_time = 3600*24*(365*10+10//4)
+sub_time = 3600*24*(365*10+10//4-1)
 
 def create_ca():
     pkey = crypto.PKey()
@@ -42,8 +41,9 @@ def create_ca():
     subject.organizationName = ca_vendor
     subject.organizationalUnitName = '%s Root' % ca_vendor
     subject.commonName = '%s CA' % ca_vendor
-    ca.gmtime_adj_notBefore(0)
-    ca.gmtime_adj_notAfter(3600*24*(365*30+30//4))
+    #某些认证机制会检查签署时间与当前时间之差
+    ca.gmtime_adj_notBefore(-3600*24)
+    ca.gmtime_adj_notAfter(3600*24*(365*30+30//4-24))
     ca.set_issuer(subject)
     ca.set_pubkey(pkey)
     ca.add_extensions([
@@ -90,7 +90,8 @@ def create_subcert(certfile, commonname, ip=False, sans=[]):
     sans = ', '.join('DNS: %s' % x for x in sans)
     if not isinstance(sans, bytes):
         sans = sans.encode()
-    cert.gmtime_adj_notBefore(0)
+    #某些认证机制会检查签署时间与当前时间之差
+    cert.gmtime_adj_notBefore(-3600)
     cert.gmtime_adj_notAfter(sub_time)
     cert.set_issuer(ca_subject)
     cert.set_pubkey(sub_key)
