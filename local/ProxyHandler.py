@@ -81,7 +81,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     nappid = 0
 
     fwd_timeout = GC.LINK_FWDTIMEOUT
-    CAfile = 'http://gotox.net/ca'
+    CAfile = 'http://gotox.go/ca'
 
     #可修改
     ssl_context_cache = LRUCache(32)
