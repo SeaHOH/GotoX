@@ -20,7 +20,7 @@
     * **相关链接**
     * 简易教程 https://github.com/phuslu/goproxy/blob/wiki/SimpleGuide.md
     * 常见问题 https://github.com/phuslu/goproxy/blob/wiki/FAQ.md
-* 成功运行后会创建独一无二的 CA 证书，证书名称为：“**GotoX CA**”。配置好代理后，按照提示在浏览器中输入 CA 证书地址 “**http://gotox.net/ca**” 可安装到浏览器，或在以上地址后加任意字符即可下载，然后手动导入系统，还可在“**cert**”文件夹找到“**CA.crt**”证书文件。由于还不完善，暂时不打算启用自动导入和删除功能，如有需求请手动删除老旧证书。
+* 成功运行后会创建独一无二的 CA 证书，证书名称为：“**GotoX CA**”。配置好代理后，按照提示在浏览器中输入 CA 证书地址 “**http://gotox.go/ca**” 可安装到浏览器，或在以上地址后加任意字符即可下载，然后手动导入系统，还可在“**cert**”文件夹找到“**CA.crt**”证书文件。由于还不完善，暂时不打算启用自动导入和删除功能，如有需求请手动删除老旧证书。
     * **相关链接**
     * 手动导入证书 https://github.com/XX-net/XX-Net/wiki/GoAgent-Import-CA
 
