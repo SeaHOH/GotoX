@@ -132,6 +132,8 @@ def readstatistics():
                     ips = line.split('*')
                     if len(ips) == 3:
                         ip = ips[0].strip(' ')
+                        if ip.startswith(g_block):
+                            continue
                         good = int(ips[1].strip(' '))
                         bad = int(ips[2].strip('\r\n '))
                         # 小于 0 表示已删除
@@ -391,12 +393,13 @@ class Finder(threading.Thread):
 
 def _randomip(iplist):
     cnt = len(iplist)
-    a = random.randint(0, cnt - 1)
-    b = int(random.random() * (cnt - 0.1))
-    if random.random() > 0.7: #随机分布概率偏向较小数值
-        n =  max(a, b)
-    else:
-        n =  min(a, b)
+    #a = random.randint(0, cnt - 1)
+    #b = int(random.random() * (cnt - 0.1))
+    #if random.random() > 0.7: #随机分布概率偏向较小数值
+    #    n =  max(a, b)
+    #else:
+    #    n =  min(a, b)
+    n = int(random.random() * (cnt - 0.1))
     ip = iplist[n]
     del iplist[n]
     g.pingcnt += 1
@@ -440,6 +443,9 @@ def getgaeip(nowgaelist=[], needcomcnt=0, threads=None):
     if not g.statisticsfiles[0].endswith(strftime('%y%j')):
         savestatistics()
         g.statistics = readstatistics()
+    # goodlist 根据统计来排序已经足够，不依据 baddict 来排除 IP
+    #不然干扰严重时可能过多丢弃可用 IP
+    # baddict 只用来排除没有进入统计的IP 以减少尝试次数
     statistics = g.statistics[0]
     statistics = [(ip, stats[0], stats[1]) for ip, stats in statistics.items() if ip not in nowgaeset and stats[0] >= 0]
     #根据统计数据排序（bad 降序、good 升序）供 pop 使用
