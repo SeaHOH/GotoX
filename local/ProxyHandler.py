@@ -283,6 +283,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         """Direct http relay"""
         hostname = self.hostname
         http_util = http_gws if hostname.startswith('google') else http_nor
+        path = self.url_parts.path
         response = None
         noerror = True
         request_headers, payload = self.handle_request_headers()
@@ -291,14 +292,15 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             connection_cache_key = '%s:%d' % (hostname, self.port)
             response = http_util.request(self, payload, request_headers, crlf=need_crlf, connection_cache_key=connection_cache_key, timeout=self.fwd_timeout)
             if not response:
-                if self.target is not None or self.url_parts.path.endswith('ico'): #非默认规则、网站图标
+                if self.target is not None or path.endswith('ico') or any(path.endswith(x) for x in GC.AUTORANGE_ENDSWITH):
+                    #非默认规则、网站图标、符合自动多线程规则
                     logging.warn(u'request "%s %s" 失败，返回 404', self.command, self.url)
                     self.write('HTTP/1.1 404 %s\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n%s' % self.responses[404])
                     return
                 else:
                     logging.warn(u'request "%s %s" 失败，尝试使用 "GAE" 规则。', self.command, self.url)
                     return self.go_GAE()
-            if response.status == 403:
+            if response.status == 403 and not any(path.endswith(x) for x in GC.AUTORANGE_ENDSWITH): #不符合自动多线程规则
                 logging.warn(u'request "%s %s" 链接被拒绝，尝试使用 "GAE" 规则。', self.command, self.url)
                 return self.go_GAE()
             _, data, need_chunked = self.handle_response_headers(response)
@@ -307,7 +309,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 raise err
         except NetWorkIOError as e:
             noerror = False
-            if e.args[0] == errno.ECONNRESET:
+            if e.args[0] == errno.ECONNRESET and not any(path.endswith(x) for x in GC.AUTORANGE_ENDSWITH): #不符合自动多线程规则
                 logging.warn(u'request "%s %s" 链接被重置，尝试使用 "GAE" 规则。', self.command, self.url)
                 return self.go_GAE()
             elif e.args[0] in (10063, errno.ENAMETOOLONG):
@@ -675,7 +677,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if host in self.badhost:
             #记录临时规则加入时间
             key = self.url_parts.scheme + host
-            filters_cache[key][-1] = '', '', 'do_GAE', time()
+            filters_cache[key][-1] = '', '', 'TEMPGAE', time()
             logging.warning(u'将 %r 加入 "GAE" 规则 15 分钟。', host)
         else:
             self.badhost[host] = True

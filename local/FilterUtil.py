@@ -70,13 +70,15 @@ def get_action(scheme, host, path, url):
                     else:
                         continue
                 #是否临时规则
-                if isinstance(target, float):
+                if action == 'TEMPGAE':
                     # 15 分钟后恢复默认规则
                     if time() - target > 900:
                         filters[-1] = filter_DEF
-                    #自动多线程不持续使用临时 GAE 规则，仍尝试默认设置
-                    #不包含元组元素（媒体文件）
-                    elif not any(x in path for x in GC.AUTORANGE_ENDSWITH):
+                    #符合自动多线程时不使用临时 GAE 规则，仍尝试默认规则
+                    #是否包含元组元素（媒体文件）
+                    elif any(path.endswith(x) for x in GC.AUTORANGE_ENDSWITH):
+                        return filter_DEF[2:]
+                    else:
                         return TEMPGAE
                 return action, target
     else:
@@ -102,7 +104,7 @@ def get_action(scheme, host, path, url):
                             filter = action, target
         #添加默认规则
         filters_cache.cache[key].append(filter_DEF)
-        return filter or (filter_DEF[2], filter_DEF[3])
+        return filter or filter_DEF[2:]
 
 def get_ssl_action(ssl, host):
     schemes = ('', 'https' if ssl else 'http')
