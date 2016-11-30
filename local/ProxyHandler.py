@@ -47,7 +47,7 @@ from .GAEFetch import qGAE, gae_urlfetch
 from .FilterUtil import (
     filters_cache,
     get_action,
-    get_ssl_action
+    get_connect_action
     )
 
 HAS_PYPY = hasattr(sys, 'pypy_version_info')
@@ -72,6 +72,7 @@ skip_request_headers = (
 skip_response_headers = (
     'Transfer-Encoding',
     'Content-MD5',
+    'Set-Cookie',
     'Upgrade'
     )
 
@@ -146,7 +147,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_CONNECT(self):
         """handle CONNECT cmmand, do a filtered action"""
         self._do_CONNECT()
-        self.action, self.target = get_ssl_action(self.ssl, self.host)
+        self.action, self.target = get_connect_action(self.ssl, self.host)
         self.do_action()
 
     def _do_METHOD(self):
@@ -249,6 +250,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def handle_response_headers(self, response):
         response_headers = dict((k.title(), v) for k, v in response.getheaders() if k.title() not in skip_response_headers)
+        if hasattr(response.msg, 'get_all'):
+            cookies = response.msg.get_all('Set-Cookie')
+        else:
+            cookies = response.msg.getheaders('Set-Cookie')
         length = response_headers.get('Content-Length', '0')
         length = int(length) if length.isdigit() else 0
         if hasattr(response, 'data'):
@@ -263,8 +268,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 del response_headers['Content-Length']
         else:
             response_headers['Content-Length'] = length
-        if self.action == 'do_GAE' and 'Set-Cookie' in response_headers:
-            response_headers['Set-Cookie'] = normcookie(response_headers['Set-Cookie'])
+        if cookies:
+            if self.action == 'do_GAE' and len(cookies) == 1:
+                response_headers['Set-Cookie'] = normcookie(cookies[0])
+            else:
+                response_headers['Set-Cookie'] = '\r\nSet-Cookie: '.join(cookies)
         if 'Content-Disposition' in response_headers:
             response_headers['Content-Disposition'] = normattachment(response_headers['Content-Disposition'])
         headers_data = 'HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response_headers.items()))
@@ -694,7 +702,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if self.ssl:
             self.connection.sendall(b'HTTP/1.1 200 OK\r\n\r\n')
         else:
-            http_headers = ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.items())
+            http_headers = ''.join('%s: %s\r\n' % (k.title(), v) for k, v in self.headers.items() if k.title() not in skip_request_headers)
             rebuilt_request = '%s\r\n%s\r\n' % (self.requestline, http_headers)
             if not isinstance(rebuilt_request, bytes):
                 rebuilt_request = rebuilt_request.encode()
