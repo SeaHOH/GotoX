@@ -75,14 +75,14 @@ if hasattr(sys.stderr, 'isatty') and sys.stderr.isatty():
         import ctypes
         _setCTA = ctypes.windll.kernel32.SetConsoleTextAttribute
         _stdHandle = ctypes.windll.kernel32.GetStdHandle(-12)
-        _setColor = lambda color: _setCTA(_stdHandle, color)
+        _setColor = lambda color: _setCTA(_stdHandle, _colors[color])
     elif os.name == 'posix':
         _colors['INFO'] = '\033[0m'
         _colors['ERROR'] = '\033[31m'
         _colors['WARNING'] = '\033[33m'
         _colors['DEBUG'] = '\033[32m'
         _colors['HEAD'] = '\033[1;36m'
-        _setColor = lambda color: sys.stderr.write(color)
+        _setColor = lambda color: sys.stderr.write(_colors[color])
     _colors['CRITICAL'] = _colors['ERROR']
     _colors['TEST'] = _colors['DEBUG']
     _colors['RESET'] = _colors['INFO']
@@ -111,12 +111,13 @@ def isEnabledFor(level):
 def log(level, fmt, *args, **kwargs):
     if isEnabledFor(level):
         levelName = _levelToName[level]
-        _setColor(_colors['HEAD'])
+        _setColor('HEAD')
         sys.stderr.write('%s %s ' % (time.strftime('%H:%M:%S'), levelName[0]))
-        sys.stderr.flush() #行间不缓存，立即输出
-        _setColor(_colors[levelName])
+        _setColor('HEAD') # repeat for python3
+        sys.stderr.flush() # immediately output for python3
+        _setColor(levelName)
         sys.stderr.write('%s\n' % (fmt % args))
-        _setColor(_colors['RESET'])
+        _setColor('RESET')
 
 log.level = 0
 log.disable = -1
