@@ -46,7 +46,7 @@ g_maxgaeipcnt = GC.FINDER_MINIPCNT or 12
 #扫描 IP 的线程数量
 g_maxthreads = GC.FINDER_THREADS or 10
 #容忍 badip 的次数
-g_timesblock = GC.FINDER_TIMESBLOCK or 2
+g_timesblock = GC.FINDER_TIMESBLOCK
 #屏蔽 badip 的时限，单位：小时
 g_blocktime = GC.FINDER_BLOCKTIME or 36
 g_blocktime *= 3600
@@ -129,13 +129,13 @@ def readstatistics():
         if os.path.exists(file):
             with open(file, 'r') as fd:
                 for line in fd:
-                    ips = line.split('*')
+                    ips = [x.strip('\r\n ') for x in line.split('*')]
                     if len(ips) == 3:
-                        ip = ips[0].strip(' ')
+                        ip = ips[0]
                         if ip.startswith(g_block):
                             continue
-                        good = int(ips[1].strip(' '))
-                        bad = int(ips[2].strip('\r\n '))
+                        good = int(ips[1])
+                        bad = int(ips[2])
                         # 小于 0 表示已删除
                         if good < 0:
                             deledipset.add(ip)
@@ -173,17 +173,21 @@ def savestatistics(statistics=None):
 #读取 checkgoogleip 输出 ip.txt
 def readiplist(nowgaeset):
     #g.reloadlist = False
+    now = time()
     goodset = set(g.goodlist)
     baddict = g.baddict
     blockset = set()
     weakset = set()
     #判断是否屏蔽
-    for ip in baddict:
-        if baddict[ip][0] > g_timesblock:
-            blockset.add(ip)
-        else:
-            if not ip.startswith(g_block):
-                weakset.add(ip)
+    for ip, v in baddict.copy().items():
+        if v[0] > g_timesblock:
+            if now - v[1] > g_blocktime:
+                del baddict[ip]
+            else:
+                blockset.add(ip)
+                continue
+        if not ip.startswith(g_block):
+            weakset.add(ip)
     #读取待捡 IP
     ipexset = set()
     ipset = set()
@@ -205,7 +209,7 @@ def readiplist(nowgaeset):
     ipexset = ipexset - weakset
     ipset = ipset - weakset
     g.halfweak = len(weakset)/2
-    g.readtime = time()
+    g.readtime = now
     return list(ipexset), list(ipset), list(weakset)
 
 def readbadlist():
@@ -213,12 +217,9 @@ def readbadlist():
     if os.path.exists(g_badfile):
         with open(g_badfile, 'r') as fd:
             for line in fd:
-                ips = line.strip('\r\n').split(' * ')
+                ips = [x.strip('\r\n ') for x in line.split('*')]
                 if len(ips) == 3:
-                    onblocktime = int(ips[2])
-                    blockedtime = int(time()) - onblocktime
-                    if blockedtime < g_blocktime:
-                        ipdict[ips[0]] = int(ips[1]), onblocktime
+                    ipdict[ips[0]] = int(ips[1]), int(ips[2])
     return ipdict
 
 def savebadlist(baddict=None):
@@ -490,16 +491,17 @@ def getgaeip(nowgaelist=[], needcomcnt=0, threads=None):
     #结果
     savebadlist()
     savestatistics()
-    m = g.needcomcnt
+    m = int(g.needcomcnt)
     if m > 0 and gaelistbak:
         #补齐个数，以 google_com 为准
         gaelistbak.sort(key=lambda x: (-x[2], x[1]))
-        comlistbak, gaelistbak = gaelistbak[:m], gaelistbak[m:]
+        comlistbak = gaelistbak[:m]
+        gaelistbak = gaelistbak[m:]
         g.gaelist.extend(comlistbak)
         m = len(comlistbak)
     else:
         m = 0
-    n = g.needgwscnt - m
+    n = int(g.needgwscnt - m)
     if n > 0 and gaelistbak:
         #补齐个数
         gaelistbak.sort(key=lambda x: x[1])
