@@ -106,7 +106,7 @@ def get_action(scheme, host, path, url):
         filters_cache.cache[key].append(filter_DEF)
         return filter or filter_DEF[2:]
 
-def get_ssl_action(ssl, host):
+def get_connect_action(ssl, host):
     schemes = ('', 'https' if ssl else 'http')
     if host in ssl_filters_cache:
         return ssl_filters_cache[host]
