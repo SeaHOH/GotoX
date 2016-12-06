@@ -1,10 +1,10 @@
 # coding:utf-8
 #!/usr/bin/env python
 __author__ = 'seahoh@gamil.com'
-"""
+'''
 根据 checkgoogleip 代码重新编写整合到 GotoX
 从一个较大的可用 GAE IP 列表中快速筛选优质 IP
-"""
+'''
 
 import os
 import sys
@@ -61,12 +61,15 @@ g_useOpenSSL = GC.LINK_OPENSSL or 1
 #屏蔽列表（通过测试、但无法使用 GAE）
 g_block = GC.FINDER_BLOCK #('74.125.', '173.194.', '203.208.', '113.171.')
 
-g_cacertfile = os.path.join(cert_dir, "cacert.pem")
-g_ipfile = os.path.join(data_dir, "ip.txt")
-g_ipexfile = os.path.join(data_dir, "ipex.txt")
-g_badfile = os.path.join(data_dir, "ip_bad.txt")
-g_badfilebak = os.path.join(data_dir, "ip_badbak.txt")
-g_statisticsfilebak = os.path.join(data_dir, "statisticsbak")
+g_cacertfile = os.path.join(cert_dir, 'cacert.pem')
+g_ipfile = os.path.join(data_dir, 'ip.txt')
+g_ipexfile = os.path.join(data_dir, 'ipex.txt')
+g_badfile = os.path.join(data_dir, 'ip_bad.txt')
+g_badfilebak = os.path.join(data_dir, 'ip_badbak.txt')
+g_statisticsfilebak = os.path.join(data_dir, 'statisticsbak')
+
+g_prefix_com = 'google.', 'www.google.', '*.google.', '*.c.docs.google.', 'goo.', 'www.goo.', 'g.'
+g_prefix_yt = 'youtu', '*.youtu', '*.ytimg'
 
 #加各时段 IP 延时，单位：毫秒
 timeToDelay = {    0 :   0,
@@ -159,7 +162,7 @@ def savestatistics(statistics=None):
         os.rename(statisticsfile, g_statisticsfilebak)
     statistics = statistics or g.statistics[1]
     statistics = [(ip, stats[0], stats[1]) for ip, stats in statistics.items()]
-    statistics.sort(key=lambda x: -(x[1]+1.0)/(x[2]**2+0.1))
+    statistics.sort(key=lambda x: -(x[1]+0.01)/(x[2]**2+0.1))
     op = 'w' if PY3 else 'wb'
     with open(statisticsfile, op) as f:
         for ip in statistics:
@@ -192,7 +195,7 @@ def readiplist(nowgaeset):
     ipexset = set()
     ipset = set()
     if os.path.exists(g_ipexfile):
-        with open(g_ipexfile, "r") as fd:
+        with open(g_ipexfile, 'r') as fd:
             for line in fd:
                 if not line.startswith(g_block):
                     ipexset.add(line.strip('\r\n'))
@@ -281,10 +284,10 @@ class GAE_Finder(BaseHTTPUtil):
                 raise socket.error('handshake cost %dms timed out' % int(handshaked_time*1000))
             cert = self.get_peercert(ssl_sock)
             if not cert:
-                raise socket.error(u"无法从 %s 获取证书。", ip)
+                raise socket.error(u'无法从 %s 获取证书。', ip)
             domains = self.getdomains(cert)
             if not domains:
-                raise ssl.SSLError(u"%s 无法获取 commonName：%s " % (ip, cert))
+                raise ssl.SSLError(u'%s 无法获取 commonName：%s ' % (ip, cert))
         except NetWorkIOError as e:
             sock.close()
             ssl_sock = None
@@ -343,9 +346,9 @@ def runfinder(ip):
               str(costtime).rjust(4), ssldomains[0])
         com = yt = gs = 0
         for domain in ssldomains:
-            if com == 0 and 'google.' in domain:
+            if com == 0 and domain.startswith(g_prefix_com):
                 com = 1
-            if yt == 0 and 'youtube.' in domain or 'ytimg' in domain:
+            if yt == 0 and domain.startswith(g_prefix_yt):
                 yt = 1
             if gs == 0 and 'gstatic.' in domain:
                 gs = 1
@@ -410,7 +413,7 @@ def randomip():
     with gLock:
         g.getgood -= 1
         if g.goodlist and g.getgood <= 0:
-            g.getgood = 3
+            g.getgood = 5
             return g.goodlist.pop()
         elif g.ipexlist:
             return _randomip(g.ipexlist)
@@ -440,6 +443,7 @@ def getgaeip(nowgaelist=[], needcomcnt=0, threads=None):
         g.running = False
         return
     threads = int(threads) or g_maxthreads
+    now = time()
     #日期变更、重新加载统计文件
     if not g.statisticsfiles[0].endswith(strftime('%y%j')):
         savestatistics()
@@ -450,7 +454,7 @@ def getgaeip(nowgaelist=[], needcomcnt=0, threads=None):
     statistics = g.statistics[0]
     statistics = [(ip, stats[0], stats[1]) for ip, stats in statistics.items() if ip not in nowgaeset and stats[0] >= 0]
     #根据统计数据排序（bad 降序、good 升序）供 pop 使用
-    statistics.sort(key=lambda x: (x[1]+1.0)/(x[2]**2+0.1))
+    statistics.sort(key=lambda x: (x[1]+0.01)/(x[2]**2+0.1))
     g.goodlist = [ip[0] for ip in statistics]
     #检查 IP 数据修改时间
     ipmtime = ipexmtime = 0
@@ -458,13 +462,15 @@ def getgaeip(nowgaelist=[], needcomcnt=0, threads=None):
         ipmtime = os.path.getmtime(g_ipfile)
     if os.path.exists(g_ipexfile):
         ipexmtime = os.path.getmtime(g_ipexfile)
+        if now - ipexmtime > 2*3600: #两小时后删除
+            os.remove(g_ipexfile)
     if ipmtime > g.ipmtime or ipexmtime > g.ipexmtime:
         # 更新过 IP 列表
         g.ipmtime = ipmtime
         g.ipexmtime = ipexmtime
         g.ipexlist, g.iplist, g.weaklist = readiplist(nowgaeset)
-    elif (len(g.weaklist) < g.halfweak or    # 上一次加载 IP 时出过错的 IP
-             time() - g.readtime > 8*3600 or # n 小时强制重载 IP
+    elif (len(g.weaklist) < g.halfweak or # 上一次加载 IP 时出过错的 IP
+             now - g.readtime > 8*3600 or # n 小时强制重载 IP
              #g.reloadlist or
              len(g.ipexlist) == len(g.iplist) == len(g.weaklist) == 0):
         g.ipexlist, g.iplist, g.weaklist = readiplist(nowgaeset)
