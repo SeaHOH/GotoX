@@ -224,12 +224,8 @@ def main():
             logging.info('Uvent enabled, patch forward_socket')
             AutoProxyHandler.forward_socket = AutoProxyHandler.green_forward_socket
 
-    logging.disable(0 if GC.LISTEN_DEBUGINFO else logging.DEBUG)
-    if 0: #测试用
-        GC.LISTEN_AUTO_PORT = 1111
-        GC.LISTEN_GAE_PORT = 1112
-        GC.LINK_OPENSSL = 1
-        #GC.IPLIST_MAP['google_gws'] = []
+    logging.disable(0 if GC.LISTEN_DEBUGINFO else logging.TEST)
+
     info = '==================================================================================\n'
     info += u'* GotoX  版 本 : %s (python/%s %spyopenssl/%s)\n' % (__version__, sys.version.split(' ')[0], gevent and 'gevent/%s ' % gevent.__version__ or '', opensslver)
     info += '* Uvent Version    : %s (pyuv/%s libuv/%s)\n' % (__import__('uvent').__version__, __import__('pyuv').__version__, __import__('pyuv').LIBUV_VERSION) if all(x in sys.modules for x in ('pyuv', 'uvent')) else ''
