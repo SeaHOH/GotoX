@@ -254,7 +254,8 @@ class HTTPUtil(BaseHTTPUtil):
                 # set struct linger{l_onoff=1,l_linger=0} to avoid 10048 socket error
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
                 # resize socket recv buffer 8K->32K to improve browser releated application performance
-                sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32*1024)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32768)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32768)
                 # disable nagle algorithm to send http request quickly.
                 sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
                 # set a short timeout to trigger timeout retry more quickly.
@@ -356,8 +357,8 @@ class HTTPUtil(BaseHTTPUtil):
                 # set struct linger{l_onoff=1,l_linger=0} to avoid 10048 socket error
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
                 # resize socket recv buffer 8K->32K to improve browser releated application performance
-                sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32*1024)
-                #sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1024)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32768)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32768)
                 # disable negal algorithm to send http request quickly.
                 sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
                 # pick up the sock socket
@@ -389,7 +390,7 @@ class HTTPUtil(BaseHTTPUtil):
                 if cache_key.startswith('google'):
                     cert = self.get_peercert(ssl_sock)
                     if not cert:
-                        raise socket.error(u'没有获取到证书')
+                        raise ssl.SSLError(u'没有获取到证书')
                     subject = cert.get_subject()
                     if subject.O != 'Google Inc':
                         raise ssl.SSLError(u'%s 证书的公司名称（%s）不是 "Google Inc"' % (address[0], subject.O))
