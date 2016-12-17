@@ -83,7 +83,7 @@ class SSLConnection(object):
         total_sent = 0
         total_to_send = len(data)
         while total_sent < total_to_send:
-            sent = self.send(data[total_sent:total_sent + 16384]) # 16K
+            sent = self.send(data[total_sent:total_sent + 32768]) # 32K
             total_sent += sent
     write = sendall
 
