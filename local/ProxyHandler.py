@@ -89,6 +89,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     badhost = LRUCache(8, 120)
 
     #默认值
+    ip6host = False
     ssl = False
     url = None
     url_parts = None
@@ -118,16 +119,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def _do_CONNECT(self):
         host = self.headers.get('Host')
         port = None
+        #从头域获取主机、端口
         if host:
-            # IPv6 必须使用方括号
-            host, has_br, port = host.partition(']')
-            if has_br:
-                host = host[1:]
-                port = port[1:]
-            else:
-                host, _, port = host.partition(':')
-        #右分割，CONNECT 命令必须使用端口
-        chost, _, cport = self.path.rpartition(':')
+            host, port = self.parse_netloc(host)
+        #从命令获取主机、端口
+        chost, cport = self.parse_netloc(self.path)
         #优先 Host 头域
         #排除某些程序把本地地址当成主机名
         if host and not host.startswith(self.localhosts):
@@ -157,21 +153,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         port = None
         #从头域获取主机、端口
         if host:
-            # IPv6 必须使用方括号
-            host, has_br, port = host.partition(']')
-            if has_br:
-                host = host[1:]
-                port = port[1:]
-            else:
-                host, _, port = host.partition(':')
+            host, port = self.parse_netloc(host)
         url_parts = urlparse.urlsplit(self.path)
         #从命令获取主机、端口
-        chost, has_br, cport = url_parts.netloc.partition(']')
-        if has_br:
-            chost = chost[1:]
-            cport = cport[1:]
-        else:
-            chost, _, cport = chost.partition(':')
+        chost, cport = self.parse_netloc(url_parts.netloc)
         #确定协议
         scheme = 'https' if self.ssl else 'http'
         #确定主机
@@ -765,6 +750,17 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.write(b'Content-Disposition: attachment; filename="GotoXCA.crt"\r\n')
         self.write('Content-Length: %s\r\n\r\n' % len(data))
         self.write(data)
+
+    def parse_netloc(self, netloc):
+        host, has_br, port = netloc.partition(']')
+        if has_br:
+            # IPv6 必须使用方括号
+            self.ip6host = True
+            host = host[1:]
+            port = port[1:]
+        else:
+            host, _, port = host.partition(':')
+        return host, port
 
     def address_string(self, response=None):
         """Return the connected ip or the client's ip and port"""
