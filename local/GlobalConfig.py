@@ -10,8 +10,16 @@ import fnmatch
 from .compat import ConfigParser
 from .common import config_dir, data_dir
 #from .common.proxy import get_system_proxy, parse_proxy
+from . import clogging
 
-SSLv = {
+_LOGLv = {
+    0 : clogging.INFO,
+    1 : clogging.TEST,
+    2 : clogging.DEBUG,
+    3 : clogging.NOTSET,
+    }
+
+_SSLv = {
     'SSLv3'   : 1,
     'SSLv23'  : 2,
     'TLSv1'   : 3,
@@ -41,7 +49,7 @@ class GC():
     LISTEN_GAE_PORT = CONFIG.getint('listen', 'gae_port')
     LISTEN_AUTO_PORT = CONFIG.getint('listen', 'auto_port')
     LISTEN_VISIBLE = CONFIG.getint('listen', 'visible')
-    LISTEN_DEBUGINFO = CONFIG.getint('listen', 'debuginfo')
+    LISTEN_DEBUGINFO = _LOGLv[min(CONFIG.getint('listen', 'debuginfo'), 3)]
 
     GAE_APPIDS = re.findall(r'[\w\-\.]+', CONFIG.get('gae', 'appid').replace('.appspot.com', ''))
     GAE_PASSWORD = CONFIG.get('gae', 'password').strip()
@@ -63,8 +71,8 @@ class GC():
     LINK_REMOTESSLTXT = CONFIG.get('link', 'remotessl')
     LINK_LOCALSSLTXT = LINK_LOCALSSLTXT or 'SSLv23'
     LINK_REMOTESSLTXT = LINK_REMOTESSLTXT or 'TLSv1.2'
-    LINK_LOCALSSL = SSLv[LINK_LOCALSSLTXT]
-    LINK_REMOTESSL = max(SSLv[LINK_REMOTESSLTXT]+1, 4) if LINK_OPENSSL else max(SSLv[LINK_REMOTESSLTXT], 3)
+    LINK_LOCALSSL = _SSLv[LINK_LOCALSSLTXT]
+    LINK_REMOTESSL = max(_SSLv[LINK_REMOTESSLTXT]+1, 4) if LINK_OPENSSL else max(_SSLv[LINK_REMOTESSLTXT], 3)
     LINK_TIMEOUT = max(CONFIG.getint('link', 'timeout'), 3)
     LINK_FWDTIMEOUT = max(CONFIG.getint('link', 'fwd_timeout'), 2)
     LINK_KEEPTIME = CONFIG.getint('link', 'keeptime')

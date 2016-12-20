@@ -224,7 +224,7 @@ def main():
             logging.info('Uvent enabled, patch forward_socket')
             AutoProxyHandler.forward_socket = AutoProxyHandler.green_forward_socket
 
-    logging.disable(0 if GC.LISTEN_DEBUGINFO else logging.TEST)
+    logging.disable(GC.LISTEN_DEBUGINFO)
 
     info = '==================================================================================\n'
     info += u'* GotoX  版 本 : %s (python/%s %spyopenssl/%s)\n' % (__version__, sys.version.split(' ')[0], gevent and 'gevent/%s ' % gevent.__version__ or '', opensslver)
