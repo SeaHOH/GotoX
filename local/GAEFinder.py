@@ -86,7 +86,7 @@ gLock = threading.Lock()
 
 def PRINT(fmt, *args, **kwargs):
     #logging.info(strlog)
-    logging.info('[%s] %s' % (threading.current_thread().name, fmt), *args, **kwargs)
+    logging.test('[%s] %s' % (threading.current_thread().name, fmt), *args, **kwargs)
 
 def WARNING(fmt, *args, **kwargs):
     logging.debug('[%s] %s' % (threading.current_thread().name, fmt), *args, **kwargs)
