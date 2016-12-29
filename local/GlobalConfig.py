@@ -13,10 +13,10 @@ from .common import config_dir, data_dir
 from . import clogging
 
 _LOGLv = {
-    0 : clogging.INFO,
-    1 : clogging.TEST,
-    2 : clogging.DEBUG,
-    3 : clogging.NOTSET,
+    0 : clogging.WARNING,
+    1 : clogging.INFO,
+    2 : clogging.TEST,
+    3 : clogging.DEBUG
     }
 
 _SSLv = {
@@ -153,7 +153,6 @@ class GC():
     AUTORANGE_NOENDSWITH = tuple(AUTORANGE_NOENDSWITH.split('|')) if AUTORANGE_NOENDSWITH else ()
     AUTORANGE_FIRSTSIZE = CONFIG.getint('autorange', 'firstsize')
     AUTORANGE_MAXSIZE = CONFIG.getint('autorange', 'maxsize')
-    AUTORANGE_WAITSIZE = CONFIG.getint('autorange', 'waitsize')
     AUTORANGE_BUFSIZE = CONFIG.getint('autorange', 'bufsize')
     AUTORANGE_THREADS = CONFIG.getint('autorange', 'threads')
     AUTORANGE_LOWSPEED = CONFIG.getint('autorange', 'lowspeed')
