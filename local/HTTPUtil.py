@@ -23,13 +23,9 @@ from .compat import (
     urlparse,
     xrange
     )
+from .common import cert_dir, NetWorkIOError
 from .common.dns import dns, dns_resolve
 from .common.proxy import parse_proxy
-from .common import (
-    cert_dir,
-    NetWorkIOError,
-    spawn_later
-    )
 
 class BaseHTTPUtil(object):
     """Basic HTTP Request Class"""
@@ -362,8 +358,8 @@ class HTTPUtil(BaseHTTPUtil):
                 # disable negal algorithm to send http request quickly.
                 sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
                 # pick up the sock socket
-                server_hostname = b'www.google.com' if address[0].endswith('.appspot.com') else None
-                ssl_sock = self.get_ssl_socket(sock, server_hostname)
+                #server_hostname = b'www.google.com' if address[0].endswith('.appspot.com') else None
+                ssl_sock = self.get_ssl_socket(sock)
                 # set a short timeout to trigger timeout retry more quickly.
                 ssl_sock.settimeout(1)
                 set_connect_start(ip)
