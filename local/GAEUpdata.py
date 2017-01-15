@@ -167,7 +167,13 @@ def testonegaeip(again=False):
         badip = True
         for ipdict in statistics:
             if ip in ipdict:
-                ipdict[ip] = ipdict[ip][0], ipdict[ip][1]+1
+                 good, bad = ipdict[ip]
+                 #失败次数超出预期，设置 -1 表示删除
+                 s = bad/max(good, 1)
+                 if s > 2 or (s > 0.6 and bad > 10):
+                     ipdict[ip] = -1, 0
+                 else:
+                     ipdict[ip] = good, bad+1
             else:
                 ipdict[ip] = 0, 1
     else:

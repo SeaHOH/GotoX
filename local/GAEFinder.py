@@ -8,23 +8,6 @@ __author__ = 'seahoh@gamil.com'
 
 import os
 import sys
-
-if __name__ == '__main__':
-    sys.dont_write_bytecode = True
-    import glob
-    sys.path += glob.glob('%s/*.egg' % os.path.dirname(os.path.abspath(__file__)))
-    try:
-        import gevent
-        import gevent.socket
-        import gevent.monkey
-        gevent.monkey.patch_all(subprocess=True)
-    except ImportError:
-        gevent = None
-    except TypeError:
-        gevent.monkey.patch_all()
-        sys.stderr.write('\033[31m  Warning: Please update gevent to the latest 1.0 version!\033[0m\n')
-    logging.disable(logging.DEBUG)
-
 import threading
 import socket
 import ssl
@@ -36,6 +19,7 @@ from . import clogging as logging
 from time import time, localtime, strftime
 from .common import cert_dir, data_dir, NetWorkIOError, isip, isipv4, isipv6
 from .compat import PY3, xrange
+from .ProxyServer import network_test
 from .GlobalConfig import GC
 
 #全局只读写数据
@@ -68,9 +52,6 @@ g_badfile = os.path.join(data_dir, 'ip_bad.txt')
 g_badfilebak = os.path.join(data_dir, 'ip_badbak.txt')
 g_statisticsfilebak = os.path.join(data_dir, 'statisticsbak')
 
-g_prefix_com = 'google.', 'www.google.', '*.google.', '*.c.docs.google.', 'goo.', 'www.goo.', 'g.'
-g_prefix_yt = 'youtu', '*.youtu', '*.ytimg'
-
 #加各时段 IP 延时，单位：毫秒
 timeToDelay = {    0 :   0,
          1 :   0,  2 :   0,  3 :   0,  4 :   0,  5 :   0,  6 :   0, 
@@ -96,7 +77,7 @@ if GC.LINK_PROFILE == 'ipv4':
 elif GC.LINK_PROFILE == 'ipv6':
     ipnotuse = lambda x: not isipv6(x)
 elif GC.LINK_PROFILE == 'ipv46':
-    ipnotuse = lambda x: not isip(x)
+    ipnotuse = lambda x: False
 
 def readstatistics():
     def getnames():
@@ -237,35 +218,18 @@ def savebadlist(baddict=None):
             f.write(' * '.join([ip, str(baddict[ip][0]), str(baddict[ip][1])]))
             f.write('\n')
 
-def isgaeserver(svrname):
-    svrname = svrname.lower()
-    if svrname == 'gws' or (g_gvs == 1 and svrname.startswith('gvs')):
-        return True
-    else:
-        return False
-
-prekey='\nServer:'
-def getservernamefromheader(header, headerend):
-    begin = header.find(prekey, 0, headerend)
-    if begin > 0: 
-        begin += len(prekey)
-        end = header.find('\r\n', begin)
-        return header[begin:end].strip(' \t')
-    return ''
-
 from .HTTPUtil import BaseHTTPUtil, gws_ciphers
 class GAE_Finder(BaseHTTPUtil):
 
-    httpreq = b'HEAD / HTTP/1.1\r\nAccept: */*\r\nHost: www.google.com\r\nConnection: Close\r\n\r\n'
+    httpreq = b'HEAD / HTTP/1.1\r\nHost: www.appspot.com\r\nConnection: Close\r\n\r\n'
     ssl_ciphers = gws_ciphers
 
     def getipinfo(self, ip, retry=None):
         if ipnotuse(ip):
-            return None, 0, ''
+            return None, 0, False
         start_time = time()
         costtime = 0
-        domains = None
-        servername = ''
+        domain = None
         sock = None
         ssl_sock = None
         try:
@@ -284,79 +248,62 @@ class GAE_Finder(BaseHTTPUtil):
                 raise socket.error('handshake cost %dms timed out' % int(handshaked_time*1000))
             cert = self.get_peercert(ssl_sock)
             if not cert:
-                raise socket.error(u'无法从 %s 获取证书。', ip)
-            domains = self.getdomains(cert)
-            if not domains:
-                raise ssl.SSLError(u'%s 无法获取 commonName：%s ' % (ip, cert))
+                raise socket.error('无法从 %s 获取证书。', ip)
+            domain = cert.get_subject().CN
+            if not domain:
+                raise ssl.SSLError('%s 无法获取 commonName：%s ' % (ip, cert))
         except NetWorkIOError as e:
             sock.close()
             ssl_sock = None
             if not retry and e.args == (-1, 'Unexpected EOF'):
                 return self.getipinfo(ip, True)
             WARNING('%r', e)
-        if ssl_sock:
-            servername = self.getservername(ssl_sock, sock, ip)
+        code = self.getstatcode(ssl_sock, sock, ip) if ssl_sock else ''
         costtime = int((time()-start_time)*1000)
-        return domains, costtime, servername
+        return domain, costtime, code == b'HTTP/1.1 302'
 
-    def getdomains(self, cert):
-        for i in xrange(cert.get_extension_count()):
-            extension = cert.get_extension(i)
-            if extension.get_short_name() == b'subjectAltName':
-                 return tuple(x[4:] for x in str(extension).split(', '))
-        return (cert.get_subject().CN,)
-
-    def getservername(self, conn, sock, ip):
+    def getstatcode(self, conn, sock, ip):
         try:
             begin = time()
             conn.send(self.httpreq)
-            data = conn.read(1024)
+            code = conn.read(12)
             costime = time() - begin
             if costime >= g_timeout:
-                WARNING(u'获取 http 响应超时(%ss)，ip：%s', costime, ip)
-                return ''
-            if PY3:
-                data = data.decode()
-            index = data.find('\r\n\r\n')
-            if index > 0:
-                return getservernamefromheader(data, index)
-            return ''
-        except Exception as e:
-            WARNING(u'从 %s 获取服务名称时发生错误：%r', ip, e)
-            return ''
+                WARNING('获取 http 响应超时(%ss)，ip：%s', costime, ip)
+                return
+            return code
+        except NetWorkIOError as e:
+            WARNING('从 %s 获取响应状态时发生错误：%r', ip, e)
         finally:
             sock.close()
 
 gae_finder = GAE_Finder(g_useOpenSSL, g_cacertfile)
 
 def runfinder(ip):
-    ssldomains, costtime, servername = gae_finder.getipinfo(ip)
+    with gLock:
+        #检查网络
+        if g.testedcnt >= 50:
+            network_test()
+            g.testedcnt = 0
+    ssldomain, costtime, isgaeserver = gae_finder.getipinfo(ip)
     statistics = g.statistics
     baddict = g.baddict
     with gLock:
+        g.testedcnt += 1
         g.pingcnt -= 1
         remain = len(g.goodlist) + len(g.ipexlist) + len(g.iplist) + len(g.weaklist) + g.pingcnt
     #判断是否可用
-    if isgaeserver(servername):
+    if isgaeserver:
         with gLock:
             g.testedok += 1
         if ip in baddict: #删除未到容忍次数的 badip
             del baddict[ip]
-        PRINT(u'剩余：%s，%s，%sms，%s', str(remain).rjust(4), ip.rjust(15),
-              str(costtime).rjust(4), ssldomains[0])
-        com = yt = gs = 0
-        for domain in ssldomains:
-            if com == 0 and domain.startswith(g_prefix_com):
-                com = 1
-            if yt == 0 and domain.startswith(g_prefix_yt):
-                yt = 1
-            if gs == 0 and 'gstatic.' in domain:
-                gs = 1
-            if com == yt == gs == 1:
-                break
+        PRINT('剩余：%s，%s，%sms，%s', str(remain).rjust(4), ip.rjust(15),
+              str(costtime).rjust(4), ssldomain)
+        com = ssldomain == 'www.google.com'
         #判断是否够快
         if costtime < g.maxhandletimeout:
-            g.gaelist.append((ip, costtime, com, yt, gs))
+            g.gaelist.append((ip, costtime, com))
             with gLock:
                 #计数
                 g.needgwscnt -= 1
@@ -364,7 +311,7 @@ def runfinder(ip):
                     g.needcomcnt -= 1
         else:
             #备用
-            g.gaelistbak.append((ip, costtime, com, yt, gs))
+            g.gaelistbak.append((ip, costtime, com))
             for ipdict in statistics:
                 if ip in ipdict:
                     ipdict[ip] = max(ipdict[ip][0]-1, 0), ipdict[ip][1]
@@ -374,7 +321,8 @@ def runfinder(ip):
                  good, bad = ipdict[ip]
                  if good < 0: break
                  #失败次数超出预期，设置 -1 表示删除
-                 if bad/max(good, 1) > 10:
+                 s = bad/max(good, 1)
+                 if s > 2 or (s > 0.6 and bad > 10):
                      ipdict[ip] = -1, 0
                  else:
                      ipdict[ip] = max(good-1, 0), bad+1
@@ -391,8 +339,12 @@ class Finder(threading.Thread):
     def run(self):
         ip = randomip()
         while ip:
-            if runfinder(ip):
-                break
+            if isip(ip):
+                if runfinder(ip):
+                    break
+            else:
+                with gLock:
+                    g.pingcnt -= 1
             ip = randomip()
 
 def _randomip(iplist):
@@ -411,9 +363,9 @@ def _randomip(iplist):
 
 def randomip():
     with gLock:
-        g.getgood -= 1
-        if g.goodlist and g.getgood <= 0:
-            g.getgood = 5
+        g.getgood += 1
+        if g.goodlist and g.getgood >= 5:
+            g.getgood = 0
             return g.goodlist.pop()
         elif g.ipexlist:
             return _randomip(g.ipexlist)
@@ -469,7 +421,7 @@ def getgaeip(nowgaelist=[], needcomcnt=0, threads=None):
         g.ipmtime = ipmtime
         g.ipexmtime = ipexmtime
         g.ipexlist, g.iplist, g.weaklist = readiplist(nowgaeset)
-    elif (len(g.weaklist) < g.halfweak or # 上一次加载 IP 时出过错的 IP
+    elif (len(g.weaklist) <= g.halfweak or # 上一次加载 IP 时出过错的 IP
              now - g.readtime > 8*3600 or # n 小时强制重载 IP
              #g.reloadlist or
              len(g.ipexlist) == len(g.iplist) == len(g.weaklist) == 0):
@@ -480,10 +432,11 @@ def getgaeip(nowgaelist=[], needcomcnt=0, threads=None):
     g.gaelistbak = gaelistbak = []
     g.pingcnt = 0
     g.testedok = 0
+    g.testedcnt = 0
     g.testok = max(needgwscnt * 8, g.needcomcnt * 16)
     g.maxhandletimeout = g_maxhandletimeout + timeToDelay[int(strftime('%H'))]
-    PRINT(u'==================== 开始查找 GAE IP ====================')
-    PRINT(u'需要查找 IP 数：%d/%d，待检测 IP 数：%d', needcomcnt, max(needgwscnt, needcomcnt), len(g.goodlist)+len(g.ipexlist)+len(g.iplist)+len(g.weaklist))
+    PRINT('==================== 开始查找 GAE IP ====================')
+    PRINT('需要查找 IP 数：%d/%d，待检测 IP 数：%d', needcomcnt, max(needgwscnt, needcomcnt), len(g.goodlist)+len(g.ipexlist)+len(g.iplist)+len(g.weaklist))
     #多线程搜索
     threadiplist = []
     for i in xrange(threads):
@@ -516,23 +469,16 @@ def getgaeip(nowgaelist=[], needcomcnt=0, threads=None):
         n = len(gwslistbak)
     else:
         n = 0
-    gaelist = {'google_gws':[], 'google_com':[], 'google_yt':[], 'google_gs':[]}
+    gaelist = {'google_gws':[], 'google_com':[]}
     for ip in g.gaelist:
         gaelist['google_gws'].append(ip[0])
         if ip[2]:
             gaelist['google_com'].append(ip[0])
-        if ip[3]:
-            gaelist['google_yt'].append(ip[0])
-        if ip[4]:
-            gaelist['google_gs'].append(ip[0])
     if m > 0 or n > 0:
-        PRINT(u'未找到足够的优质 GAE IP，添加 %d 个备选 IP：\n %s', m + n, ' | '.join(gaelist['google_gws']))
+        PRINT('未找到足够的优质 GAE IP，添加 %d 个备选 IP：\n %s', m + n, ' | '.join(gaelist['google_gws']))
     else:
-        PRINT(u'已经找到 %d 个新的优质 GAE IP：\n %s', len(gaelist['google_gws']), ' | '.join(gaelist['google_gws']))
-    PRINT(u'==================== GAE IP 查找完毕 ====================')
+        PRINT('已经找到 %d 个新的优质 GAE IP：\n %s', len(gaelist['google_gws']), ' | '.join(gaelist['google_gws']))
+    PRINT('==================== GAE IP 查找完毕 ====================')
     g.running = False
 
     return gaelist
-
-if __name__ == '__main__':
-    getgaeip()
