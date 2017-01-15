@@ -65,29 +65,40 @@ def _checkLevel(level):
         raise TypeError("Level not an integer or a valid string: %r" % level)
     return rv
 
-if hasattr(sys.stderr, 'isatty') and sys.stderr.isatty():
-    if os.name == 'nt':
-        _colors['INFO'] = 0x07
-        _colors['ERROR'] = 0x0c
-        _colors['WARNING'] = 0x06
-        _colors['DEBUG'] = 0x002
-        _colors['HEAD'] = 0x03
-        import ctypes
-        _setCTA = ctypes.windll.kernel32.SetConsoleTextAttribute
-        _stdHandle = ctypes.windll.kernel32.GetStdHandle(-12)
-        _setColor = lambda color: _setCTA(_stdHandle, _colors[color])
-    elif os.name == 'posix':
-        _colors['INFO'] = '\033[0m'
-        _colors['ERROR'] = '\033[31m'
-        _colors['WARNING'] = '\033[33m'
-        _colors['DEBUG'] = '\033[32m'
-        _colors['HEAD'] = '\033[1;36m'
-        _setColor = lambda color: sys.stderr.write(_colors[color])
-    _colors['CRITICAL'] = _colors['ERROR']
-    _colors['TEST'] = _colors['DEBUG']
-    _colors['RESET'] = _colors['INFO']
-else:
-    _setColor = lambda x: None
+def _init_():
+    '''
+    When gevent.monkey.patch_all is called with ``sys=True``, call this function
+    to reload the sys.stderr.(python 2)
+    '''
+    import sys
+    global _write, _flush, _setColor
+    _write = sys.stderr.write
+    _flush = sys.stderr.flush
+    if hasattr(sys.stderr, 'isatty') and sys.stderr.isatty():
+        if os.name == 'nt':
+            _colors['INFO'] = 0x07
+            _colors['ERROR'] = 0x0c
+            _colors['WARNING'] = 0x06
+            _colors['DEBUG'] = 0x002
+            _colors['HEAD'] = 0x03
+            import ctypes
+            SetCTA = ctypes.windll.kernel32.SetConsoleTextAttribute
+            StdHandle = ctypes.windll.kernel32.GetStdHandle(-12)
+            _setColor = lambda color: SetCTA(StdHandle, _colors[color])
+        elif os.name == 'posix':
+            _colors['INFO'] = '\033[0m'
+            _colors['ERROR'] = '\033[31m'
+            _colors['WARNING'] = '\033[33m'
+            _colors['DEBUG'] = '\033[32m'
+            _colors['HEAD'] = '\033[1;36m'
+            _setColor = lambda color: _write(_colors[color])
+        _colors['CRITICAL'] = _colors['ERROR']
+        _colors['TEST'] = _colors['DEBUG']
+        _colors['RESET'] = _colors['INFO']
+    else:
+        _setColor = lambda x: None
+
+_init_()
 
 def getLogger(*args, **kwargs):
     return sys.modules['clogging']
@@ -112,39 +123,39 @@ def log(level, fmt, *args, **kwargs):
     if isEnabledFor(level):
         levelName = _levelToName[level]
         _setColor('HEAD')
-        sys.stderr.write('%s %s ' % (time.strftime('%H:%M:%S'), levelName[0]))
+        _write('%s %s ' % (time.strftime('%H:%M:%S'), levelName[0]))
         _setColor('HEAD') # repeat for python3
-        sys.stderr.flush() # immediately output for python3
+        _flush() # immediately output for python3
         _setColor(levelName)
-        sys.stderr.write('%s\n' % (fmt % args))
+        _write('%s\n' % (fmt % args))
         _setColor('RESET')
 
 log.level = 0
 log.disable = -1
 
 def debug(fmt, *args, **kwargs):
-    log(DEBUG, fmt, *args, **kwargs)
+    log(DEBUG, fmt, *args)
 
 def test(fmt, *args, **kwargs):
-    log(TEST, fmt, *args, **kwargs)
+    log(TEST, fmt, *args)
 
 def info(fmt, *args, **kwargs):
     log(INFO, fmt, *args)
 
 def warning(fmt, *args, **kwargs):
-    log(WARNING, fmt, *args, **kwargs)
-    #sys.stderr.write(traceback.format_exc() + '\n')
+    log(WARNING, fmt, *args)
+    #_write(traceback.format_exc() + '\n')
 
 warn = warning
 
 def error(fmt, *args, **kwargs):
-    log(ERROR, fmt, *args, **kwargs)
+    log(ERROR, fmt, *args)
 
 def exception(fmt, *args, **kwargs):
-    error(fmt, *args, **kwargs)
-    sys.stderr.write(traceback.format_exc() + '\n')
+    error(fmt, *args)
+    _write(traceback.format_exc() + '\n')
 
 def critical(fmt, *args, **kwargs):
-    log(CRITICAL, fmt, *args, **kwargs)
+    log(CRITICAL, fmt, *args)
 
 fatal = critical
