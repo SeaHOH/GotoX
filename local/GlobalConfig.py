@@ -67,10 +67,8 @@ class GC():
     LINK_WINDOW = CONFIG.getint('link', 'window')
     LINK_OPTIONS = CONFIG.get('link', 'options')
     LINK_OPENSSL = CONFIG.getint('link', 'openssl')
-    LINK_LOCALSSLTXT = CONFIG.get('link', 'localssl')
-    LINK_REMOTESSLTXT = CONFIG.get('link', 'remotessl')
-    LINK_LOCALSSLTXT = LINK_LOCALSSLTXT or 'SSLv23'
-    LINK_REMOTESSLTXT = LINK_REMOTESSLTXT or 'TLSv1.2'
+    LINK_LOCALSSLTXT = CONFIG.get('link', 'localssl') or 'SSLv23'
+    LINK_REMOTESSLTXT = CONFIG.get('link', 'remotessl') or 'TLSv1.2'
     LINK_LOCALSSL = _SSLv[LINK_LOCALSSLTXT]
     LINK_REMOTESSL = max(_SSLv[LINK_REMOTESSLTXT]+1, 4) if LINK_OPENSSL else max(_SSLv[LINK_REMOTESSLTXT], 3)
     LINK_TIMEOUT = max(CONFIG.getint('link', 'timeout'), 3)
@@ -78,25 +76,10 @@ class GC():
     LINK_KEEPTIME = CONFIG.getint('link', 'keeptime')
 
     hosts_section, http_section = '%s/hosts' % LINK_PROFILE, '%s/http' % LINK_PROFILE
-    #HOSTS_MAP = collections.OrderedDict((k, v or k) for k, v in CONFIG.items(hosts_section) if '\\' not in k and ':' not in k and not k.startswith('.'))
-    #HOSTS_POSTFIX_MAP = collections.OrderedDict((k, v) for k, v in CONFIG.items(hosts_section) if '\\' not in k and ':' not in k and k.startswith('.'))
-    #HOSTS_POSTFIX_ENDSWITH = tuple(HOSTS_POSTFIX_MAP)
-
-    #CONNECT_HOSTS_MAP = collections.OrderedDict((k, v) for k, v in CONFIG.items(hosts_section) if ':' in k and not k.startswith('.'))
-    #CONNECT_POSTFIX_MAP = collections.OrderedDict((k, v) for k, v in CONFIG.items(hosts_section) if ':' in k and k.startswith('.'))
-    #CONNECT_POSTFIX_ENDSWITH = tuple(CONNECT_POSTFIX_MAP)
-
-    #METHOD_REMATCH_MAP = collections.OrderedDict((re.compile(k).match, v) for k, v in CONFIG.items(hosts_section) if '\\' in k)
-    #METHOD_REMATCH_HAS_LOCALFILE = any(x.startswith('file://') for x in METHOD_REMATCH_MAP.values())
-
-    #HTTP_WITHGAE = set(CONFIG.get(http_section, 'withgae').split('|'))
     HTTP_CRLFSITES = CONFIG.get(http_section, 'crlfsites')
     HTTP_CRLFSITES = tuple(HTTP_CRLFSITES.split('|')) if HTTP_CRLFSITES else ()
-    #HTTP_FORCEHTTPS = set(CONFIG.get(http_section, 'forcehttps').split('|'))
-    #HTTP_FAKEHTTPS = set(CONFIG.get(http_section, 'fakehttps').split('|'))
 
     IPLIST_MAP = dict((k.lower(), [x for x in v.split('|') if x]) for k, v in CONFIG.items('iplist'))
-    #IPLIST_MAP.update((k, [k]) for k, v in HOSTS_MAP.items() if k == v)
 
     FILTER_ACTION = CONFIG.getint('filter', 'action')
     FILTER_ACTION = FILTER_ACTION if FILTER_ACTION in (1, 2, 3, 4) else 3
@@ -111,14 +94,6 @@ class GC():
     FINDER_STATDAYS = max(min(CONFIG.getint('finder', 'statdays'), 5), 2)
     FINDER_BLOCK = CONFIG.get('finder', 'block')
     FINDER_BLOCK = tuple(FINDER_BLOCK.split('|')) if FINDER_BLOCK else ()
-
-    #PAC_ENABLE = CONFIG.getint('pac', 'enable')
-    #PAC_IP = CONFIG.get('pac', 'ip')
-    #PAC_PORT = CONFIG.getint('pac', 'port')
-    #PAC_FILE = CONFIG.get('pac', 'file').lstrip('/')
-    #PAC_GFWLIST = CONFIG.get('pac', 'gfwlist')
-    #PAC_ADBLOCK = CONFIG.get('pac', 'adblock') if CONFIG.has_option('pac', 'adblock') else ''
-    #PAC_EXPIRED = CONFIG.getint('pac', 'expired')
 
     #PROXY_ENABLE = CONFIG.getint('proxy', 'enable')
     PROXY_ENABLE = 0
@@ -144,9 +119,6 @@ class GC():
     else:
         proxy = ''
 
-    #AUTORANGE_HOSTS = CONFIG.get('autorange', 'hosts')
-    #AUTORANGE_HOSTS = AUTORANGE_HOSTS.split('|') if AUTORANGE_HOSTS else []
-    #AUTORANGE_HOSTS_MATCH = [re.compile(fnmatch.translate(h)).match for h in AUTORANGE_HOSTS]
     AUTORANGE_ENDSWITH = CONFIG.get('autorange', 'endswith')
     AUTORANGE_ENDSWITH = tuple(AUTORANGE_ENDSWITH.split('|')) if AUTORANGE_ENDSWITH else ()
     AUTORANGE_NOENDSWITH = CONFIG.get('autorange', 'noendswith')
@@ -157,13 +129,8 @@ class GC():
     AUTORANGE_THREADS = CONFIG.getint('autorange', 'threads')
     AUTORANGE_LOWSPEED = CONFIG.getint('autorange', 'lowspeed')
 
-    DNS_ENABLE = CONFIG.getint('dns', 'enable')
-    DNS_LISTEN = CONFIG.get('dns', 'listen')
     DNS_SERVERS = CONFIG.get('dns', 'servers').split('|')
     DNS_BLACKLIST = set(CONFIG.get('dns', 'blacklist').split('|'))
-
-    #USERAGENT_ENABLE = CONFIG.getint('useragent', 'enable')
-    #USERAGENT_STRING = CONFIG.get('useragent', 'string')
 
 del CONFIG, fnmatch, ConfigParser
 del sys.modules['fnmatch']

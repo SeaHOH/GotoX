@@ -39,26 +39,13 @@
 
 __version__ = '3.3.2'
 
-import os
 import sys
 sys.dont_write_bytecode = True
 
 #这条代码负责导入依赖库路径，不要改变位置
-from .common import logging
+from .common import gevent
 
-try:
-    import gevent
-    import gevent.socket
-    import gevent.server
-    import gevent.queue
-    import gevent.monkey
-    gevent.monkey.patch_all(subprocess=True)
-except ImportError:
-    gevent = None
-except TypeError:
-    gevent.monkey.patch_all()
-    logging.warning('警告：请更新 gevent 至 1.0 以上版本！')
-
+import os
 import struct
 import threading
 import socket
@@ -71,8 +58,9 @@ from .compat import (
     SocketServer,
     xrange
     )
+from . import clogging as logging
 from .GlobalConfig import GC
-from .ProxyServer import AutoProxy, GAEProxy
+from .ProxyServer import start_proxyserver
 from .ProxyHandler import AutoProxyHandler
 
 def main():
@@ -215,7 +203,7 @@ def main():
         if not GC.GAE_APPIDS or GC.GAE_APPIDS[0] == 'gotox':
             logging.critical('请编辑 %r 文件，添加你的 appid 到 [gae] 配置中！', GC.CONFIG_FILENAME)
             sys.exit(-1)
-        if os.name == 'nt' and not GC.DNS_ENABLE:
+        if os.name == 'nt':
             any(GC.DNS_SERVERS.insert(0, x) for x in [y for y in win32dns_query_dnsserver_list() if y not in GC.DNS_SERVERS])
         if not GC.PROXY_ENABLE:
             #logging.info('开始将 GC.IPLIST_MAP names=%s 解析为 IP 列表', list(GC.IPLIST_MAP))
@@ -227,20 +215,17 @@ def main():
     logging.setLevel(GC.LISTEN_DEBUGINFO)
 
     info = '==================================================================================\n'
-    info += '* GotoX  版 本 : %s (python/%s %spyopenssl/%s)\n' % (__version__, sys.version.split(' ')[0], gevent and 'gevent/%s ' % gevent.__version__ or '', opensslver)
+    info += '* GotoX  版 本 : %s (python/%s %spyOpenSSL/%s)\n' % (__version__, sys.version.split(' ')[0], gevent and 'gevent/%s ' % gevent.__version__ or '', opensslver)
     info += '* Uvent Version    : %s (pyuv/%s libuv/%s)\n' % (__import__('uvent').__version__, __import__('pyuv').__version__, __import__('pyuv').LIBUV_VERSION) if all(x in sys.modules for x in ('pyuv', 'uvent')) else ''
     info += '* GAE    APPID : %s\n' % '|'.join(GC.GAE_APPIDS)
-    info += '* GAE 远程验证 : %s\n' % '已启用' if GC.GAE_SSLVERIFY else '未启用'
+    info += '* GAE 远程验证 : %s启用\n' % '已' if GC.GAE_SSLVERIFY else '未'
     info += '*  监 听 地 址 : 自动代理 - %s:%d\n' % (GC.LISTEN_IP, GC.LISTEN_AUTO_PORT)
     info += '*                GAE 代理 - %s:%d\n' % (GC.LISTEN_IP, GC.LISTEN_GAE_PORT)
     info += '* Local Proxy  : %s:%s\n' % (GC.PROXY_HOST, GC.PROXY_PORT) if GC.PROXY_ENABLE else ''
     info += '*  调 试 信 息 : %s\n' % logging._levelToName[GC.LISTEN_DEBUGINFO]
-    info += '*  链 接 模 式 : 远程 - %s/%s\n' % (GC.LINK_REMOTESSLTXT, 'openssl' if GC.LINK_OPENSSL else 'gevent')
+    info += '*  链 接 模 式 : 远程 - %s/%s\n' % (GC.LINK_REMOTESSLTXT, 'OpenSSL' if GC.LINK_OPENSSL else 'gevent')
     info += '*                本地 - %s/gevent\n' % GC.LINK_LOCALSSLTXT
     info += '*  链接 配置集 : %s\n' % GC.LINK_PROFILE if GC.LINK_PROFILE else ''
-    if GC.DNS_ENABLE:
-        info += '* DNS Listen       : %s\n' % GC.DNS_LISTEN
-        info += '* DNS Servers      : %s\n' % '|'.join(GC.DNS_SERVERS)
     info += '*  安 装 证 书 : %s\n' % AutoProxyHandler.CAfile
     info += '*  下 载 证 书 : %s 加任意字符\n' % AutoProxyHandler.CAfile
     info += '==================================================================================\n'
@@ -252,30 +237,7 @@ def main():
     from . import CertUtil
     CertUtil.check_ca()
 
-    if GC.DNS_ENABLE:
-        try:
-            sys.path += ['.']
-            from .dnsproxy import DNSServer
-            host, port = GC.DNS_LISTEN.split(':')
-            server = DNSServer((host, int(port)), dns_servers=GC.DNS_SERVERS, dns_blacklist=GC.DNS_BLACKLIST)
-            thread.start_new_thread(server.serve_forever, ())
-        except ImportError:
-            logging.exception('GotoX DNSServer requires dnslib and gevent 1.0')
-            sys.exit(-1)
-
-    try:
-        thread.start_new_thread(GAEProxy.serve_forever, ())
-    except SystemError as e:
-        if ' (libev) select: Unknown error' in repr(e):
-            #logging.error('PLEASE START GotoX BY uvent.bat')
-            sys.exit(-1)
-
-    try:
-        thread.start_new_thread(AutoProxy.serve_forever, ())
-    except SystemError as e:
-        if ' (libev) select: Unknown error' in repr(e):
-            #logging.error('PLEASE START GotoX BY uvent.bat')
-            sys.exit(-1)
+    start_proxyserver()
 
     from .GAEUpdata import testipserver
     testipserver()
