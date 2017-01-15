@@ -305,7 +305,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if e.args[0] == errno.ECONNRESET and not any(path.endswith(x) for x in GC.AUTORANGE_ENDSWITH): #不符合自动多线程规则
                 logging.warn(u'request "%s %s" 链接被重置，尝试使用 "GAE" 规则。', self.command, self.url)
                 return self.go_GAE()
-            elif e.args[0] in (10063, errno.ENAMETOOLONG):
+            elif e.args[0] in (errno.WSAENAMETOOLONG, errno.ENAMETOOLONG):
                 logging.warn(u'%s request "%s %s" 失败：%r，返回 408', self.address_string(response), self.command, self.url, e)
                 self.write('HTTP/1.1 408 %s\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n%s' % self.responses[408])
                 #logging.warn('request "%s %s" failed:%s, try addto `withgae`', self.command, self.url, e)
@@ -521,6 +521,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         hostname = self.hostname
         http_util = http_gws if hostname.startswith('google') else http_nor
         host, port = self.host, self.port
+        hostip = ''
         if not GC.PROXY_ENABLE:
             connection_cache_key = '%s:%d' % (hostname, port)
             for i in xrange(5):
@@ -589,7 +590,17 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.url_parts = url_parts = urlparse.urlsplit(target)
             self.headers['Host'] = self.host = url_parts.netloc
             #重设协议
+            origssl = self.ssl
             self.ssl = url_parts.scheme == 'https'
+            #重设端口
+            if origssl != self.ssl:
+                if self.ssl and self.port == 80:
+                    self.port = 443
+                elif origssl and self.port == 443:
+                    self.port = 80
+                else:
+                    #不改变非 80、443 端口
+                    self.ssl = origssl
             #重设路径
             self.path = target[target.find('/', target.find('//')+3):]
             #重设 action
@@ -659,7 +670,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         b'\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;')
         else:
             content += b'\r\n'
-        logging.warning(u'%s "%s %s" 已经被拦截', self.address_string(), self.command, self.url)
+        logging.warning(u'%s "%s %s" 已经被拦截', self.address_string(), self.command, self.url or self.host)
         self.write(content)
 
     def go_GAE(self):
