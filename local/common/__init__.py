@@ -1,37 +1,51 @@
 # coding:utf-8
 
 import os
+import sys
+import glob
+from local import clogging as logging
+
 app_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 cert_dir = os.path.join(app_root, 'cert')
 config_dir = os.path.join(app_root, 'config')
 data_dir = os.path.join(app_root, 'data')
 py_dir = os.path.join(app_root, 'python')
 web_dir = os.path.join(app_root, 'web')
-
-import glob
-import sys
 packages = os.path.join(py_dir, 'site-packages')
+
 #自带 py 已经添加
 if os.path.dirname(sys.executable) != py_dir:
     #优先导入当前运行 py 已安装模块
     sys.path.append(packages)
     sys.path += glob.glob('%s/*.egg' % packages)
 
-from local import clogging as logging
-from time import time
-from local.compat import thread
+try:
+    import gevent
+    import gevent.monkey
+    gevent.monkey.patch_all(os=False, signal=False, subprocess=False, Event=True)
+except ImportError:
+    gevent = None
+except TypeError:
+    gevent.monkey.patch_all(os=False)
+    logging.warning('警告：请更新 gevent 至 1.0 以上版本！')
 
 try:
     import OpenSSL
 except ImportError:
-    logging.error(u'无法找到 pyopenssl，请安装 pyopenssl-16.0.0 以上版本，或将相应 .egg 放到 %r 文件夹！', packages)
+    logging.error(u'无法找到 pyOpenSSL，请安装 pyOpenSSL-16.0.0 以上版本，或将相应 .egg 放到 %r 文件夹！', packages)
     sys.exit(-1)
+
+import re
 import ssl
 import socket
-NetWorkIOError = (socket.error, ssl.SSLError, OSError) if not OpenSSL else (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
-
+import string
 import threading
 import collections
+from time import time, sleep
+from local.compat import thread
+
+NetWorkIOError = (socket.error, ssl.SSLError, OSError) if not OpenSSL else (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
+
 class LRUCache(object):
     """Modified from http://pypi.python.org/pypi/lru/"""
 
@@ -100,7 +114,6 @@ class LRUCache(object):
             self.key_expire.clear()
             self.key_order.clear()
 
-import string
 def message_html(title, banner, detail=''):
     MESSAGE_TEMPLATE = '''
     <html><head>
@@ -135,13 +148,12 @@ def message_html(title, banner, detail=''):
 #def onlytime():
 #    return int(time())+random.random()
 
-import re
 isip = re.compile(r'(\d+\.){3}\d+$|(([a-f\d]{1,4}:){1,6}|:)([a-f\d]{1,4})?(:[a-f\d]{1,4}){1,6}$').match
 isipv4 = re.compile(r'(\d+\.){3}\d+$').match
 isipv6 = re.compile(r'(([a-f\d]{1,4}:){1,6}|:)([a-f\d]{1,4})?(:[a-f\d]{1,4}){1,6}$').match
 
 def spawn_later(seconds, target, *args, **kwargs):
     def wrap(*args, **kwargs):
-        __import__('time').sleep(seconds)
+        sleep(seconds)
         target(*args, **kwargs)
     thread.start_new_thread(wrap, args, kwargs)
