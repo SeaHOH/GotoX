@@ -5,6 +5,7 @@ from time import time
 from functools import partial
 from . import clogging as logging
 from .common import config_dir, LRUCache
+from .common.dns import dns
 from .compat import urlparse
 from .GlobalConfig import GC
 from .FilterConfig import (
@@ -28,7 +29,8 @@ def check_reset():
             ACTION_FILTERS = _ACTION_FILTERS.copy()
             filters_cache.clear()
             ssl_filters_cache.clear()
-            logging.info('%r 内容被修改，已重新加载配置。', _ACTION_FILTERS.CONFIG_FILENAME)
+            dns.clear()
+            logging.warning('%r 内容被修改，已重新加载配置。', _ACTION_FILTERS.CONFIG_FILENAME)
 
 def get_redirect(target, url):
     '''Get the redirect target'''
