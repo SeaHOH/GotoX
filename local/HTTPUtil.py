@@ -23,7 +23,7 @@ from .compat import (
     urlparse,
     xrange
     )
-from .common import cert_dir, NetWorkIOError
+from .common import cert_dir, NetWorkIOError, isip
 from .common.dns import dns, dns_resolve
 from .common.proxy import parse_proxy
 
@@ -358,8 +358,8 @@ class HTTPUtil(BaseHTTPUtil):
                 # disable negal algorithm to send http request quickly.
                 sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
                 # pick up the sock socket
-                #server_hostname = b'www.google.com' if address[0].endswith('.appspot.com') else None
-                ssl_sock = self.get_ssl_socket(sock)
+                server_hostname = None if isip(address[0]) else address[0].encode()
+                ssl_sock = self.get_ssl_socket(sock, server_hostname)
                 # set a short timeout to trigger timeout retry more quickly.
                 ssl_sock.settimeout(1)
                 set_connect_start(ip)
@@ -612,7 +612,7 @@ class HTTPUtil(BaseHTTPUtil):
                     sock.close()
                 if hasattr(e, 'xip'):
                     ip = e.xip
-                    logging.warning(u'%s create_%s connection %r 失败：%r', ip[0], '' if port == 80 else 'ssl_', realurl or url, e)
+                    logging.warning(u'%s create_%sconnection %r 失败：%r', ip[0], '' if port == 80 else 'ssl_', realurl or url, e)
                 else:
                     logging.warning(u'%s _request "%s %s" 失败：%r', ip[0], method, realurl or url, e)
                     if realurl:
