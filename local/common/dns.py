@@ -30,8 +30,8 @@ def set_DNS(host, iporname):
     elif iporname in GC.IPLIST_MAP:
         dns[host] = GC.IPLIST_MAP[iporname]
         return iporname
-    elif '.' in iporname or ':' in iporname:
-        dns[host] = iporname
+    elif isinstance(iporname, str) and isip(iporname):
+        dns[host] = iporname,
     else:
         iplist = dns_resolve(host)
         if iplist:
