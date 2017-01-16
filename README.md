@@ -25,8 +25,7 @@
     * **相关链接**
     * 手动导入证书 https://github.com/XX-net/XX-Net/wiki/GoAgent-Import-CA
 * **小技巧：**
-    * 对于不支持 GAE 出口的网址，可在**转发（forward）或直连（direct）**规则中设置成**反向代理** IP。
-
+    * 对于不支持 GAE 出口的网址，可在**转发（forward）或直连（direct）**规则中设置成**反向代理** IP。反向代理**不支持**非加密链接。
 # 兼容性
 * CPython 3.4/3.5 已测试。由于要兼容 Python 2 比较麻烦，已放弃。
 * 必须组件（可放入“**python/site-packages**”目录，支持 “**.egg**”）：
