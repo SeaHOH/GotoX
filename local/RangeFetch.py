@@ -1,5 +1,5 @@
 # coding:utf-8
-"""Range Fetch Util"""
+'''Range Fetch Util'''
 
 
 import re
@@ -7,7 +7,7 @@ import threading
 import random
 from . import clogging as logging
 from time import time, sleep
-from .compat import Queue, thread, urlparse, xrange
+from .compat import Queue, thread, urlparse
 from .common import spawn_later
 from .GAEFetch import qGAE, gae_urlfetch
 from .GlobalConfig import GC
@@ -17,7 +17,7 @@ from .GAEUpdata import testip, testallgaeip
 getrange = re.compile(r'bytes (\d+)-(\d+)/(\d+)').search
 
 class RangeFetch(object):
-    """Range Fetch Class"""
+    '''Range Fetch Class'''
 
     maxsize = GC.AUTORANGE_MAXSIZE or 1024*1024*4
     bufsize = GC.AUTORANGE_BUFSIZE or 8192
@@ -26,6 +26,7 @@ class RangeFetch(object):
     lowspeed = GC.AUTORANGE_LOWSPEED or 1024*32
     timeout = min(max(GC.LINK_TIMEOUT-2, 1.5), 3)
     sleeptime = GC.FINDER_MAXTIMEOUT/500.0
+    delable = GC.GAE_USEGWSIPLIST
 
     def __init__(self, handler, url, headers, payload, response):
         self.tLock = threading.Lock()
@@ -60,7 +61,7 @@ class RangeFetch(object):
             response_headers['Content-Range'] = 'bytes %s-%s/%s' % (start, end, length)
             response_headers['Content-Length'] = str(length-start)
 
-        logging.info(u'>>>>>>>>>>>>>>> RangeFetch 开始 %r %d-%d', self.url, start, end)
+        logging.info('>>>>>>>>>>>>>>> RangeFetch 开始 %r %d-%d', self.url, start, end)
         self.write(('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k, v) for k, v in response_headers.items()))))
 
         #开始多线程时先测试一遍 IP
@@ -75,14 +76,14 @@ class RangeFetch(object):
         a = end + 1
         b = end
         n = (length-a)//self.maxsize
-        for i in xrange(n):
+        for i in range(n):
             b += self.maxsize
             range_queue.put((a, b))
             a = b + 1
         if length > a:
             range_queue.put((a, length-1))
 
-        for i in xrange(self.threads):
+        for i in range(self.threads):
             range_delay_size = int((self.threads-i) * self.maxsize * self.threads * 0.66)
             spawn_later(sleeptime if i else 0, self.__fetchlet, range_queue, data_queue, range_delay_size, i+1)
         has_peek = hasattr(data_queue, 'peek')
@@ -118,10 +119,10 @@ class RangeFetch(object):
                 self.write(data)
                 self.expect_begin += len(data)
             except Exception as e:
-                logging.info(u'RangeFetch %r 本地链接断开：%r', self.host, e)
+                logging.info('RangeFetch %r 本地链接断开：%r', self.host, e)
                 break
         else:
-            logging.info(u'RangeFetch %r 成功完成', self.host)
+            logging.info('RangeFetch %r 成功完成', self.host)
         self._stopped = True
 
     def address_string(self, response=None):
@@ -197,21 +198,21 @@ class RangeFetch(object):
                     except Exception as e:
                         noerror = False
                         with self.tLock:
-                            if response.xip[0] in self.iplist and len(self.iplist) > self.minip:
+                            if self.delable and response.xip[0] in self.iplist and len(self.iplist) > self.minip:
                                 self.iplist.remove(response.xip[0])
-                                logging.warning(u'RangeFetch 移除故障 ip %s', response.xip[0])
-                        logging.warning(u'%s RangeFetch "%s %s" %s 失败：%r', self.address_string(response), self.command, self.url, headers['Range'], e)
+                                logging.warning('RangeFetch 移除故障 ip %s', response.xip[0])
+                        logging.warning('%s RangeFetch "%s %s" %s 失败：%r', self.address_string(response), self.command, self.url, headers['Range'], e)
                     if start < end + 1:
-                        logging.warning(u'%s RangeFetch "%s %s" 重试 %s-%s', self.address_string(response), self.command, self.url, start, end)
+                        logging.warning('%s RangeFetch "%s %s" 重试 %s-%s', self.address_string(response), self.command, self.url, start, end)
                         range_queue.put((start, end))
                         continue
-                    logging.info(u'%s >>>>>>>>>>>>>>> 成功接收到 %d 字节', self.address_string(response), start - 1)
+                    logging.info('%s >>>>>>>>>>>>>>> 成功接收到 %d 字节', self.address_string(response), start - 1)
                 else:
-                    logging.error(u'%s RangeFetch %r 返回 %s', self.address_string(response), self.url, response.status)
+                    logging.error('%s RangeFetch %r 返回 %s', self.address_string(response), self.url, response.status)
                     range_queue.put((start, end))
                     appid = None
             except Exception as e:
-                logging.exception(u'RangeFetch._fetchlet 错误：%r', e)
+                logging.exception('RangeFetch._fetchlet 错误：%r', e)
                 raise
             finally:
                 qGAE.put(True)
@@ -222,8 +223,8 @@ class RangeFetch(object):
                     if noerror and not self._stopped:
                         #移除慢速 ip
                         with self.tLock:
-                            if response.xip[0] in self.iplist and starttime and len(self.iplist) > self.minip and (start-realstart)/(time()-starttime) < self.lowspeed:
+                            if self.delable and response.xip[0] in self.iplist and starttime and len(self.iplist) > self.minip and (start-realstart)/(time()-starttime) < self.lowspeed:
                                 self.iplist.remove(response.xip[0])
-                                logging.warning(u'RangeFetch 移除慢速 ip %s', response.xip[0])
+                                logging.warning('RangeFetch 移除慢速 ip %s', response.xip[0])
                         #放入套接字缓存
                         ssl_connection_cache['google_gws:443'].append((time(), response.sock))

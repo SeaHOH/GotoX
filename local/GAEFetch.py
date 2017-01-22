@@ -3,12 +3,12 @@
 import zlib
 import io
 import struct
-from .compat import PY3, httplib, Queue, xrange
+from .compat import Queue, httplib
 from .GlobalConfig import GC
 from .HTTPUtil import http_gws
 
 qGAE = Queue.LifoQueue()
-for i in xrange(GC.GAE_MAXREQUESTS * len(GC.GAE_APPIDS)):
+for i in range(GC.GAE_MAXREQUESTS * len(GC.GAE_APPIDS)):
     qGAE.put(True)
 
 def make_errinfo(htmltxt):
@@ -20,16 +20,16 @@ def make_errinfo(htmltxt):
     return response
 
 class gae_params():
-    ssl = True
-    command = 'POST'
-    fetchserver = 'https://%s.appspot.com%s'
-    fetchhost = '%s.appspot.com'
     port = 443
+    ssl = True
     path = GC.GAE_PATH
+    command = 'POST'
+    fetchhost = '%s.appspot.com'
+    fetchserver = 'https://%s.appspot.com' + path
 
     def __init__(self, appid):
         self.host = self.fetchhost % appid
-        self.url = self.fetchserver % (appid, self.path)
+        self.url = self.fetchserver % appid
 
 def gae_urlfetch(method, url, headers, payload, appid, timeout=None, rangefetch=None, **kwargs):
     if GC.GAE_PASSWORD:
@@ -105,14 +105,11 @@ def gae_urlfetch(method, url, headers, payload, appid, timeout=None, rangefetch=
             _, response.status = raw_response_list
             response.app_status = response.status = int(response.status)
             if response.app_status == 403:
-                response.app_reason = u'APP 密码错误！请修改后重试。'
+                response.app_reason = 'APP 密码错误！请修改后重试。'
                 return make_errinfo('<h1>******   APP 密码错误！请修改后重试。******</h1>')
         else:
             _, response.status, response.reason = raw_response_list
             response.status = int(response.status)
             response.reason = response.reason.strip()
-    if PY3:
-        response.headers = response.msg = httplib.parse_headers(io.BytesIO(headers_data))
-    else:
-        response.msg = httplib.HTTPMessage(io.BytesIO(headers_data))
+    response.headers = response.msg = httplib.parse_headers(io.BytesIO(headers_data))
     return response

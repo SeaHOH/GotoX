@@ -32,9 +32,10 @@ except TypeError:
 try:
     import OpenSSL
 except ImportError:
-    logging.error(u'无法找到 pyOpenSSL，请安装 pyOpenSSL-16.0.0 以上版本，或将相应 .egg 放到 %r 文件夹！', packages)
+    logging.error(u'无法找到 pyOpenSSL，请安装 pyOpenSSL-16.0.0 以上版本，或将相应 .egg 放到 %r 文件夹！\n正在退出……', packages)
     sys.exit(-1)
 
+from local.compat import thread
 import re
 import ssl
 import socket
@@ -42,7 +43,6 @@ import string
 import threading
 import collections
 from time import time, sleep
-from local.compat import thread
 
 NetWorkIOError = (socket.error, ssl.SSLError, OSError) if not OpenSSL else (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
 

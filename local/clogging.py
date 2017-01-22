@@ -90,7 +90,7 @@ def _init_():
             _colors['ERROR'] = '\033[31m'
             _colors['WARNING'] = '\033[33m'
             _colors['DEBUG'] = '\033[32m'
-            _colors['HEAD'] = '\033[1;36m'
+            _colors['HEAD'] = '\033[36m'
             _setColor = lambda color: _write(_colors[color])
         _colors['CRITICAL'] = _colors['ERROR']
         _colors['TEST'] = _colors['DEBUG']
@@ -124,7 +124,7 @@ def log(level, fmt, *args, **kwargs):
         levelName = _levelToName[level]
         _setColor('HEAD')
         _write('%s %s ' % (time.strftime('%H:%M:%S'), levelName[0]))
-        _setColor('HEAD') # repeat for python3
+        _setColor('HEAD') # repeat for python3 in nt
         _flush() # immediately output for python3
         _setColor(levelName)
         _write('%s\n' % (fmt % args))

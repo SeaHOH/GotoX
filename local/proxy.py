@@ -1,5 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # coding:utf-8
+# Homepage: https://github.com/SeaHOH/GotoX
 # Based on GoAgent   3.1.5 by Phus Lu <phus.lu@gmail.com>
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang.2008@gmail.com>
 # Based on WallProxy 0.4.0 by Hust Moon <www.ehust@gmail.com>
@@ -37,7 +38,7 @@
 #      s2marine0         <s2marine0@gmail.com>
 #      Toshio Xiang      <snachx@gmail.com>
 
-__version__ = '3.3.2'
+__version__ = '3.3.3'
 
 import sys
 sys.dont_write_bytecode = True
@@ -52,13 +53,8 @@ import socket
 import ssl
 import re
 from OpenSSL import __version__ as opensslver
-from .compat import (
-    Queue,
-    thread,
-    SocketServer,
-    xrange
-    )
 from . import clogging as logging
+from .compat import Queue, thread, SocketServer
 from .GlobalConfig import GC
 from .ProxyServer import start_proxyserver
 from .ProxyHandler import AutoProxyHandler
@@ -120,7 +116,7 @@ def main():
             ctypes.windll.dnsapi.DnsQueryConfig(DNS_CONFIG_DNS_SERVER_LIST, 0, None, None, ctypes.byref(buf), ctypes.byref(ctypes.wintypes.DWORD(len(buf))))
             ips = struct.unpack('I', buf[0:4])[0]
             out = []
-            for i in xrange(ips):
+            for i in range(ips):
                 start = (i+1) * 4
                 out.append(socket.inet_ntoa(buf[start:start+4]))
             return out
@@ -145,7 +141,7 @@ def main():
                     for dnsserver in GC.DNS_SERVERS:
                         logging.debug('远程解析开始：host=%r，dns=%r', host, dnsserver)
                         threading._start_new_thread(do_resolve, (host, [dnsserver], result_queue))
-                for _ in xrange(len(GC.DNS_SERVERS) * len(need_resolve_remote)):
+                for _ in range(len(GC.DNS_SERVERS) * len(need_resolve_remote)):
                     try:
                         host, dnsservers, iplist = result_queue.get(timeout=2)
                         resolved_iplist += iplist or []
@@ -208,15 +204,15 @@ def main():
         if not GC.PROXY_ENABLE:
             #logging.info('开始将 GC.IPLIST_MAP names=%s 解析为 IP 列表', list(GC.IPLIST_MAP))
             resolve_iplist()
-        if 'uvent.loop' in sys.modules and isinstance(gevent.get_hub().loop, __import__('uvent').loop.UVLoop):
-            logging.info('Uvent enabled, patch forward_socket')
-            AutoProxyHandler.forward_socket = AutoProxyHandler.green_forward_socket
+        #if 'uvent.loop' in sys.modules and isinstance(gevent.get_hub().loop, __import__('uvent').loop.UVLoop):
+        #    logging.info('Uvent enabled, patch forward_socket')
+        #    AutoProxyHandler.forward_socket = AutoProxyHandler.green_forward_socket
 
     logging.setLevel(GC.LISTEN_DEBUGINFO)
 
     info = '==================================================================================\n'
     info += '* GotoX  版 本 : %s (python/%s %spyOpenSSL/%s)\n' % (__version__, sys.version.split(' ')[0], gevent and 'gevent/%s ' % gevent.__version__ or '', opensslver)
-    info += '* Uvent Version    : %s (pyuv/%s libuv/%s)\n' % (__import__('uvent').__version__, __import__('pyuv').__version__, __import__('pyuv').LIBUV_VERSION) if all(x in sys.modules for x in ('pyuv', 'uvent')) else ''
+    #info += '* Uvent Version    : %s (pyuv/%s libuv/%s)\n' % (__import__('uvent').__version__, __import__('pyuv').__version__, __import__('pyuv').LIBUV_VERSION) if all(x in sys.modules for x in ('pyuv', 'uvent')) else ''
     info += '* GAE    APPID : %s\n' % '|'.join(GC.GAE_APPIDS)
     info += '* GAE 远程验证 : %s启用\n' % '已' if GC.GAE_SSLVERIFY else '未'
     info += '*  监 听 地 址 : 自动代理 - %s:%d\n' % (GC.LISTEN_IP, GC.LISTEN_AUTO_PORT)
@@ -239,8 +235,14 @@ def main():
 
     start_proxyserver()
 
-    from .GAEUpdata import testipserver
-    testipserver()
+    if GC.GAE_USEGWSIPLIST:
+        from .GAEUpdata import testipserver
+        testipserver()
+    else:
+        logging.warning('正在使用固定的 GAE IP 列表［%s］，将不会进行 IP 检查。', GC.GAE_IPLIST)
+        from time import sleep
+        while True:
+            sleep(9)
 
 if __name__ == '__main__':
     main()

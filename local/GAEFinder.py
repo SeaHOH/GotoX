@@ -18,7 +18,6 @@ import OpenSSL
 from . import clogging as logging
 from time import time, localtime, strftime
 from .common import cert_dir, data_dir, NetWorkIOError, isip, isipv4, isipv6
-from .compat import PY3, xrange
 from .ProxyServer import network_test
 from .GlobalConfig import GC
 
@@ -84,7 +83,7 @@ def readstatistics():
         now = time()
         names = []
         #生成统计文件名
-        for i in xrange(GC.FINDER_STATDAYS):
+        for i in range(GC.FINDER_STATDAYS):
             n = strftime('%y%j', localtime(now-3600*24*i))
             name = os.path.join(data_dir, 'statistics'+n)
             names.append(name)
@@ -144,7 +143,7 @@ def savestatistics(statistics=None):
     statistics = statistics or g.statistics[1]
     statistics = [(ip, stats[0], stats[1]) for ip, stats in statistics.items()]
     statistics.sort(key=lambda x: -(x[1]+0.01)/(x[2]**2+0.1))
-    op = 'w' if PY3 else 'wb'
+    op = 'w'
     with open(statisticsfile, op) as f:
         for ip in statistics:
             f.write(str(ip[0]).rjust(15))
@@ -212,7 +211,7 @@ def savebadlist(baddict=None):
             os.remove(g_badfilebak)
         os.rename(g_badfile, g_badfilebak)
     baddict = baddict or g.baddict
-    op = 'w' if PY3 else 'wb'
+    op = 'w'
     with open(g_badfile, op) as f:
         for ip in baddict:
             f.write(' * '.join([ip, str(baddict[ip][0]), str(baddict[ip][1])]))
@@ -260,13 +259,13 @@ class GAE_Finder(BaseHTTPUtil):
             WARNING('%r', e)
         code = self.getstatcode(ssl_sock, sock, ip) if ssl_sock else ''
         costtime = int((time()-start_time)*1000)
-        return domain, costtime, code == b'HTTP/1.1 302'
+        return domain, costtime, code in (b'302', b'200')
 
     def getstatcode(self, conn, sock, ip):
         try:
             begin = time()
             conn.send(self.httpreq)
-            code = conn.read(12)
+            code = conn.read(12)[-3:]
             costime = time() - begin
             if costime >= g_timeout:
                 WARNING('获取 http 响应超时(%ss)，ip：%s', costime, ip)
@@ -439,7 +438,7 @@ def getgaeip(nowgaelist=[], needcomcnt=0, threads=None):
     PRINT('需要查找 IP 数：%d/%d，待检测 IP 数：%d', needcomcnt, max(needgwscnt, needcomcnt), len(g.goodlist)+len(g.ipexlist)+len(g.iplist)+len(g.weaklist))
     #多线程搜索
     threadiplist = []
-    for i in xrange(threads):
+    for i in range(threads):
         ping_thread = Finder()
         ping_thread.setDaemon(True)
         ping_thread.setName('Ping-%s' % str(i+1).rjust(2, '0'))

@@ -60,6 +60,8 @@ class GC():
     GAE_SSLVERIFY = CONFIG.get('gae', 'sslverify')
     GAE_FETCHMAX = CONFIG.get('gae', 'fetchmax') or 2
     GAE_MAXSIZE = CONFIG.get('gae', 'maxsize')
+    GAE_IPLIST = CONFIG.get('gae', 'iplist')
+    GAE_USEGWSIPLIST = True
 
     LINK_PROFILE = CONFIG.get('link', 'profile')
     if LINK_PROFILE not in ('ipv4', 'ipv6', 'ipv46'):
@@ -75,11 +77,11 @@ class GC():
     LINK_FWDTIMEOUT = max(CONFIG.getint('link', 'fwd_timeout'), 2)
     LINK_KEEPTIME = CONFIG.getint('link', 'keeptime')
 
-    hosts_section, http_section = '%s/hosts' % LINK_PROFILE, '%s/http' % LINK_PROFILE
-    HTTP_CRLFSITES = CONFIG.get(http_section, 'crlfsites')
-    HTTP_CRLFSITES = tuple(HTTP_CRLFSITES.split('|')) if HTTP_CRLFSITES else ()
-
     IPLIST_MAP = dict((k.lower(), [x for x in v.split('|') if x]) for k, v in CONFIG.items('iplist'))
+
+    if GAE_IPLIST and GAE_IPLIST != 'google_gws':
+        GAE_USEGWSIPLIST = False
+        IPLIST_MAP['google_gws'] = IPLIST_MAP['google_com'] = IPLIST_MAP[GAE_IPLIST]
 
     FILTER_ACTION = CONFIG.getint('filter', 'action')
     FILTER_ACTION = FILTER_ACTION if FILTER_ACTION in (1, 2, 3, 4) else 3

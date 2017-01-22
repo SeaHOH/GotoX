@@ -42,7 +42,7 @@ def get_redirect(target, url):
     elif isinstance(target, str) and target.find('://') < 9:
         return target
     else:
-        logging.error(u'%r 匹配重定向规则 %r，解析错误，请检查你的配置文件："%s/ActionFilter.ini"', url, target, config_dir)
+        logging.error('%r 匹配重定向规则 %r，解析错误，请检查你的配置文件："%s/ActionFilter.ini"', url, target, config_dir)
         return
     return urlparse.unquote(url) if target[1] else url
 

@@ -1,5 +1,5 @@
 # coding:utf-8
-"""CertUtil module, based on mitmproxy"""
+'''CertUtil module, based on mitmproxy'''
 
 import os
 import sys
@@ -227,18 +227,18 @@ def check_ca():
             sys.exit(-1)
         if os.path.exists(ca_certdir):
             if os.path.isdir(ca_certdir):
-                logging.error('CAkey.pem is not exist, delete Certs.')
+                logging.error('CAkey.pem 不存在，清空 Certs 文件夹。')
                 any(os.remove(x) for x in glob.glob('%s/*.crt' % ca_certdir))
             else:
                 os.remove(ca_certdir)
                 os.mkdir(ca_certdir)
         try:
             if remove_cert('%s CA' % ca_vendor) == 0:
-                logging.error('CAkey.pem is not exist, delete from system.')
+                logging.error('CAkey.pem 不存在，从系统证书中删除。')
             else:
-                raise UserWarning('cannot work for %s! please delete manually.' % sys.platform)
+                raise UserWarning('删除功能不能在 %s 中使用，请自行删除［%s CA］证书' % (sys.platform, ca_vendor))
         except Exception as e:
-            logging.warning('CertUtil.remove_cert failed: %r', e)
+            logging.warning('CertUtil.remove_cert 失败: %r', e)
         dump_ca()
     global ca_key, ca_subject, sub_key, ca_thumbprint
     with open(ca_keyfile, 'rb') as fp:

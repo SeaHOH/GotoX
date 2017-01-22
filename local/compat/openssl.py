@@ -4,7 +4,6 @@
 import socket
 from OpenSSL import SSL
 from select import select
-from . import PY3, exc_clear
 
 class SSLConnection(object):
     '''API-compatibility wrapper for Python OpenSSL's Connection-class.'''
@@ -31,14 +30,14 @@ class SSLConnection(object):
             try:
                 return io_func(*args, **kwargs)
             except (SSL.WantReadError, SSL.WantX509LookupError):
-                exc_clear()
+                #exc_clear()
                 rd, _, ed = select([fd], [], [fd], timeout)
                 if ed:
                     raise socket.error(ed)
                 if not rd:
                     raise socket.timeout('The read operation timed out')
             except SSL.WantWriteError:
-                exc_clear()
+                #exc_clear()
                 _, wd, ed = select([], [fd], [fd], timeout)
                 if ed:
                     raise socket.error(ed)
@@ -46,7 +45,7 @@ class SSLConnection(object):
                     raise socket.timeout('The write operation timed out')
             except SSL.SysCallError as e:
                 if e.args[0] == 10035 and 'WSAEWOULDBLOCK' in e.args[1]:
-                    exc_clear()
+                    #exc_clear()
                     rd, wd, ed = select([fd], [fd], [fd], timeout)
                     if ed:
                         raise socket.error(ed)
@@ -128,11 +127,12 @@ class SSLConnection(object):
         else:
             self._io_refs -= 1
 
-    if PY3:
-        def makefile(self, *args, **kwargs):
-            return socket.socket.makefile(self, *args, **kwargs)
-    else:
-        def makefile(self, mode='r', bufsize=-1):
-            self._io_refs += 1
-            return socket._fileobject(self, mode, bufsize, close=True)
-            
+    #if PY3:
+    #    def makefile(self, *args, **kwargs):
+    #        return socket.socket.makefile(self, *args, **kwargs)
+    #else:
+    #    def makefile(self, mode='r', bufsize=-1):
+    #        self._io_refs += 1
+    #        return socket._fileobject(self, mode, bufsize, close=True)
+    def makefile(self, *args, **kwargs):
+        return socket.socket.makefile(self, *args, **kwargs)

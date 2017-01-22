@@ -1,5 +1,5 @@
 # coding:utf-8
-"""HTTP Request Util"""
+'''HTTP Request Util'''
 
 import sys
 import os
@@ -16,19 +16,17 @@ from time import time, sleep
 from .GlobalConfig import GC
 from .compat.openssl import SSLConnection
 from .compat import (
-    PY3,
     Queue,
     thread,
     httplib,
-    urlparse,
-    xrange
+    urlparse
     )
 from .common import cert_dir, NetWorkIOError, isip
 from .common.dns import dns, dns_resolve
 from .common.proxy import parse_proxy
 
 class BaseHTTPUtil(object):
-    """Basic HTTP Request Class"""
+    '''Basic HTTP Request Class'''
 
     use_openssl = 0
     ssl_ciphers = ':'.join([
@@ -164,7 +162,7 @@ def check_tcp_connection_cache():
                 if e.args[0] == 9:
                     pass
                 else:
-                    logging.error(u'链接池守护线程错误：%r', e)
+                    logging.error('链接池守护线程错误：%r', e)
 
 def check_ssl_connection_cache():
     '''check and close unavailable connection continued forever'''
@@ -202,7 +200,7 @@ def check_ssl_connection_cache():
                 if e.args[0] == 9:
                     pass
                 else:
-                    logging.error(u'链接池守护线程错误：%r', e)
+                    logging.error('链接池守护线程错误：%r', e)
 thread.start_new_thread(check_tcp_connection_cache, ())
 thread.start_new_thread(check_ssl_connection_cache, ())
 
@@ -217,7 +215,7 @@ def set_connect_finish(ip):
     connect_limiter[ip].get()
 
 class HTTPUtil(BaseHTTPUtil):
-    """HTTP Request Class"""
+    '''HTTP Request Class'''
 
     protocol_version = 'HTTP/1.1'
 
@@ -282,7 +280,7 @@ class HTTPUtil(BaseHTTPUtil):
             now = time()
             tcp_time_threshold = max(min(1.5, 1.5 * first_tcp_time), 0.5)
             cache = tcp_connection_cache[cache_key]
-            for i in xrange(count):
+            for i in range(count):
                 sock = queobj.get()
                 if isinstance(sock, socket.socket):
                     if False and sock.tcp_time < tcp_time_threshold:
@@ -309,7 +307,7 @@ class HTTPUtil(BaseHTTPUtil):
             get_connection_time = lambda addr: tcp_connection_time.get(addr, False) or ssl_connection_time.get(addr, False)
         else:
             get_connection_time = lambda addr: tcp_connection_time.get(addr, False)
-        for i in xrange(self.max_retry):
+        for i in range(self.max_retry):
             addresseslen = len(addresses)
             addresses.sort(key=get_connection_time)
             if addresseslen > self.max_window:
@@ -321,7 +319,7 @@ class HTTPUtil(BaseHTTPUtil):
             for addr in addrs:
                 thread.start_new_thread(_create_connection, (addr, timeout, queobj))
             addrslen = len(addrs)
-            for i in xrange(addrslen):
+            for i in range(addrslen):
                 result = queobj.get()
                 if isinstance(result, Exception):
                     addr = result.xip
@@ -332,7 +330,7 @@ class HTTPUtil(BaseHTTPUtil):
                         pass
                     if i == 0:
                         #only output first error
-                        logging.warning(u'%s create_connection %r 返回 %r，重试', addr[0], host, result)
+                        logging.warning('%s create_connection %r 返回 %r，重试', addr[0], host, result)
                 else:
                     thread.start_new_thread(_close_connection, (addrslen-i-1, queobj, result.tcp_time))
                     return result
@@ -358,7 +356,10 @@ class HTTPUtil(BaseHTTPUtil):
                 # disable negal algorithm to send http request quickly.
                 sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
                 # pick up the sock socket
-                server_hostname = None if isip(address[0]) else address[0].encode()
+                if cache_key == 'google_gws:443':
+                    server_hostname = b'www.google.com'
+                else:
+                    server_hostname = None if isip(address[0]) else address[0].encode()
                 ssl_sock = self.get_ssl_socket(sock, server_hostname)
                 # set a short timeout to trigger timeout retry more quickly.
                 ssl_sock.settimeout(1)
@@ -381,15 +382,15 @@ class HTTPUtil(BaseHTTPUtil):
                 ssl_connection_time[ipaddr] = ssl_sock.ssl_time = handshaked_time - start_time
                 if test:
                     if ssl_sock.ssl_time > timeout:
-                        raise socket.timeout(u'%d 超时' % int(ssl_sock.ssl_time*1000))
+                        raise socket.timeout('%d 超时' % int(ssl_sock.ssl_time*1000))
                 # verify SSL certificate.
                 if cache_key.startswith('google'):
                     cert = self.get_peercert(ssl_sock)
                     if not cert:
-                        raise ssl.SSLError(u'没有获取到证书')
+                        raise ssl.SSLError('没有获取到证书')
                     subject = cert.get_subject()
                     if subject.O != 'Google Inc':
-                        raise ssl.SSLError(u'%s 证书的公司名称（%s）不是 "Google Inc"' % (address[0], subject.O))
+                        raise ssl.SSLError('%s 证书的公司名称（%s）不是 "Google Inc"' % (address[0], subject.O))
                 # sometimes, we want to use raw tcp socket directly(select/epoll), so setattr it to ssl socket.
                 ssl_sock.sock = sock
                 ssl_sock.xip = ipaddr
@@ -417,7 +418,7 @@ class HTTPUtil(BaseHTTPUtil):
             now = time()
             ssl_time_threshold = max(min(1.5, 1.5 * first_ssl_time), 1.0)
             cache = ssl_connection_cache[cache_key]
-            for i in xrange(count):
+            for i in range(count):
                 ssl_sock = queobj.get()
                 if isinstance(ssl_sock, (SSLConnection, ssl.SSLSocket)):
                     if ssl_sock.ssl_time < ssl_time_threshold:
@@ -443,7 +444,7 @@ class HTTPUtil(BaseHTTPUtil):
         host, port = address
         result = None
         addresses = [(x, port) for x in dns_resolve(host)]
-        for i in xrange(self.max_retry):
+        for i in range(self.max_retry):
             addresseslen = len(addresses)
             addresses.sort(key=lambda addr: ssl_connection_time.get(addr, False))
             if rangefetch:
@@ -460,7 +461,7 @@ class HTTPUtil(BaseHTTPUtil):
             for addr in addrs:
                 thread.start_new_thread(_create_ssl_connection, (addr, timeout, queobj))
             addrslen = len(addrs)
-            for i in xrange(addrslen):
+            for i in range(addrslen):
                 result = queobj.get()
                 if isinstance(result, Exception):
                     addr = result.xip
@@ -471,7 +472,7 @@ class HTTPUtil(BaseHTTPUtil):
                         pass
                     if i == 0:
                         #only output first error
-                        logging.warning(u'%s create_ssl_connection %r 返回 %r，重试', addr[0], host, result)
+                        logging.warning('%s create_ssl_connection %r 返回 %r，重试', addr[0], host, result)
                 else:
                     thread.start_new_thread(_close_ssl_connection, (addrslen-i-1, queobj, result.ssl_time))
                     return result
@@ -523,45 +524,19 @@ class HTTPUtil(BaseHTTPUtil):
             logging.error('__create_ssl_connection_withproxy error %s', e)
             raise
 
-    def _request(self, sock, method, path, protocol_version, headers, payload, bufsize=8192, crlf=None):
-        #need_crlf = bool(crlf)
-        need_crlf = False
-        if need_crlf:
-            fakehost = 'www.' + ''.join(random.choice(('bcdfghjklmnpqrstvwxyz','aeiou')[x&1]) for x in xrange(random.randint(5,20))) + random.choice(['.net', '.com', '.org'])
-            request_data = 'GET / HTTP/1.1\r\nHost: %s\r\n\r\n\r\n\r\r' % fakehost
-        else:
-            request_data = ''
-        request_data += '%s %s %s\r\n' % (method, path, protocol_version)
+    def _request(self, sock, method, path, protocol_version, headers, payload, bufsize=8192):
+        request_data = '%s %s %s\r\n' % (method, path, protocol_version)
         request_data += ''.join('%s: %s\r\n' % (k.title(), v) for k, v in headers.items())
         if self.proxy:
             _, username, password, _ = parse_proxy(self.proxy)
             if username and password:
                 request_data += 'Proxy-Authorization: Basic %s\r\n' % base64.b64encode(('%s:%s' % (username, password)).encode()).decode().strip()
         request_data += '\r\n'
-        if not isinstance(request_data, bytes):
-            request_data = request_data.encode()
+        request_data = request_data.encode() + payload
 
-        sock.sendall(request_data + payload)
-        #if isinstance(payload, bytes):
-        #    sock.sendall(request_data.encode() + payload)
-        #elif hasattr(payload, 'read'):
-        #    sock.sendall(request_data)
-        #    sock.sendall(payload.read())
-        #else:
-        #    raise TypeError('request(payload) must be a string or buffer, not %r' % type(payload))
-
-        #if need_crlf:
-        #    try:
-        #        response = httplib.HTTPResponse(sock)
-        #        response.begin()
-        #        response.read()
-        #    except Exception as e:
-        #        logging.exception('crlf skip read')
-        #        raise e
-
+        sock.sendall(request_data)
         try:
-            response = httplib.HTTPResponse(sock) if PY3 else httplib.HTTPResponse(sock, buffering=True)
-            #exc_clear()
+            response = httplib.HTTPResponse(sock)
             response.begin()
         except Exception as e:
             #这里有时会捕捉到奇怪的异常，找不到来源路径
@@ -575,33 +550,31 @@ class HTTPUtil(BaseHTTPUtil):
         response.sock = sock
         return response
 
-    def request(self, request_params, payload=None, headers={}, bufsize=8192, crlf=None, connection_cache_key=None, timeout=None, rangefetch=None, realurl=None):
+    def request(self, request_params, payload=None, headers={}, bufsize=8192, connection_cache_key=None, timeout=None, rangefetch=None, realurl=None):
         ssl = request_params.ssl
-        host = request_params.host
-        port = request_params.port
+        address = request_params.host, request_params.port
         method = request_params.command
         url = request_params.url
 
         if 'Host' not in headers:
-            headers['Host'] = host
+            headers['Host'] = request_params.host
         if payload:
             if not isinstance(payload, bytes):
                 payload = payload.encode()
             if 'Content-Length' not in headers:
                 headers['Content-Length'] = str(len(payload))
 
-        for i in xrange(self.max_retry):
+        for i in range(self.max_retry):
             sock = None
             ssl_sock = None
             ip = ''
             try:
                 if ssl:
-                    ssl_sock = self.create_ssl_connection((host, port), connection_cache_key, timeout or self.max_timeout, rangefetch=rangefetch)
-                    crlf = 0
+                    ssl_sock = self.create_ssl_connection(address, connection_cache_key, timeout or self.max_timeout, rangefetch=rangefetch)
                 else:
-                    sock = self.create_connection((host, port), connection_cache_key, timeout or self.max_timeout)
+                    sock = self.create_connection(address, connection_cache_key, timeout or self.max_timeout)
                 if ssl_sock or sock:
-                    response =  self._request(ssl_sock or sock, method, request_params.path, self.protocol_version, headers, payload, bufsize=bufsize, crlf=crlf)
+                    response =  self._request(ssl_sock or sock, method, request_params.path, self.protocol_version, headers, payload, bufsize=bufsize)
                     return response
             except Exception as e:
                 if ssl_sock:
@@ -612,15 +585,15 @@ class HTTPUtil(BaseHTTPUtil):
                     sock.close()
                 if hasattr(e, 'xip'):
                     ip = e.xip
-                    logging.warning(u'%s create_%sconnection %r 失败：%r', ip[0], '' if port == 80 else 'ssl_', realurl or url, e)
+                    logging.warning('%s create_%sconnection %r 失败：%r', ip[0], 'ssl_' if ssl else '', realurl or url, e)
                 else:
-                    logging.warning(u'%s _request "%s %s" 失败：%r', ip[0], method, realurl or url, e)
+                    logging.warning('%s _request "%s %s" 失败：%r', ip[0], method, realurl or url, e)
                     if realurl:
                         ssl_connection_time[ip] = self.max_timeout + random.random()
                 if not realurl and e.args[0] == errno.ECONNRESET:
                     raise e
             #if i == self.max_retry - 1:
-            #    logging.warning(u'%s request "%s %s" 失败', ip[0], method, realurl or url)
+            #    logging.warning('%s request "%s %s" 失败', ip[0], method, realurl or url)
 
 # Google video ip can act as Google FrontEnd if cipher suits not include
 # RC4-SHA

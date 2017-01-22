@@ -4,12 +4,7 @@
 import threading
 from . import clogging as logging
 from time import time, sleep, strftime
-from .compat import (
-    thread,
-    ConfigParser,
-    xrange,
-    Queue
-    )
+from .compat import thread, ConfigParser, Queue
 from .common import config_dir
 from .GlobalConfig import GC
 from .ProxyServer import network_test
@@ -68,9 +63,9 @@ def refreship(needcom=None, threads=None):
         for name in gaeip:
             cf.set("iplist", name, '|'.join(x for x in GC.IPLIST_MAP[name]))
         cf.write(open(GC.CONFIG_IPDB, "w"))
-        logging.test(u'GAE IP 更新完毕')
+        logging.test('GAE IP 更新完毕')
     if len(GC.IPLIST_MAP['google_gws']) < GC.FINDER_MINIPCNT:
-        logging.warning(u'没有检测到足够数量符合要求的 GAE IP，请重新设定参数！')
+        logging.warning('没有检测到足够数量符合要求的 GAE IP，请重新设定参数！')
     #更新完毕
     #sleep(10)
     updataip.running = False
@@ -88,15 +83,6 @@ def gettimeout():
     timeout = max(GC.FINDER_MAXTIMEOUT*1.3, 1000) + min(len(GC.IPLIST_MAP['google_gws']), 20)*10 + timeToDelay[nowtime]
     return int(timeout)
 
-def testipuseable(ip):
-    timeout = gettimeout()
-    queobj = Queue.Queue()
-    http_gws.create_ssl_connection((ip, 443), 'google_gws:443', timeout/1000.0, queobj)
-    result = queobj.get()
-    if isinstance(result, Exception):
-        removeip(ip)
-        logging.warning(u'IP：%r 暂时不可用，已经删除', ip)
-
 def _testallgaeip():
     iplist = GC.IPLIST_MAP['google_gws']
     niplist = len(iplist or [])
@@ -104,25 +90,25 @@ def _testallgaeip():
         return updataip()
     badip = set()
     timeout = gettimeout()
-    logging.test(u'连接测试开始，超时：%d 毫秒', timeout)
+    logging.test('连接测试开始，超时：%d 毫秒', timeout)
     network_test()
     testip.queobj.queue.clear()
     for ip in iplist:
         thread.start_new_thread(http_gws.create_ssl_connection, ((ip, 443), 'google_gws:443', timeout/1000.0, testip.queobj))
-    for i in xrange(niplist):
+    for i in range(niplist):
         result = testip.queobj.get()
         if isinstance(result, Exception):
             ip = result.xip[0]
-            logging.warning(u'测试失败 %s：%s' % ('.'.join(x.rjust(3) for x in ip.split('.')), result.args[0]))
+            logging.warning('测试失败 %s：%s' % ('.'.join(x.rjust(3) for x in ip.split('.')), result.args[0]))
             badip.add(ip)
         else:
-            logging.test(u'测试连接 %s: %d' %('.'.join(x.rjust(3) for x in result[0].split('.')), int(result[1]*1000)))
+            logging.test('测试连接 %s: %d' %('.'.join(x.rjust(3) for x in result[0].split('.')), int(result[1]*1000)))
     #删除 bad IP
     nbadip = len(badip)
     if nbadip > 0:
         for ip in badip:
             removeip(ip)
-    logging.test(u'连接测试完毕%s', u'，Bad IP 已删除' if nbadip > 0 else '')
+    logging.test('连接测试完毕%s', '，Bad IP 已删除' if nbadip > 0 else '')
     testip.lasttest = time()
     testip.lastactive = testip.lasttest
     testip.running = False
@@ -132,20 +118,35 @@ def _testallgaeip():
     if needgws > 0 or needcom > 0:
         updataip(needcom, needgws + needcom*2 + 1)
 
-def testallgaeip(force=False):
-    with tLock:
-        if updataip.running:
-            return
-        elif force:
-            if testip.running == 9:
+def dummy(*args, **kwargs):
+    pass
+
+if GC.GAE_USEGWSIPLIST:
+    def testipuseable(ip):
+        timeout = gettimeout()
+        queobj = Queue.Queue()
+        http_gws.create_ssl_connection((ip, 443), 'google_gws:443', timeout/1000.0, queobj)
+        result = queobj.get()
+        if isinstance(result, Exception):
+            removeip(ip)
+            logging.warning('IP：%r 暂时不可用，已经删除', ip)
+
+    def testallgaeip(force=False):
+        with tLock:
+            if updataip.running:
                 return
-            while testip.running == 1:
-                sleep(0.2)
-        elif testip.running:
-            return
-        testip.running = 9
-    thread.start_new_thread(_testallgaeip, ())
-    return True
+            elif force:
+                if testip.running == 9:
+                    return
+                while testip.running == 1:
+                    sleep(0.2)
+            elif testip.running:
+                return
+            testip.running = 9
+        thread.start_new_thread(_testallgaeip, ())
+        return True
+else:
+    testipuseable = testallgaeip = dummy
 
 def testonegaeip(again=False):
     if not again:
@@ -162,7 +163,7 @@ def testonegaeip(again=False):
     http_gws.create_ssl_connection((ip, 443), 'google_gws:443', timeout/1000.0, testip.queobj)
     result = testip.queobj.get()
     if isinstance(result, Exception):
-        logging.warning(u'测试失败（超时：%d 毫秒）%s：%s，Bad IP 已删除' % (timeout,  '.'.join(x.rjust(3) for x in ip.split('.')), result.args[0]))
+        logging.warning('测试失败（超时：%d 毫秒）%s：%s，Bad IP 已删除' % (timeout,  '.'.join(x.rjust(3) for x in ip.split('.')), result.args[0]))
         removeip(ip)
         badip = True
         for ipdict in statistics:
@@ -177,7 +178,7 @@ def testonegaeip(again=False):
             else:
                 ipdict[ip] = 0, 1
     else:
-        logging.test(u'测试连接（超时：%d 毫秒）%s: %d' %(timeout,  '.'.join(x.rjust(3) for x in result[0].split('.')), int(result[1]*1000)))
+        logging.test('测试连接（超时：%d 毫秒）%s: %d' %(timeout,  '.'.join(x.rjust(3) for x in result[0].split('.')), int(result[1]*1000)))
         GC.IPLIST_MAP['google_gws'].insert(0, GC.IPLIST_MAP['google_gws'].pop())
         #调高 com 权重
         addn = 2 if ip in GC.IPLIST_MAP['google_com'] else 1
@@ -210,6 +211,6 @@ def testipserver():
                     now - testip.lasttest > 120/(len(GC.IPLIST_MAP['google_gws']) or 1)): #强制 x 秒间隔
                 testonegaeip()
         except Exception as e:
-            logging.error(u' IP 测试守护线程错误：%r', e)
+            logging.error(' IP 测试守护线程错误：%r', e)
         finally:
             sleep(2)

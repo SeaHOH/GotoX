@@ -34,10 +34,10 @@ def network_test(first=None):
                 if not first:
                     stop_proxyserver()
                 haserr = True
-                logging.error(u'网络现在不可用，将每 10 秒检测一次……')
+                logging.error('网络现在不可用，将每 10 秒检测一次……')
             sleep(10)
     if haserr:
-        logging.test(u'网络已经可以使用，%s', u'初始化继续……' if first else u'重新开始代理……')
+        logging.test('网络已经可以使用，%s', '初始化继续……' if first else '重新开始代理……')
     if haserr or first:
         get_localhosts()
     #重新开始代理线程
@@ -50,7 +50,7 @@ def start_proxyserver():
         thread.start_new_thread(GAEProxy.serve_forever, ())
     except SystemError as e:
         if ' (libev) select: Unknown error' in repr(e):
-            #logging.error('PLEASE START GotoX BY uvent.bat')
+            logging.error('如果出现此错误请告诉作者，谢谢！\nhttps://github.com/SeaHOH/GotoX/issues')
             sys.exit(-1)
 
 def stop_proxyserver():

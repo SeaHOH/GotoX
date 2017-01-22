@@ -12,7 +12,6 @@ except ImportError:
 import socket
 from select import select
 from time import time
-from local.compat import xrange, exc_clear
 from . import LRUCache, isip, isipv4, isipv6
 from local.GlobalConfig import GC
 
@@ -29,7 +28,7 @@ def set_DNS(host, iporname):
         dns[host] = iporname
     elif iporname in GC.IPLIST_MAP:
         dns[host] = GC.IPLIST_MAP[iporname]
-        return iporname
+        return host if iporname.startswith('sni') else iporname
     elif isinstance(iporname, str) and isip(iporname):
         dns[host] = iporname,
     else:
@@ -86,7 +85,7 @@ def dns_remote_resolve(qname, dnsservers, blacklist, timeout):
         socks.append(sock_v6)
     timeout_at = time() + timeout
     try:
-        for _ in xrange(2):
+        for _ in range(2):
             try:
                 for dnsserver in dns_v4_servers:
                     sock_v4.sendto(query_data, (dnsserver, 53))

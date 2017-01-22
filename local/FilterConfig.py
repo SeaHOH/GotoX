@@ -106,12 +106,12 @@ class actionfilterlist(list):
                     host = re.compile(host[1:]).search
                 if path.find('@') == 0:
                     path = re.compile(path[1:]).search
-                if v and filters.action in (2, 3):
+                if v and filters.action in (FORWARD, DIRECT):
                     if '|' in v:
                         v = pickip(' '+v.lower()) or ''
                     elif ipnotuse(v):
                         v = ''
-                elif filters.action in (7, 8) and '>>' in v:
+                elif filters.action in (REDIRECT, IREDIRECT) and '>>' in v:
                     patterns, _, replaces = v.partition('>>')
                     patterns = patterns.rstrip(' \t')
                     replaces = replaces.lstrip(' \t')

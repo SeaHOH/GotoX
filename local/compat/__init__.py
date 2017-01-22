@@ -3,7 +3,7 @@
 import sys
 import os
 import socket
-import ssl
+
 _ver = sys.version_info
 PY3 = _ver[0] == 3
 PY35 = PY3 and _ver[1] == 5
@@ -16,8 +16,6 @@ if PY3:
     import urllib.parse as urlparse
     import socketserver as SocketServer
     from configparser import ConfigParser
-    xrange = range
-    exc_clear = lambda: None
     #可添加属性
     class socketMod(socket.socket): pass
     socket.socket = socketMod
@@ -25,13 +23,6 @@ if PY3:
     _read = ConfigParser.read
     ConfigParser.read = lambda s, f, encoding='utf8': _read(s, f, encoding)
 else:
-    import Queue
-    import thread
-    import BaseHTTPServer
-    import httplib
-    import urllib2
-    import urlparse
-    import SocketServer
-    from ConfigParser import ConfigParser
-    xrange = xrange
-    exc_clear = sys.exc_clear
+    from local import clogging as logging
+    logging.error('请使用 Python 3 系列版本运行本程序！\n正在退出……')
+    sys.exit(-1)
