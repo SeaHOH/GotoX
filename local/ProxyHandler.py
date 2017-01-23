@@ -76,7 +76,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     #可修改
     ssl_context_cache = LRUCache(32)
-    badhost = LRUCache(8, 120)
+    badhost = LRUCache(16, 120)
 
     #默认值
     ip6host = False
@@ -669,10 +669,12 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         host = self.host
         #最近是否失败（缓存设置超时两分钟）
         if host in self.badhost:
-            #记录临时规则加入时间
-            key = self.url_parts.scheme + host
-            filters_cache[key][-1] = '', '', 'TEMPGAE', time()
-            logging.warning('将 %r 加入 "GAE" 规则 15 分钟。', host)
+            if self.badhost[host]:
+                #记录临时规则加入时间
+                key = self.url_parts.scheme + host
+                filters_cache[key][-1] = '', '', 'TEMPGAE', time()
+                logging.warning('将 %r 加入 "GAE" 规则 15 分钟。', host)
+                self.badhost[host] = False
         else:
             self.badhost[host] = True
         self.action = 'do_GAE'
