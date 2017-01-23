@@ -466,7 +466,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             except Exception as e:
                 noerror = False
                 errors.append(e)
-                if e.args[0] in (10053, ) or 'bad write' in e.args[-1]:
+                if e.args[0] in (10053, ) or isinstance(e, NetWorkIOError) and 'bad write' in e.args[-1]:
                     #本地链接终止
                     logging.debug('do_GAE %r 返回 %r，终止', self.url, e)
                     return
@@ -569,6 +569,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             logging.info('%s 内部重定向 %r 到 %r', self.address_string(), self.url, target)
             #重设网址
+            origurl = self.url
             self.url = target
             #重设主机
             self.url_parts = url_parts = urlparse.urlsplit(target)
@@ -589,6 +590,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.path = target[target.find('/', target.find('//')+3):]
             #重设 action
             self.action, self.target = get_action(self.url_parts.scheme, self.host, self.path[1:], target)
+            #从非加密链接内部重定向到加密链接，结果匹配转发规则
+            if not origssl and self.ssl and self.action == 'do_FORWARD':
+                logging.error('规则冲突，请把当前第一个匹配以下网址的内部重定向规则改为一般重定向规则（推荐）：\n%s', origurl)
+                logging.error('或者，把当前第一个匹配以下网址的转发规则改为直连规则（不建议）：\n%s', target)
+                return
             self.do_action()
 
     def do_FAKECERT(self):
