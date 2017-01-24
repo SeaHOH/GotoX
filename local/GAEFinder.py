@@ -257,11 +257,11 @@ class GAE_Finder(BaseHTTPUtil):
             if not retry and e.args == (-1, 'Unexpected EOF'):
                 return self.getipinfo(ip, True)
             WARNING('%r', e)
-        code = self.getstatcode(ssl_sock, sock, ip) if ssl_sock else ''
+        code = self.getstatuscode(ssl_sock, sock, ip) if ssl_sock else ''
         costtime = int((time()-start_time)*1000)
         return domain, costtime, code in (b'302', b'200')
 
-    def getstatcode(self, conn, sock, ip):
+    def getstatuscode(self, conn, sock, ip):
         try:
             begin = time()
             conn.send(self.httpreq)

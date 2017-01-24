@@ -10,9 +10,12 @@ except ImportError:
     sys.exit(-1)
 
 import socket
+import random
 from select import select
-from time import time
+from time import time, sleep
+from json import _default_decoder as jsondecoder
 from . import LRUCache, isip, isipv4, isipv6
+from local.compat import Queue, thread
 from local.GlobalConfig import GC
 
 dns = LRUCache(128, 4*60*60)
@@ -39,33 +42,127 @@ def set_DNS(host, iporname):
             return
     return host
 
-def dns_resolve(host, dnsservers=[]):
+def dns_resolve(host):
     if isip(host):
         return [host,]
-    iplist = dns.get(host)
-    if not iplist:
-        if host.endswith('.appspot.com'):
+    if host in dns:
+        iplist = dns[host]
+        #避免 DNS 响应较慢时重复设置 IP
+        while not iplist and iplist != 0:
+            sleep(0.01)
+            iplist = dns[host]
+    else:
+        dns[host] = None
+        if host.endswith('.appspot.com') or host == 'dns.google.com':
             #已经在查找 IP 时过滤 IP 版本
             dns[host] = iplist = GC.IPLIST_MAP['google_gws']
             return iplist
-        if not dnsservers:
-            try:
-                iplist = list(set(socket.gethostbyname_ex(host)[-1]) - GC.DNS_BLACKLIST)
-            except:
-                pass
-        else:
-            iplist = dns_remote_resolve(host, dnsservers, GC.DNS_BLACKLIST, timeout=2)
+        iplist = dns_resolve1(host)
         if not iplist:
-            iplist = dns_remote_resolve(host, GC.DNS_SERVERS, GC.DNS_BLACKLIST, timeout=2)
+            iplist = dns_resolve2(host)
+        if not iplist:
+            iplist = dns_resolve3(host)
         if iplist:
             if GC.LINK_PROFILE == 'ipv4':
                 iplist = [ip for ip in iplist if isipv4(ip)]
             elif GC.LINK_PROFILE == 'ipv6':
                 iplist = [ip for ip in iplist if isipv6(ip)]
             dns[host] = iplist = list(set(iplist))
+        else:
+            dns[host] = 0
     return iplist
 
-def dns_remote_resolve(qname, dnsservers, blacklist, timeout):
+A = 1
+AAAA = 28
+CNAME = 5
+NOERROR = 0
+from local.HTTPUtil import ssl_connection_cache, http_gws
+
+class dns_params():
+    ssl = True
+    host = 'dns.google.com'
+    port = 443
+    command = 'GET'
+    headers = {'Host': host, 'User-Agent': 'GotoX Agent'}
+    DNSServerUrl = '/resolve?name=%s&type=%s&random_padding=%s'
+    UNRESERVED_CHARS = 'abcdefghijklmnopqrstuvwxyz' \
+                       'ABCDEFGHIJKLMNOPQRSTUVWXYZ' \
+                       '0123456789-._~'
+
+    def __init__(self, qname, qtype):
+        self.path = self.DNSServerUrl % (qname, qtype, self.generate_padding())
+        self.url = 'https://%s%s' % (self.host, self.path)
+
+    def generate_padding(self):
+        return ''.join(random.choice(self.UNRESERVED_CHARS) for i in range(random.randint(10, 50)))
+
+def dns_over_https_resolve(qname, qtype, queobj):
+
+    def address_string(response):
+        if hasattr(response, 'xip'):
+            return response.xip[0]
+        else:
+            return ''
+
+    iplist = queobj if isinstance(queobj, list) else []
+    params = dns_params(qname, qtype)
+    cache_key = 'google_gws:443'
+    for retry in range(GC.GAE_FETCHMAX):
+        response = None
+        noerror = True
+        try:
+            response = http_gws.request(params, headers=params.headers, connection_cache_key=cache_key)
+            if response.status == 200:
+                reply = jsondecoder.decode(response.read().decode())
+                if reply['Status'] == NOERROR:
+                    cnames = []
+                    for answer in reply['Answer']:
+                        response_type = answer['type']
+                        data = answer['data']
+                        if response_type == qtype:
+                            iplist.append(data)
+                        elif response_type == CNAME:
+                            cnames.append(data[:-1])
+                    if cnames:
+                        for cname in cnames:
+                            dns_over_https_resolve(cname, qtype, iplist)
+                    if not iplist:
+                        logging.warning('%s dns_over_https_resolve %r 失败：未登记域名', address_string(response), qname)
+                else:
+                    #重试
+                    continue
+                break
+        except Exception as e:
+            noerror = False
+            logging.warning('%s dns_over_https_resolve %r 失败：%r', address_string(response), qname, e)
+        finally:
+            if response:
+                response.close()
+                if noerror:
+                    #放入套接字缓存
+                    if GC.GAE_KEEPALIVE:
+                        ssl_connection_cache[cache_key].append((time(), response.sock))
+                    else:
+                        #干扰严重时考虑不复用 google 链接
+                        response.sock.close()
+    if iplist != queobj:
+        queobj.put(iplist)
+
+def _dns_over_https(qname):
+    n = 0
+    iplist = []
+    queobj = Queue.Queue()
+    if '4' in GC.LINK_PROFILE:
+        thread.start_new_thread(dns_over_https_resolve, (qname, A, queobj))
+        n += 1
+    if '6' in GC.LINK_PROFILE:
+        thread.start_new_thread(dns_over_https_resolve, (qname, AAAA, queobj))
+        n += 1
+    for i in range(n):
+        iplist += queobj.get()
+    return iplist
+
+def _dns_remote_resolve(qname, dnsservers, blacklist, timeout):
     """
     http://gfwrev.blogspot.com/2009/11/gfwdns.html
     http://zh.wikipedia.org/wiki/域名服务器缓存污染
@@ -107,3 +204,39 @@ def dns_remote_resolve(qname, dnsservers, blacklist, timeout):
     finally:
         for sock in socks:
             sock.close()
+
+def dns_system_resolve(host):
+    #logging.warning('dns_system_resolve %s', host)
+    try:
+        return list(set(socket.gethostbyname_ex(host)[-1]) - GC.DNS_BLACKLIST)
+    except Exception as e:
+        pass
+
+def dns_remote_resolve(host):
+    #logging.warning('dns_remote_resolve %s', host)
+    return _dns_remote_resolve(host, GC.DNS_SERVERS, GC.DNS_BLACKLIST, timeout=2)
+
+def dns_over_https(host):
+    #logging.warning('dns_over_https %s', host)
+    if GC.DNS_OVER_HTTPS:
+        return _dns_over_https(host)
+
+#设置使用 DNS 的优先级别
+if GC.DNS_PRIORITY[0] == 'system':
+    dns_resolve1 = dns_system_resolve
+elif GC.DNS_PRIORITY[0] == 'remote':
+    dns_resolve1 = dns_remote_resolve
+elif GC.DNS_PRIORITY[0] == 'overhttps':
+    dns_resolve1 = dns_over_https
+if GC.DNS_PRIORITY[1] == 'system':
+    dns_resolve2 = dns_system_resolve
+elif GC.DNS_PRIORITY[1] == 'remote':
+    dns_resolve2 = dns_remote_resolve
+elif GC.DNS_PRIORITY[1] == 'overhttps':
+    dns_resolve2 = dns_over_https
+if GC.DNS_PRIORITY[2] == 'system':
+    dns_resolve3 = dns_system_resolve
+elif GC.DNS_PRIORITY[2] == 'remote':
+    dns_resolve3 = dns_remote_resolve
+elif GC.DNS_PRIORITY[2] == 'overhttps':
+    dns_resolve3 = dns_over_https

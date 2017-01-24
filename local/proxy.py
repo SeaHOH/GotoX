@@ -63,7 +63,7 @@ def main():
     def pre_start():
         from .ProxyServer import network_test
         from .common import isip, isipv4, isipv6
-        from .common.dns import dns, dns_remote_resolve
+        from .common.dns import dns, _dns_remote_resolve as dns_remote_resolve
         def get_process_list():
             import collections
             Process = collections.namedtuple('Process', 'pid name exe')

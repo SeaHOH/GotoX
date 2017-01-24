@@ -48,7 +48,7 @@ class GC():
     LISTEN_IP = CONFIG.get('listen', 'ip')
     LISTEN_GAE_PORT = CONFIG.getint('listen', 'gae_port')
     LISTEN_AUTO_PORT = CONFIG.getint('listen', 'auto_port')
-    LISTEN_VISIBLE = CONFIG.getint('listen', 'visible')
+    LISTEN_VISIBLE = CONFIG.getboolean('listen', 'visible')
     LISTEN_DEBUGINFO = _LOGLv[min(CONFIG.getint('listen', 'debuginfo'), 3)]
 
     GAE_APPIDS = re.findall(r'[\w\-\.]+', CONFIG.get('gae', 'appid').replace('.appspot.com', ''))
@@ -57,7 +57,7 @@ class GC():
     GAE_KEEPALIVE = CONFIG.getboolean('gae', 'keepalive')
     GAE_KEEPTIME = CONFIG.getint('gae', 'keeptime')
     GAE_MAXREQUESTS = min(CONFIG.getint('gae', 'maxrequsts'), 5)
-    GAE_SSLVERIFY = CONFIG.get('gae', 'sslverify')
+    GAE_SSLVERIFY = CONFIG.getboolean('gae', 'sslverify')
     GAE_FETCHMAX = CONFIG.get('gae', 'fetchmax') or 2
     GAE_MAXSIZE = CONFIG.get('gae', 'maxsize')
     GAE_IPLIST = CONFIG.get('gae', 'iplist')
@@ -68,7 +68,7 @@ class GC():
         LINK_PROFILE = 'ipv4'
     LINK_WINDOW = CONFIG.getint('link', 'window')
     LINK_OPTIONS = CONFIG.get('link', 'options')
-    LINK_OPENSSL = CONFIG.getint('link', 'openssl')
+    LINK_OPENSSL = CONFIG.getboolean('link', 'openssl')
     LINK_LOCALSSLTXT = CONFIG.get('link', 'localssl') or 'SSLv23'
     LINK_REMOTESSLTXT = CONFIG.get('link', 'remotessl') or 'TLSv1.2'
     LINK_LOCALSSL = _SSLv[LINK_LOCALSSLTXT]
@@ -97,8 +97,8 @@ class GC():
     FINDER_BLOCK = CONFIG.get('finder', 'block')
     FINDER_BLOCK = tuple(FINDER_BLOCK.split('|')) if FINDER_BLOCK else ()
 
-    #PROXY_ENABLE = CONFIG.getint('proxy', 'enable')
-    PROXY_ENABLE = 0
+    #PROXY_ENABLE = CONFIG.getboolean('proxy', 'enable')
+    PROXY_ENABLE = False
     PROXY_AUTODETECT = CONFIG.getint('proxy', 'autodetect') if CONFIG.has_option('proxy', 'autodetect') else 0
     PROXY_HOST = CONFIG.get('proxy', 'host')
     PROXY_PORT = CONFIG.getint('proxy', 'port')
@@ -132,7 +132,17 @@ class GC():
     AUTORANGE_LOWSPEED = CONFIG.getint('autorange', 'lowspeed')
 
     DNS_SERVERS = CONFIG.get('dns', 'servers').split('|')
+    DNS_OVER_HTTPS = CONFIG.getboolean('dns', 'overhttps')
+    DNS_PRIORITY = CONFIG.get('dns', 'priority').split('|')
     DNS_BLACKLIST = set(CONFIG.get('dns', 'blacklist').split('|'))
+
+    DNS_DEF_PRIORITY = ['system', 'remote', 'overhttps']
+    for dnstype in DNS_PRIORITY.copy():
+        if dnstype in DNS_DEF_PRIORITY:
+            DNS_DEF_PRIORITY.remove(dnstype)
+        else:
+            DNS_PRIORITY.remove(dnstype)
+    DNS_PRIORITY.extend(DNS_DEF_PRIORITY)
 
 del CONFIG, fnmatch, ConfigParser
 del sys.modules['fnmatch']

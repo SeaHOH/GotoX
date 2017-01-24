@@ -49,7 +49,7 @@ def start_proxyserver():
         thread.start_new_thread(AutoProxy.serve_forever, ())
         thread.start_new_thread(GAEProxy.serve_forever, ())
     except SystemError as e:
-        if ' (libev) select: Unknown error' in repr(e):
+        if '(libev) select: Unknown error' in repr(e):
             logging.error('如果出现此错误请告诉作者，谢谢！\nhttps://github.com/SeaHOH/GotoX/issues')
             sys.exit(-1)
 

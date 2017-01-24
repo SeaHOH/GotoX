@@ -550,7 +550,7 @@ class HTTPUtil(BaseHTTPUtil):
         response.sock = sock
         return response
 
-    def request(self, request_params, payload=None, headers={}, bufsize=8192, connection_cache_key=None, timeout=None, rangefetch=None, realurl=None):
+    def request(self, request_params, payload=b'', headers={}, bufsize=8192, connection_cache_key=None, timeout=None, rangefetch=None, realurl=None):
         ssl = request_params.ssl
         address = request_params.host, request_params.port
         method = request_params.command
