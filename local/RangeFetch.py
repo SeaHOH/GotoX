@@ -16,7 +16,7 @@ from .GAEUpdata import testip, testallgaeip
 
 getrange = re.compile(r'bytes (\d+)-(\d+)/(\d+)').search
 
-class RangeFetch(object):
+class RangeFetch():
     '''Range Fetch Class'''
 
     maxsize = GC.AUTORANGE_MAXSIZE or 1024*1024*4

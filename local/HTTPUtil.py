@@ -25,7 +25,7 @@ from .common import cert_dir, NetWorkIOError, isip
 from .common.dns import dns, dns_resolve
 from .common.proxy import parse_proxy
 
-class BaseHTTPUtil(object):
+class BaseHTTPUtil():
     '''Basic HTTP Request Class'''
 
     use_openssl = 0

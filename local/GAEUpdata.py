@@ -84,9 +84,8 @@ def gettimeout():
     return int(timeout)
 
 def _testallgaeip():
-    iplist = GC.IPLIST_MAP['google_gws']
-    niplist = len(iplist or [])
-    if niplist == 0:
+    iplist = GC.IPLIST_MAP['google_gws'] or []
+    if not iplist:
         return updataip()
     badip = set()
     timeout = gettimeout()
@@ -95,7 +94,7 @@ def _testallgaeip():
     testip.queobj.queue.clear()
     for ip in iplist:
         thread.start_new_thread(http_gws.create_ssl_connection, ((ip, 443), 'google_gws:443', timeout/1000.0, testip.queobj))
-    for i in range(niplist):
+    for ip in iplist:
         result = testip.queobj.get()
         if isinstance(result, Exception):
             ip = result.xip[0]

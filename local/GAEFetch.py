@@ -27,6 +27,8 @@ class gae_params():
     fetchhost = '%s.appspot.com'
     fetchserver = 'https://%s.appspot.com' + path
 
+    __slots__ = 'host', 'url'
+
     def __init__(self, appid):
         self.host = self.fetchhost % appid
         self.url = self.fetchserver % appid

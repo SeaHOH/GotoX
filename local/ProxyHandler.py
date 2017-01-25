@@ -94,7 +94,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.hostname = hostname = set_DNS(self.host, self.target)
             if hostname is None:
                 logging.error('无法解析主机：%r，请检查是否输入正确！', self.host)
-                return
+                #加密请求就不返回提示页面了，搞起来太麻烦
+                if not self.ssl:
+                    self.write(b'HTTP/1.1 504 Resolve Failed\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n')
+                    self.write(message_html('504 解析失败', '504 解析失败<p>主机名 %r 无法解析，请检查是否输入正确！' % self.host))
+                return 
             elif hostname.startswith('google'):
                 testip.lastactive = time()
         elif self.action == 'do_GAE':
@@ -370,7 +374,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if response is None:
                     if retry == GC.GAE_FETCHMAX - 1:
                         self.write(b'HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n')
-                        self.write(message_html('502 资源获取失败', '本地从 GAE 获取 %r 失败' % self.url, str(errors)).encode('utf-8'))
+                        self.write(message_html('502 资源获取失败', '本地从 GAE 获取 %r 失败' % self.url, str(errors)))
                         return
                     else:
                         logging.warning('do_GAE 超时，url=%r，重试', self.url)
@@ -420,9 +424,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         continue
                     else:
                         logging.error('APPID %r 不存在，请将你的 APPID 填入 Config.ini 中', appid)
-                        html = message_html('404 Appid 不存在', 'Appid %r 不存在' % appid, '请编辑 Config.ini 文件，将你的 APPID 填入其中。')
                         self.write(b'HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n')
-                        self.write(html.encode('utf-8'))
+                        self.write(message_html('404 Appid 不存在', 'Appid %r 不存在' % appid, '请编辑 Config.ini 文件，将你的 APPID 填入其中。'))
                         return
                 #输出服务端返回的错误信息
                 if response.app_status != 200:
@@ -665,7 +668,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def go_GAE(self):
         if self.command not in ('GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'PATCH'):
-            return go_BAD(self)
+            return self.go_BAD()
         host = self.host
         #最近是否失败（缓存设置超时两分钟）
         if host in self.badhost:
@@ -681,9 +684,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.do_GAE()
 
     def go_BAD(self):
-        logging.warn('request "%s %s" 失败：%r, 返回 404', self.command, self.url)
+        logging.warn('request "%s %s" 失败, 返回 404', self.command, self.url)
         self.write(b'HTTP/1.0 404\r\nContent-Type: text/html\r\n\r\n')
-        self.write(message_html('404 无法访问', '不能 "%s %s"' % (self.command, self.url), '无论是通过 GAE 还是 DIRECT 都无法访问成功').encode('utf-8'))
+        self.write(message_html('404 无法访问', '不能 "%s %s"' % (self.command, self.url), '无论是通过 GAE 还是 DIRECT 都无法访问成功'))
 
     def forward_socket(self, remote, timeout=30, tick=4, maxping=None, maxpong=None):
         '''Forward local and remote connection'''
@@ -795,4 +798,4 @@ class GAEProxyHandler(AutoProxyHandler):
     do_PATCH = do_METHOD
 
     def go_GAE(self):
-        go_BAD()
+        self.go_BAD()

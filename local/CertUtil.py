@@ -9,10 +9,10 @@ import base64
 import hashlib
 import random
 import OpenSSL
+from OpenSSL import crypto
 from . import clogging as logging
 from time import time
 from .common import cert_dir
-crypto = OpenSSL.crypto
 
 ca_vendor = 'GotoX'
 ca_certfile = os.path.join(cert_dir, 'CA.crt')
