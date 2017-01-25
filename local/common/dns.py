@@ -12,11 +12,12 @@ except ImportError:
 import socket
 from select import select
 from time import time, sleep
-from json import _default_decoder as jsondecoder
+from json.decoder import JSONDecoder
 from . import LRUCache, isip, isipv4, isipv6
 from local.compat import Queue, thread
 from local.GlobalConfig import GC
 
+jsondecoder = JSONDecoder()
 dns = LRUCache(128, 4*60*60)
 
 def set_DNS(host, iporname):
@@ -79,13 +80,15 @@ class dns_params():
     command = 'GET'
     headers = {'Host': host, 'User-Agent': 'GotoX Agent'}
     DNSServerPath = '/resolve?name=%s&type=%s&random_padding=%s'
+    Url = 'https://%s/resolve?name=%%s&type=%%s' % host
 
     __slots__ = 'path', 'url'
 
     def __init__(self, qname, qtype):
-        npadding = 412 - len(qname) - len(str(qtype))
+        # 512 - 20(IP) - 20(TCP) - (100 + qname + qtype)(请求数据)
+        npadding = 372 - len(qname) - len(str(qtype))
         self.path = self.DNSServerPath % (qname, qtype, 'x'*npadding)
-        self.url = 'https://%s%s' % (self.host, self.path)
+        self.url = self.Url % (qname, qtype)
 
 def dns_over_https_resolve(qname, qtype, queobj):
     '''
@@ -99,41 +102,20 @@ def dns_over_https_resolve(qname, qtype, queobj):
         else:
             return ''
 
-    CNAME = 5
-    NOERROR = 0
-    retry = 2
-    timeout = 1.5
-    iplist = []
-    params = dns_params(qname, qtype)
-    cache_key = 'google_gws:443'
-    for i in range(retry):
+    def https_resolve(queobj):
         response = None
         noerror = True
+        iplist = []
         try:
             response = http_gws.request(params, headers=params.headers, connection_cache_key=cache_key, timeout=timeout)
             if response.status == 200:
                 reply = jsondecoder.decode(response.read().decode())
                 if reply['Status'] == NOERROR:
-                    cnames = []
                     for answer in reply['Answer']:
-                        response_type = answer['type']
-                        data = answer['data']
-                        if response_type == qtype:
-                            iplist.append(data)
-                        elif response_type == CNAME:
-                            cnames.append(data[:-1])
-                    if cnames:
-                        queobjc = Queue.Queue()
-                        for cname in cnames:
-                            thread.start_new_thread(dns_over_https_resolve, (cname, qtype, queobjc))
-                        for cname in cnames:
-                            iplist += queobjc.get()
+                        if answer['type'] == qtype:
+                            iplist.append(answer['data'])
                     if not iplist:
                         logging.warning('%s dns_over_https_resolve %r 失败：未登记域名', address_string(response), qname)
-                else:
-                    #重试
-                    continue
-                break
         except Exception as e:
             noerror = False
             logging.warning('%s dns_over_https_resolve %r 失败：%r', address_string(response), qname, e)
@@ -141,12 +123,25 @@ def dns_over_https_resolve(qname, qtype, queobj):
             if response:
                 response.close()
                 if noerror:
-                    #放入套接字缓存
                     if GC.GAE_KEEPALIVE:
                         ssl_connection_cache[cache_key].append((time(), response.sock))
                     else:
-                        #干扰严重时考虑不复用 google 链接
                         response.sock.close()
+        queobj.put(iplist)
+
+    NOERROR = 0
+    cache_key = 'google_gws:443'
+
+    threads = 3
+    timeout = 1.5
+
+    params = dns_params(qname, qtype)
+    queobjt = Queue.Queue()
+    for i in range(threads):
+        thread.start_new_thread(https_resolve, (queobjt,))
+    for i in range(threads):
+        iplist = queobjt.get()
+        if iplist: break
     queobj.put(iplist)
 
 def _dns_over_https(qname):
@@ -209,21 +204,27 @@ def _dns_remote_resolve(qname, dnsservers, blacklist, timeout):
             sock.close()
 
 def dns_system_resolve(host):
+    now = time()
     try:
         iplist = list(set(socket.gethostbyname_ex(host)[-1]) - GC.DNS_BLACKLIST)
     except Exception:
         iplist = None
-    #logging.test('dns_system_resolve %s = %s', host, iplist)
+    cost = int((time() - now) * 1000)
+    logging.test('dns_system_resolve 耗时：%s毫秒，%s = %s', cost, host, iplist or '查询失败')
     return iplist
 
 def dns_remote_resolve(host):
+    now = time()
     iplist = _dns_remote_resolve(host, GC.DNS_SERVERS, GC.DNS_BLACKLIST, timeout=2)
-    #logging.test('dns_system_resolve %s = %s', host, iplist)
+    cost = int((time() - now) * 1000)
+    logging.test('dns_remote_resolve 耗时：%s毫秒，%s = %s', cost, host, iplist or '查询失败')
     return iplist
 
 def dns_over_https(host):
+    now = time()
     iplist = _dns_over_https(host) if GC.DNS_OVER_HTTPS else None
-    logging.test('dns_over_https %s = %s', host, iplist)
+    cost = int((time() - now) * 1000)
+    logging.test('dns_over_https 耗时：%s毫秒，%s = %s', cost, host, iplist or '查询失败')
     return iplist
 
 #设置使用 DNS 的优先级别
