@@ -8,6 +8,7 @@ from time import sleep
 from . import clogging as logging
 from .compat import thread, SocketServer
 from .common import NetWorkIOError
+from .common.dns import dns
 from .common.proxy import get_listen_ip
 from .GlobalConfig import GC
 
@@ -56,6 +57,7 @@ def start_proxyserver():
 def stop_proxyserver():
     AutoProxy.__shutdown_request = True
     GAEProxy.__shutdown_request = True
+    dns.clear()
 
 def get_localhosts():
     try:

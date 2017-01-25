@@ -61,7 +61,6 @@ from .ProxyHandler import AutoProxyHandler
 
 def main():
     def pre_start():
-        from .ProxyServer import network_test
         from .common import isip, isipv4, isipv6
         from .common.dns import dns, _dns_remote_resolve as dns_remote_resolve
         def get_process_list():
@@ -227,6 +226,7 @@ def main():
     info += '==================================================================================\n'
     sys.stdout.write(info)
 
+    from .ProxyServer import network_test
     pre_start()
     del pre_start, info
 
@@ -239,10 +239,12 @@ def main():
         from .GAEUpdata import testipserver
         testipserver()
     else:
-        logging.warning('正在使用固定的 GAE IP 列表［%s］，将不会进行 IP 检查。', GC.GAE_IPLIST)
+        logging.warning('正在使用固定的 GAE IP 列表 [%s]，将不会进行 IP 检查。', GC.GAE_IPLIST)
         from time import sleep
         while True:
-            sleep(9)
+            sleep(60)
+            #使用固定 IP 列表时在此处进行网络状态检查
+            network_test()
 
 if __name__ == '__main__':
     main()
