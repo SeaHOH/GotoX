@@ -71,9 +71,10 @@ def dns_resolve(host):
             dns[host] = 0
     return iplist
 
-from local.HTTPUtil import ssl_connection_cache, http_gws
-
 dnshostalias = 'dns.over.https'
+dns_resolve_cache_key = GC.DNS_OVER_HTTPS_LIST + ':443'
+
+from local.HTTPUtil import ssl_connection_cache, http_gws
 
 class dns_params():
     ssl = True
@@ -95,7 +96,7 @@ class dns_params():
 
 def dns_over_https_resolve(qname, qtype, queobj):
     '''
-    此函数功能实现仅限于解析为 A 、AAAA 记录
+    此函数功能实现仅限于解析为 A、AAAA 记录
     https://developers.google.com/speed/public-dns/docs/dns-over-https
     '''
 
@@ -110,16 +111,14 @@ def dns_over_https_resolve(qname, qtype, queobj):
         noerror = True
         iplist = []
         try:
-            response = http_gws.request(params, headers=params.headers, connection_cache_key=cache_key, timeout=timeout)
-            if response.status == 200:
+            response = http_gws.request(params, headers=params.headers, connection_cache_key=dns_resolve_cache_key, timeout=timeout)
+            if response and response.status == 200:
                 reply = jsondecoder.decode(response.read().decode())
                 # NOERROR = 0
-                if reply['Status'] == 0:
+                if reply and reply['Status'] == 0:
                     for answer in reply['Answer']:
                         if answer['type'] == qtype:
                             iplist.append(answer['data'])
-                    if not iplist:
-                        logging.warning('%s dns_over_https_resolve %r 失败：未登记域名', address_string(response), qname)
         except Exception as e:
             noerror = False
             logging.warning('%s dns_over_https_resolve %r 失败：%r', address_string(response), qname, e)
@@ -128,15 +127,13 @@ def dns_over_https_resolve(qname, qtype, queobj):
                 response.close()
                 if noerror:
                     if GC.GAE_KEEPALIVE:
-                        ssl_connection_cache[cache_key].append((time(), response.sock))
+                        ssl_connection_cache[dns_resolve_cache_key].append((time(), response.sock))
                     else:
                         response.sock.close()
         queobj.put(iplist)
 
-
-    threads = 3
+    threads = max(min((GC.LINK_WINDOW - 1), 3), 1)
     timeout = 1.5
-    cache_key = GC.DNS_OVER_HTTPS_LIST + ':443'
 
     if dnshostalias not in dns:
         dns.set(dnshostalias, GC.IPLIST_MAP[GC.DNS_OVER_HTTPS_LIST], 24 * 3600)

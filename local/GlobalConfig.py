@@ -66,7 +66,7 @@ class GC():
     LINK_PROFILE = CONFIG.get('link', 'profile')
     if LINK_PROFILE not in ('ipv4', 'ipv6', 'ipv46'):
         LINK_PROFILE = 'ipv4'
-    LINK_WINDOW = CONFIG.getint('link', 'window')
+    LINK_WINDOW = min(CONFIG.getint('link', 'window'), 2)
     LINK_OPTIONS = CONFIG.get('link', 'options')
     LINK_OPENSSL = CONFIG.getboolean('link', 'openssl')
     LINK_LOCALSSLTXT = CONFIG.get('link', 'localssl') or 'SSLv23'
