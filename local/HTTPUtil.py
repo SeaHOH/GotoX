@@ -22,7 +22,7 @@ from .compat import (
     urlparse
     )
 from .common import cert_dir, NetWorkIOError, isip
-from .common.dns import dns, dns_resolve
+from .common.dns import dns, dns_resolve, dnshostalias
 from .common.proxy import parse_proxy
 
 class BaseHTTPUtil():
@@ -358,8 +358,10 @@ class HTTPUtil(BaseHTTPUtil):
                 # pick up the sock socket
                 if cache_key == 'google_gws:443':
                     server_hostname = b'www.google.com'
+                elif host == dnshostalias:
+                    server_hostname = b'dns.google.com'
                 else:
-                    server_hostname = None if isip(address[0]) else address[0].encode()
+                    server_hostname = None if isip(host) else host.encode()
                 ssl_sock = self.get_ssl_socket(sock, server_hostname)
                 # set a short timeout to trigger timeout retry more quickly.
                 ssl_sock.settimeout(1)
@@ -426,6 +428,7 @@ class HTTPUtil(BaseHTTPUtil):
                     else:
                         ssl_sock.sock.close()
 
+        host, port = address
         if test:
             return _create_ssl_connection(address, timeout, test)
         try:
@@ -441,7 +444,6 @@ class HTTPUtil(BaseHTTPUtil):
                     return ssl_sock
         except IndexError:
             pass
-        host, port = address
         result = None
         addresses = [(x, port) for x in dns_resolve(host)]
         for i in range(self.max_retry):

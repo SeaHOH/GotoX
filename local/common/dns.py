@@ -73,6 +73,8 @@ def dns_resolve(host):
 
 from local.HTTPUtil import ssl_connection_cache, http_gws
 
+dnshostalias = 'dns.over.https'
+
 class dns_params():
     ssl = True
     host = 'dns.google.com'
@@ -81,6 +83,7 @@ class dns_params():
     headers = {'Host': host, 'User-Agent': 'GotoX Agent'}
     DNSServerPath = '/resolve?name=%s&type=%s&random_padding=%s'
     Url = 'https://%s/resolve?name=%%s&type=%%s' % host
+    host = dnshostalias
 
     __slots__ = 'path', 'url'
 
@@ -133,11 +136,10 @@ def dns_over_https_resolve(qname, qtype, queobj):
 
     threads = 3
     timeout = 1.5
-    host = 'dns.google.com'
     cache_key = GC.DNS_OVER_HTTPS_LIST + ':443'
 
-    if host not in dns:
-        dns.set(host, GC.IPLIST_MAP[GC.DNS_OVER_HTTPS_LIST], 24 * 3600)
+    if dnshostalias not in dns:
+        dns.set(dnshostalias, GC.IPLIST_MAP[GC.DNS_OVER_HTTPS_LIST], 24 * 3600)
     
     params = dns_params(qname, qtype)
     queobjt = Queue.Queue()
