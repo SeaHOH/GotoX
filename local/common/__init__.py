@@ -57,11 +57,10 @@ class LRUCache():
         self.key_order = collections.deque()
         self.lock = threading.Lock()
 
-    def __setitem__(self, key, value, expire=None):
-        expire = expire or self.expire
+    def __setitem__(self, key, value):
         with self.lock:
-            if expire:
-                self.key_expire[key] = int(time()) + expire
+            if self.expire:
+                self.key_expire[key] = int(time()) + self.expire
             self._mark(key)
             self.cache[key] = value
 
@@ -78,6 +77,14 @@ class LRUCache():
         with self.lock:
             self._expire_check(key)
             return key in self.cache
+
+    def set(self, key, value, expire=None):
+        expire = expire or self.expire
+        with self.lock:
+            if expire:
+                self.key_expire[key] = int(time()) + expire
+            self._mark(key)
+            self.cache[key] = value
 
     def get(self, key, value=None):
         with self.lock:

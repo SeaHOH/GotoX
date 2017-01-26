@@ -133,6 +133,7 @@ class GC():
 
     DNS_SERVERS = CONFIG.get('dns', 'servers').split('|')
     DNS_OVER_HTTPS = CONFIG.getboolean('dns', 'overhttps')
+    DNS_OVER_HTTPS_LIST = CONFIG.get('dns', 'overhttpslist') or 'google_gws'
     DNS_PRIORITY = CONFIG.get('dns', 'priority').split('|')
     DNS_BLACKLIST = set(CONFIG.get('dns', 'blacklist').split('|'))
 
@@ -143,6 +144,9 @@ class GC():
         else:
             DNS_PRIORITY.remove(dnstype)
     DNS_PRIORITY.extend(DNS_DEF_PRIORITY)
+
+    DNS_CACHE_ENTRIES = CONFIG.getint('dns/cache', 'entries') or 128
+    DNS_CACHE_EXPIRATION = CONFIG.getint('dns/cache', 'expiration') or 3600
 
 del CONFIG, fnmatch, ConfigParser
 del sys.modules['fnmatch']

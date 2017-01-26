@@ -236,7 +236,7 @@ def check_ca():
             if remove_cert('%s CA' % ca_vendor) == 0:
                 logging.error('CAkey.pem 不存在，从系统证书中删除。')
             else:
-                raise UserWarning('删除功能不能在 %s 中使用，请自行删除［%s CA］证书' % (sys.platform, ca_vendor))
+                raise UserWarning('删除功能不能在 %s 中使用，请自行删除 [%s CA] 证书' % (sys.platform, ca_vendor))
         except Exception as e:
             logging.warning('CertUtil.remove_cert 失败: %r', e)
         dump_ca()

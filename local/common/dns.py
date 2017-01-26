@@ -18,7 +18,7 @@ from local.compat import Queue, thread
 from local.GlobalConfig import GC
 
 jsondecoder = JSONDecoder()
-dns = LRUCache(128, 4*60*60)
+dns = LRUCache(GC.DNS_CACHE_ENTRIES, GC.DNS_CACHE_EXPIRATION)
 
 def set_DNS(host, iporname):
     iporname = iporname or ()
@@ -52,15 +52,15 @@ def dns_resolve(host):
     else:
         dns[host] = None
         iplist = None
-        if host.endswith('.appspot.com') or host == 'dns.google.com':
+        if host.endswith('.appspot.com'):
             #已经在查找 IP 时过滤 IP 版本
             dns[host] = iplist = GC.IPLIST_MAP['google_gws']
             return iplist
         iplist = dns_resolve1(host)
         if not iplist:
             iplist = dns_resolve2(host)
-        if not iplist:
-            iplist = dns_resolve3(host)
+            if not iplist:
+                iplist = dns_resolve3(host)
         if iplist:
             if GC.LINK_PROFILE == 'ipv4':
                 iplist = [ip for ip in iplist if isipv4(ip)]
@@ -110,7 +110,8 @@ def dns_over_https_resolve(qname, qtype, queobj):
             response = http_gws.request(params, headers=params.headers, connection_cache_key=cache_key, timeout=timeout)
             if response.status == 200:
                 reply = jsondecoder.decode(response.read().decode())
-                if reply['Status'] == NOERROR:
+                # NOERROR = 0
+                if reply['Status'] == 0:
                     for answer in reply['Answer']:
                         if answer['type'] == qtype:
                             iplist.append(answer['data'])
@@ -129,12 +130,15 @@ def dns_over_https_resolve(qname, qtype, queobj):
                         response.sock.close()
         queobj.put(iplist)
 
-    NOERROR = 0
-    cache_key = 'google_gws:443'
 
     threads = 3
     timeout = 1.5
+    host = 'dns.google.com'
+    cache_key = GC.DNS_OVER_HTTPS_LIST + ':443'
 
+    if host not in dns:
+        dns.set(host, GC.IPLIST_MAP[GC.DNS_OVER_HTTPS_LIST], 24 * 3600)
+    
     params = dns_params(qname, qtype)
     queobjt = Queue.Queue()
     for i in range(threads):
