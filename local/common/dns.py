@@ -13,7 +13,7 @@ import socket
 from select import select
 from time import time, sleep
 from json.decoder import JSONDecoder
-from . import LRUCache, isip, isipv4, isipv6
+from . import LRUCache, isip, isipv4, isipv6, classlist
 from local.compat import Queue, thread
 from local.GlobalConfig import GC
 
@@ -76,6 +76,9 @@ dns_resolve_cache_key = GC.DNS_OVER_HTTPS_LIST + ':443'
 
 from local.HTTPUtil import ssl_connection_cache, http_gws
 
+def address_string(item):
+   return item.xip[0] if hasattr(item, 'xip') else ''
+
 class dns_params():
     ssl = True
     host = 'dns.google.com'
@@ -100,16 +103,10 @@ def dns_over_https_resolve(qname, qtype, queobj):
     https://developers.google.com/speed/public-dns/docs/dns-over-https
     '''
 
-    def address_string(response):
-        if hasattr(response, 'xip'):
-            return response.xip[0]
-        else:
-            return ''
-
     def https_resolve(queobj):
         response = None
         noerror = True
-        iplist = []
+        iplist = classlist()
         try:
             response = http_gws.request(params, headers=params.headers, connection_cache_key=dns_resolve_cache_key, timeout=timeout)
             if response and response.status == 200:
@@ -119,6 +116,7 @@ def dns_over_https_resolve(qname, qtype, queobj):
                     for answer in reply['Answer']:
                         if answer['type'] == qtype:
                             iplist.append(answer['data'])
+                iplist.xip = response.xip
         except Exception as e:
             noerror = False
             logging.warning('%s dns_over_https_resolve %r 失败：%r', address_string(response), qname, e)
@@ -140,9 +138,9 @@ def dns_over_https_resolve(qname, qtype, queobj):
     
     params = dns_params(qname, qtype)
     queobjt = Queue.Queue()
-    for i in range(threads):
+    for _ in range(threads):
         thread.start_new_thread(https_resolve, (queobjt,))
-    for i in range(threads):
+    for _ in range(threads):
         iplist = queobjt.get()
         if iplist: break
     queobj.put(iplist)
@@ -151,7 +149,8 @@ def _dns_over_https(qname):
     A = 1
     AAAA = 28
     n = 0
-    iplist = []
+    xips = []
+    iplist = classlist()
     queobj = Queue.Queue()
     if '4' in GC.LINK_PROFILE:
         thread.start_new_thread(dns_over_https_resolve, (qname, A, queobj))
@@ -159,8 +158,12 @@ def _dns_over_https(qname):
     if '6' in GC.LINK_PROFILE:
         thread.start_new_thread(dns_over_https_resolve, (qname, AAAA, queobj))
         n += 1
-    for i in range(n):
-        iplist += queobj.get()
+    for _ in range(n):
+        result = queobj.get()
+        if hasattr(result, 'xip'):
+            xips.append(result.xip[0])
+        iplist += result
+    iplist.xip = '｜'.join(xips), None
     return iplist
 
 def _dns_remote_resolve(qname, dnsservers, blacklist, timeout):
@@ -192,13 +195,14 @@ def _dns_remote_resolve(qname, dnsservers, blacklist, timeout):
                 while time() < timeout_at:
                     ins, _, _ = select(socks, [], [], 0.1)
                     for sock in ins:
-                        reply_data, _ = sock.recvfrom(512)
+                        reply_data, xip = sock.recvfrom(512)
                         reply = dnslib.DNSRecord.parse(reply_data)
-                        iplist = [str(x.rdata) for x in reply.rr if x.rtype == 1]
+                        iplist = classlist(str(x.rdata) for x in reply.rr if x.rtype == 1)
                         if any(x in blacklist for x in iplist):
                             logging.warning('query qname=%r reply bad iplist=%r', qname, iplist)
                         else:
                             logging.debug('query qname=%r reply iplist=%s', qname, iplist)
+                            iplist.xip = xip
                             return iplist
             except socket.error as e:
                 logging.warning('handle dns query=%s socket: %r', query, e)
@@ -213,21 +217,24 @@ def dns_system_resolve(host):
     except Exception:
         iplist = None
     cost = int((time() - now) * 1000)
-    logging.test('dns_system_resolve 耗时：%s毫秒，%s = %s', cost, host, iplist or '查询失败')
+    logging.test('dns_system_resolve 已缓存：%s/%s，耗时：%s 毫秒，%s = %s',
+                 len(dns), dns.max_items, cost, host, iplist or '查询失败')
     return iplist
 
 def dns_remote_resolve(host):
     now = time()
     iplist = _dns_remote_resolve(host, GC.DNS_SERVERS, GC.DNS_BLACKLIST, timeout=2)
     cost = int((time() - now) * 1000)
-    logging.test('dns_remote_resolve 耗时：%s毫秒，%s = %s', cost, host, iplist or '查询失败')
+    logging.test('%s dns_remote_resolve 已缓存：%s/%s，耗时：%s 毫秒，%s = %s',
+                 address_string(iplist), len(dns), dns.max_items, cost, host, iplist or '查询失败')
     return iplist
 
 def dns_over_https(host):
     now = time()
-    iplist = _dns_over_https(host) if GC.DNS_OVER_HTTPS else None
+    iplist = _dns_over_https(host) if GC.DNS_OVER_HTTPS else ('', None)
     cost = int((time() - now) * 1000)
-    logging.test('dns_over_https 耗时：%s毫秒，%s = %s', cost, host, iplist or '查询失败')
+    logging.test('%s dns_over_https 已缓存：%s/%s，耗时：%s 毫秒，%s = %s',
+                 address_string(iplist), len(dns), dns.max_items, cost, host, iplist or '查询失败')
     return iplist
 
 #设置使用 DNS 的优先级别
