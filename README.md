@@ -17,12 +17,14 @@
     - 自动代理端口需自行配置规则，可根据需要自动分配链接路径，推荐使用（开发动力之一）；
     - 要使用自动代理请先仔细阅读配置规则说明，由于未添加完全的检测，错误规则可能导致程序出错或非预期的代理结果；
     - GAE 端口完全使用 GAE 代理，只有当遇到不支持的方法时转用直连，如果此网络资源处于屏蔽状态链接会失败。
-- 配置 GAE 路径为“***/_gh/*** ”可使用 goagent 3.2.X 及 goproxy 服务端，“***/2***  ”使用 goagent 3.1.X 服务端。
-- 新手部署服务端请下载 [goproxy 服务端](https://github.com/phuslu/goproxy/tree/server.gae)，在 VPN 等代理条件下上传，或者去 [XX-net 配置](https://github.com/XX-net/XX-Net/blob/master/code/default/gae_proxy/local/proxy.ini) 中取用公共 APPID 来上传。公共 APPID **不支持视频和下载**。
+- 配置 GAE 路径为“***/_gh/*** ”可使用 GoAgent 3.2.X 及 GoProxy 服务端，“***/2***  ”使用 GoAgent 3.1.X 服务端。
+- 新手部署服务端请下载 [GoProxy 服务端](https://github.com/phuslu/goproxy/tree/server.gae)，在 VPN 等代理条件下上传，或者去 [XX-net 配置](https://github.com/XX-net/XX-Net/blob/master/code/default/gae_proxy/local/proxy.ini) 中取用公共 APPID 来上传。公共 APPID **不支持视频和下载**。
     - **相关链接**
     - 简易教程 https://github.com/phuslu/goproxy/blob/wiki/SimpleGuide.md
     - 常见问题 https://github.com/phuslu/goproxy/blob/wiki/FAQ.md
     - 新版谷歌云部署问题 https://github.com/XX-net/XX-Net/issues/4720
+    - GoProxy 服务端 https://github.com/phuslu/goproxy/tree/server.gae
+    - XX-Net 服务端 https://github.com/jzp820927/Deploy_XXNET_Server
 - 成功运行后会创建独一无二的 CA 证书，证书名称为：“**GotoX CA**”。配置好代理后，按照提示在浏览器中输入 CA 证书地址 “**http://gotox.go/ca**” 可安装到浏览器，或在以上地址后加任意字符即可下载，然后手动导入系统，还可在“**cert**”文件夹找到“**CA.crt**”证书文件。由于还不完善，暂时不打算启用自动导入和删除功能，如有需求请手动删除老旧证书。
     - **相关链接**
     - 手动导入证书 https://github.com/XX-net/XX-Net/wiki/GoAgent-Import-CA
