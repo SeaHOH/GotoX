@@ -6,7 +6,7 @@ import threading
 from functools import partial
 from time import sleep
 from .compat import thread, ConfigParser
-from .common import config_dir, isipv4, isipv6
+from .common import config_dir, isipv4, isipv6, classlist
 from .GlobalConfig import GC
 
 BLOCK     = 1
@@ -60,8 +60,6 @@ elif GC.LINK_PROFILE == 'ipv46':
 elif GC.LINK_PROFILE == 'ipv6':
     pickip = re.compile(r'(?<=\s|\|)(?:(?:[a-f\d]{1,4}:){1,6}|:)(?:[a-f\d]{1,4})?(?::[a-f\d]{1,4}){1,6}(?=$|\s|\|)').findall
     ipnotuse = isipv4
-
-class classlist(list): pass
 
 class actionfilterlist(list):
 

@@ -94,7 +94,7 @@ def _testallgaeip():
     testip.queobj.queue.clear()
     for ip in iplist:
         thread.start_new_thread(http_gws.create_ssl_connection, ((ip, 443), 'google_gws:443', timeout/1000.0, testip.queobj))
-    for ip in iplist:
+    for _ in iplist:
         result = testip.queobj.get()
         if isinstance(result, Exception):
             ip = result.xip[0]

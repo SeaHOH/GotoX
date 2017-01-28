@@ -242,7 +242,7 @@ class HTTPUtil(BaseHTTPUtil):
             ip = ipaddr[0]
             try:
                 # create a ipv4/ipv6 socket object
-                sock = socket.socket(socket.AF_INET if ':' not in ipaddr[0] else socket.AF_INET6)
+                sock = socket.socket(socket.AF_INET if ':' not in ip else socket.AF_INET6)
                 # set reuseaddr option to avoid 10048 socket error
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 # set struct linger{l_onoff=1,l_linger=0} to avoid 10048 socket error
@@ -345,7 +345,7 @@ class HTTPUtil(BaseHTTPUtil):
             ip = ipaddr[0]
             try:
                 # create a ipv4/ipv6 socket object
-                sock = socket.socket(socket.AF_INET if ':' not in ipaddr[0] else socket.AF_INET6)
+                sock = socket.socket(socket.AF_INET if ':' not in ip else socket.AF_INET6)
                 # set reuseaddr option to avoid 10048 socket error
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 # set struct linger{l_onoff=1,l_linger=0} to avoid 10048 socket error
@@ -398,7 +398,7 @@ class HTTPUtil(BaseHTTPUtil):
                 ssl_sock.xip = ipaddr
                 if test:
                     ssl_connection_cache[cache_key].append((time(), ssl_sock))
-                    return test.put((ipaddr[0], ssl_sock.ssl_time))
+                    return test.put((ip, ssl_sock.ssl_time))
                 # put ssl socket object to output queobj
                 queobj.put(ssl_sock)
             except NetWorkIOError as e:

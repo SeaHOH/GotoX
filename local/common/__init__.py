@@ -78,6 +78,10 @@ class LRUCache():
             self._expire_check(key)
             return key in self.cache
 
+    def __len__(self):
+        with self.lock:
+            return len(self.key_order)
+
     def set(self, key, value, expire=None):
         expire = expire or self.expire
         with self.lock:
@@ -158,6 +162,8 @@ def message_html(title, banner, detail=''):
 isip = re.compile(r'(\d+\.){3}\d+$|(([a-f\d]{1,4}:){1,6}|:)([a-f\d]{1,4})?(:[a-f\d]{1,4}){1,6}$').match
 isipv4 = re.compile(r'(\d+\.){3}\d+$').match
 isipv6 = re.compile(r'(([a-f\d]{1,4}:){1,6}|:)([a-f\d]{1,4})?(:[a-f\d]{1,4}){1,6}$').match
+
+class classlist(list): pass
 
 def spawn_later(seconds, target, *args, **kwargs):
     def wrap(*args, **kwargs):
