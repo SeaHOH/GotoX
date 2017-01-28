@@ -81,6 +81,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     #默认值
     ip6host = False
     ssl = False
+    fakecert = False
     url = None
     url_parts = None
 
@@ -133,6 +134,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         '''handle CONNECT cmmand, do a filtered action'''
         self._do_CONNECT()
         self.action, self.target = get_connect_action(self.ssl, self.host)
+        self.fakecert = self.ssl and self.action == 'do_FAKECERT'
         self.do_action()
 
     def _do_METHOD(self):
@@ -177,6 +179,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         '''handle others cmmand, do a filtered action'''
         if self._do_METHOD():
             self.action, self.target = get_action(self.url_parts.scheme, self.host, self.path[1:], self.url)
+            #根据伪造证书与否自动将转发转换为直连
+            if self.fakecert and self.action == 'do_FORWARD':
+                self.action = 'do_DIRECT'
             self.do_action()
 
     do_GET = do_METHOD
