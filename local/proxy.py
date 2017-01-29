@@ -205,8 +205,6 @@ def main():
         if not GC.GAE_APPIDS or GC.GAE_APPIDS[0] == 'gotox':
             logging.critical('请编辑 %r 文件，添加你的 appid 到 [gae] 配置中！', GC.CONFIG_FILENAME)
             sys.exit(-1)
-        if os.name == 'nt':
-            any(GC.DNS_SERVERS.insert(0, x) for x in [y for y in win32dns_query_dnsserver_list() if y not in GC.DNS_SERVERS])
         if not GC.PROXY_ENABLE:
             #logging.info('开始将 GC.IPLIST_MAP names=%s 解析为 IP 列表', list(GC.IPLIST_MAP))
             resolve_iplist()
