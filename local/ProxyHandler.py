@@ -4,11 +4,11 @@ import os
 import sys
 import errno
 import re
+import html
 import ssl
 import socket
 import random
 import socks
-import html
 import threading
 from . import CertUtil
 from . import clogging as logging
@@ -338,16 +338,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         request_headers, payload = self.handle_request_headers()
         host = self.host
         path = self.url_parts.path
-        #need_autorange = any(x(host) for x in GC.AUTORANGE_HOSTS_MATCH) or path.endswith(GC.AUTORANGE_ENDSWITH)
-        need_autorange = path.endswith(GC.AUTORANGE_ENDSWITH)
-        if path.endswith(GC.AUTORANGE_NOENDSWITH) or 'range=' in self.url_parts.query or self.command == 'HEAD':
+        if 'range=' in self.url_parts.query or self.command == 'HEAD':
             need_autorange = False
-        #if self.command != 'HEAD' and 'Range' in request_headers:
-        #    m = getbytes(request_headers['Range'])
-        #    start = int(m.group(1) if m else 0)
-        #    request_headers['Range'] = 'bytes=%d-%d' % (start, start+GC.AUTORANGE_FIRSTSIZE-1)
-        #    logging.info('autorange range=%r match url=%r', request_headers['Range'], self.url)
-        #el
+        else:
+            need_autorange = path.endswith(GC.AUTORANGE_ENDSWITH)
         if need_autorange:
             logging.info('发现[autorange]匹配：%r', self.url)
             m = getbytes(request_headers.get('Range', ''))

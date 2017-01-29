@@ -123,8 +123,6 @@ class GC():
 
     AUTORANGE_ENDSWITH = CONFIG.get('autorange', 'endswith')
     AUTORANGE_ENDSWITH = tuple(AUTORANGE_ENDSWITH.split('|')) if AUTORANGE_ENDSWITH else ()
-    AUTORANGE_NOENDSWITH = CONFIG.get('autorange', 'noendswith')
-    AUTORANGE_NOENDSWITH = tuple(AUTORANGE_NOENDSWITH.split('|')) if AUTORANGE_NOENDSWITH else ()
     AUTORANGE_FIRSTSIZE = CONFIG.getint('autorange', 'firstsize')
     AUTORANGE_MAXSIZE = CONFIG.getint('autorange', 'maxsize')
     AUTORANGE_BUFSIZE = CONFIG.getint('autorange', 'bufsize')
