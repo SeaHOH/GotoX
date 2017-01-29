@@ -8,7 +8,7 @@ import ssl
 import socket
 import random
 import socks
-import mimetypes
+import html
 import threading
 from . import CertUtil
 from . import clogging as logging
@@ -167,11 +167,12 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if not cport:
             cport = 443 if self.ssl else 80
         self.port = int(port) if port else int(cport)
+        #发送证书
+        if self.url.lower().startswith(self.CAfile):
+            return self.send_CA()
         #本地地址
         if self.host.startswith(self.localhosts):
             return self.do_LOCAL()
-        if self.url.lower().startswith(self.CAfile):
-            return self.send_CA()
         #不是本地地址则继续
         return True
 
@@ -629,31 +630,110 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             ssl_sock.shutdown(socket.SHUT_WR)
             ssl_sock.close()
 
+    def list_dir(self, path, displaypath):
+        '''列表目录后将内容写入 html'''
+        #改自 http.server.SimpleHTTPRequestHandler.list_directory
+        try:
+            namelist = os.listdir(path)
+        except OSError as e:
+            return e
+        namelist.sort(key=lambda a: a.lower())
+        r = []
+        displaypath = html.escape(displaypath)
+        # Win NT 不需要编码
+        enc = None if os.name == 'nt' else sys.getfilesystemencoding()
+        charset = '; charset=%s' % enc if enc else ''
+        title = '目录列表 - %s' % displaypath
+        r.append('<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" '
+                 '"http://www.w3.org/TR/html4/strict.dtd">')
+        r.append('<html>\n<head>')
+        r.append('<meta http-equiv="Content-Type" content="text/html%s">' % charset)
+        r.append('<title>%s</title>\n</head>' % title)
+        r.append('<body>\n<h1>%s</h1>\n<hr>\n<ul>' % title)
+        for name in namelist:
+            fullname = os.path.join(path, name)
+            displayname = linkname = name
+            # Append / for directories or @ for symbolic links
+            if os.path.isdir(fullname):
+                displayname = name + "/"
+                linkname = name + "/"
+            if os.path.islink(fullname):
+                displayname = name + "@"
+                # Note: a link to a directory displays with @ and links with /
+            r.append('<li><a href="%s">%s</a></li>'
+                     % (urlparse.quote(linkname, errors='surrogatepass'),
+                        html.escape(displayname)))
+        r.append('</ul>\n<hr>\n</body>\n</html>\n')
+        content = '\n'.join(r)
+        if enc:
+            content = content.encode(enc, 'surrogateescape')
+        self.write('HTTP/1.1 200\r\n'
+                   'Connection: close\r\n'
+                   'Content-Type: text/html%s\r\n\r\n'
+                   % charset)
+        self.write(content)
+        return False
+
+    guess_type = BaseHTTPServer.SimpleHTTPRequestHandler.guess_type
+    extensions_map = BaseHTTPServer.SimpleHTTPRequestHandler.extensions_map
+    extensions_map.update({
+        '.ass' : 'text/plain',
+        '.flac': 'audio/flac',
+        '.mkv' : 'video/mkv',
+        '.pac' : 'text/plain',
+        })
+
     def do_LOCAL(self, filename=None):
-        '''Return a local file'''
-        filename = filename or os.path.join(web_dir, self.path[1:])
-        if os.path.isfile(filename):
-            if filename.endswith('.pac'):
-                content_type = 'text/plain'
+        '''返回一个本地文件'''
+        path = urlparse.unquote(self.path)
+        filename = filename or os.path.join(web_dir, path[1:])
+        #只列表 web_dir 文件夹
+        if filename.startswith(web_dir) and os.path.isdir(filename):
+            err = self.list_dir(filename, path)
+            if err is False:
+                logging.info('%s "%s %s HTTP/1.1" 200 -',
+                    self.address_string(), self.command, self.url)
             else:
-                content_type = mimetypes.types_map.get(os.path.splitext(filename)[1])
-                if not content_type:
-                    content_type = 'application/octet-stream'
+                logging.info('%s "%s %s HTTP/1.1" 403 -，无法打开本地文件：%r',
+                    self.address_string(), self.command, self.url, err)
+            return
+        if os.path.isfile(filename):
+            content_type = self.guess_type(filename)
             try:
                 filesize = os.path.getsize(filename)
                 with open(filename, 'rb') as fp:
                     data = fp.read(1048576) # 1M
-                    logging.info('%s "%s %s HTTP/1.1" 200 %d', self.address_string(), self.command, self.url, filesize)
-                    self.write('HTTP/1.1 200\r\nConnection: close\r\nContent-Length: %s\r\nContent-Type: %s\r\n\r\n' % (filesize, content_type))
+                    logging.info('%s "%s %s HTTP/1.1" 200 %d',
+                        self.address_string(), self.command, self.url, filesize)
+                    self.write('HTTP/1.1 200\r\n'
+                               'Connection: close\r\n'
+                               'Content-Length: %s\r\n'
+                               'Content-Type: %s\r\n\r\n'
+                               % (filesize, content_type))
                     while data:
                         self.write(data)
                         data = fp.read(1048576)
             except Exception as e:
-                logging.warning('%s "%s %s HTTP/1.1" 403 -，无法打开本地文件：%r', self.address_string(), self.command, self.url, filename)
-                self.write('HTTP/1.1 403\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nopen %r failed: %r' % (filename, e))
+                logging.warning('%s "%s %s HTTP/1.1" 403 -，无法打开本地文件：%r',
+                    self.address_string(), self.command, self.url, filename)
+                self.write('HTTP/1.1 403\r\n'
+                           'Content-Type: text/html\r\n'
+                           'Connection: close\r\n\r\n'
+                           '<title>403 拒绝</title>\n'
+                           '<h1>403 无法打开本地文件：</h1><hr>\n'
+                           '<h2><li>%s</li></h2>\n'
+                           '<h2><li>%s</li></h2>\n'
+                           % (filename, e))
         else:
-            logging.warning('%s "%s %s HTTP/1.1" 404 -，无法找到本地文件：%r', self.address_string(), self.command, self.url, filename)
-            self.write(b'HTTP/1.1 404\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n404 Not Found')
+            logging.warning('%s "%s %s HTTP/1.1" 404 -，无法找到本地文件：%r',
+                self.address_string(), self.command, self.url, filename)
+            self.write('HTTP/1.1 404\r\n'
+                       'Content-Type: text/html\r\n'
+                       'Connection: close\r\n\r\n'
+                       '<title>404 无法找到</title>\n'
+                       '<h1>404 无法找到本地文件：</h1><hr>\n'
+                       '<h2><li>%s</li></h2>\n'
+                       % filename)
 
     def do_BLOCK(self):
         '''Return a space content with 200'''
@@ -668,7 +748,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         b'\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;')
         else:
             content += b'\r\n'
-        logging.warning('%s "%s %s" 已经被拦截', self.address_string(), self.command, self.url or self.host)
+        logging.warning('%s "%s %s" 已经被拦截',
+            self.address_string(), self.command, self.url or self.host)
         self.write(content)
 
     def go_GAE(self):
