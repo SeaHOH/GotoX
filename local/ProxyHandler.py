@@ -79,7 +79,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     badhost = LRUCache(16, 120)
 
     #默认值
-    ip6host = False
     ssl = False
     fakecert = False
     url = None
@@ -109,23 +108,18 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def _do_CONNECT(self):
         host = self.headers.get('Host')
         port = None
+        #从命令获取主机、端口
+        chost, cport = self.parse_netloc(self.path)
         #从头域获取主机、端口
         if host:
             host, port = self.parse_netloc(host)
-        #从命令获取主机、端口
-        chost, cport = self.parse_netloc(self.path)
         #优先 Host 头域
         #排除某些程序把本地地址当成主机名
         if host and not host.startswith(self.localhosts):
             self.host = host
         else:
             self.host = chost
-        if port:
-            self.port = int(port)
-        elif cport:
-            self.port = int(cport)
-        else:
-            self.port = 443
+        self.port = int(port or cport or 443)
         #某些 http 链接也可能会使用 CONNECT 方法
         #认为非 80 端口都是加密链接
         self.ssl = self.port != 80
@@ -142,31 +136,29 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.path = pypypath(self.path)
         host = self.headers.get('Host')
         port = None
-        #从头域获取主机、端口
-        if host:
-            host, port = self.parse_netloc(host)
         url_parts = urlparse.urlsplit(self.path)
         #从命令获取主机、端口
         chost, cport = self.parse_netloc(url_parts.netloc)
+        #从头域获取主机、端口
+        if host:
+            host, port = self.parse_netloc(host)
         #确定协议
-        scheme = 'https' if self.ssl else 'http'
+        if url_parts.scheme:
+            scheme = url_parts.scheme
+            #认为只有 https 协议才是加密链接
+            self.ssl = scheme == 'https'
+        else:
+            scheme = 'https' if self.ssl else 'http'
         #确定主机
         self.host = host = host or chost
-        if self.path[0] == '/':
-            #确定路径
-            #确定网址
-            self.url_parts = url_parts = urlparse.SplitResult(scheme, host, url_parts.path, url_parts.query, '')
-            self.url = url_parts.geturl()
-        else:
-            #确定网址、去掉可能存在的端口
-            self.url_parts = url_parts = urlparse.SplitResult(url_parts.scheme, host, url_parts.path, url_parts.query, '')
-            self.url = url_parts.geturl()
-            #确定路径
-            self.path = self.url[self.url.find('/', self.url.find('//')+3):]
         #确定端口
-        if not cport:
-            cport = 443 if self.ssl else 80
-        self.port = int(port) if port else int(cport)
+        self.port = int(port or cport or self.ssl and 443 or 80)
+        #确定网址、去掉可能存在的端口
+        self.url_parts = url_parts = urlparse.SplitResult(scheme, host, url_parts.path, url_parts.query, '')
+        self.url = url_parts.geturl()
+        #确定路径
+        if self.path[0] != '/':
+            self.path = self.url[self.url.find('/', self.url.find('//')+3):]
         #发送证书
         if self.url.lower().startswith(self.CAfile):
             return self.send_CA()
@@ -842,10 +834,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         host, has_br, port = netloc.partition(']')
         if has_br:
             # IPv6 必须使用方括号
-            self.ip6host = True
+            self.ipv6host = True
             host = host[1:]
             port = port[1:]
         else:
+            self.ipv6host = False
             host, _, port = host.partition(':')
         return host, port
 
