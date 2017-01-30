@@ -29,7 +29,7 @@ numToAct = {
     GAE       : 'do_GAE',
 }
 numToSSLAct = {
-    BLOCK     : 'do_BLOCK',
+    BLOCK     : 'do_FAKECERT',
     FORWARD   : 'do_FORWARD',
     DIRECT    : 'do_FAKECERT',
     REDIRECT  : 'do_FAKECERT',

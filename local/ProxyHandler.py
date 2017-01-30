@@ -742,8 +742,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         b'\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;')
         else:
             content += b'\r\n'
-        logging.warning('%s "%s %s" 已经被拦截',
-            self.address_string(), self.command, self.url or self.host)
+        logging.warning('%s "%s%s %s" 已经被拦截',
+            self.address_string(), 'CONNECT BLOCK ' if self.ssl else '',
+            self.command, self.url or self.host)
         self.write(content)
 
     def go_GAE(self):
