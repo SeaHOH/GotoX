@@ -72,7 +72,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     nappid = 0
 
     fwd_timeout = GC.LINK_FWDTIMEOUT
-    CAfile = 'http://gotox.go/ca'
+    CAUrl = 'http://gotox.go/ca'
 
     #可修改
     ssl_context_cache = LRUCache(32)
@@ -160,7 +160,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if self.path[0] != '/':
             self.path = self.url[self.url.find('/', self.url.find('//')+3):]
         #发送证书
-        if self.url.lower().startswith(self.CAfile):
+        if self.url.lower().startswith(self.CAUrl):
             return self.send_CA()
         #本地地址
         if self.host.startswith(self.localhosts):
@@ -634,8 +634,16 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                  '"http://www.w3.org/TR/html4/strict.dtd">')
         r.append('<html>\n<head>')
         r.append('<meta http-equiv="Content-Type" content="text/html%s">' % charset)
-        r.append('<title>%s</title>\n</head>' % title)
-        r.append('<body>\n<h1>%s</h1>\n<hr>\n<ul>' % title)
+        r.append('<title>%s</title>\n</head>\n<body>' % title)
+        if displaypath == '/':
+            r.append('<h2>\n&diams;<a href="%s">安装 GotoX CA 证书到浏览器</a>'
+                     % self.CAUrl)
+            r.append('&diams;<a href="%sx">下载 GotoX CA 证书</a>\n</h2>\n<hr>'
+                     % self.CAUrl)
+        r.append('<h1>%s</h1>\n<hr>\n<ul>' % title)
+        if displaypath != '/':
+            r.append('<li><a href="%s/">返回上级目录</a><big>&crarr;</big></li>'
+                     % displaypath[:-1].rpartition('/')[0])
         for name in namelist:
             fullname = os.path.join(path, name)
             displayname = linkname = name
@@ -670,7 +678,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         })
 
     def do_LOCAL(self, filename=None):
-        '''返回一个本地文件'''
+        '''返回一个本地文件或目录'''
         path = urlparse.unquote(self.path)
         filename = filename or os.path.join(web_dir, path[1:])
         #只列表 web_dir 文件夹
@@ -824,8 +832,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         with open(ca_certfile, 'rb') as fp:
             data = fp.read()
         logging.info('"HTTP/1.1 200"，发送 CA 证书到 %r', self.address_string())
-        self.write(b'HTTP/1.1 200\r\nContent-Type: application/x-x509-ca-cert\r\n')
-        if self.url.lower() != self.CAfile:
+        self.write(b'HTTP/1.1 200\r\n'
+                   b'Content-Type: application/x-x509-ca-cert\r\n')
+        if self.url.lower() != self.CAUrl:
             self.write(b'Content-Disposition: attachment; filename="GotoXCA.crt"\r\n')
         self.write('Content-Length: %s\r\n\r\n' % len(data))
         self.write(data)

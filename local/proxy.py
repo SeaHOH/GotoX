@@ -225,9 +225,8 @@ def main():
     info += '*  调 试 信 息 : %s\n' % logging._levelToName[GC.LISTEN_DEBUGINFO]
     info += '*  链 接 模 式 : 远程 - %s / gevent%s\n' % (GC.LINK_REMOTESSLTXT, ' + OpenSSL' if GC.LINK_OPENSSL else '')
     info += '*                本地 - %s / gevent\n' % GC.LINK_LOCALSSLTXT
-    info += '*  链接 配置集 : %s\n' % GC.LINK_PROFILE if GC.LINK_PROFILE else ''
-    info += '*  安 装 证 书 : %s\n' % AutoProxyHandler.CAfile
-    info += '*  下 载 证 书 : %s 加任意字符\n' % AutoProxyHandler.CAfile
+    info += '*  网 络 配 置 : %s\n' % GC.LINK_PROFILE
+    info += '*  安 装 证 书 : http://gotox.go/\n'
     info += '==================================================================================\n'
     sys.stdout.write(info)
 
