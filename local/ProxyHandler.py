@@ -513,7 +513,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             connection_cache_key = '%s:%d' % (hostname, port)
             for i in range(5):
                 try:
-                    remote = http_util.create_connection((host, port), connection_cache_key, self.fwd_timeout)
+                    remote = http_util.create_connection((host, port), connection_cache_key, self.fwd_timeout, self.ssl)
                     if remote is not None:
                         break
                     elif i == 0:
@@ -530,7 +530,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 remote.settimeout(None)
         else:
             hostip = random.choice(dns_resolve(host))
-            remote = http_util.create_connection((hostip, int(port)), self.fwd_timeout)
+            remote = http_util.create_connection((hostip, int(port)), self.fwd_timeout, self.ssl)
         if not remote:
             logging.error('%s AutoProxyHandler proxy connect remote (%r, %r) failed', hostip, host, port)
             return

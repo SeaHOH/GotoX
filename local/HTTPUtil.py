@@ -236,7 +236,7 @@ class HTTPUtil(BaseHTTPUtil):
         #    self.create_ssl_connection = self.__create_ssl_connection_withproxy
         BaseHTTPUtil.__init__(self, GC.LINK_OPENSSL, os.path.join(cert_dir, 'cacert.pem'), ssl_ciphers)
 
-    def create_connection(self, address, cache_key, timeout=None, source_address=None, **kwargs):
+    def create_connection(self, address, cache_key, timeout=None, ssl=None, source_address=None, **kwargs):
         def _create_connection(ipaddr, timeout, queobj):
             sock = None
             ip = ipaddr[0]
@@ -303,7 +303,7 @@ class HTTPUtil(BaseHTTPUtil):
         result = None
         host, port = address
         addresses = [(x, port) for x in dns_resolve(host)]
-        if port == 443:
+        if ssl:
             get_connection_time = lambda addr: tcp_connection_time.get(addr, False) or ssl_connection_time.get(addr, False)
         else:
             get_connection_time = lambda addr: tcp_connection_time.get(addr, False)
