@@ -70,7 +70,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     nappid = 0
 
     fwd_timeout = GC.LINK_FWDTIMEOUT
-    CAUrl = 'http://gotox.go/ca'
+    CAPath = '/ca', '/cadownload'
 
     #可修改
     ssl_context_cache = LRUCache(32)
@@ -132,7 +132,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def _do_METHOD(self):
         host = self.headers.get('Host')
         port = None
-        url_parts = urlparse.urlsplit(self.path)
+        path = self.path
+        url_parts = urlparse.urlsplit(path)
         #从命令获取主机、端口
         chost, cport = self.parse_netloc(url_parts.netloc)
         #从头域获取主机、端口
@@ -153,13 +154,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.url_parts = url_parts = urlparse.SplitResult(scheme, host, url_parts.path, url_parts.query, '')
         self.url = url_parts.geturl()
         #确定路径
-        if self.path[0] != '/':
-            self.path = self.url[self.url.find('/', self.url.find('//')+3):]
-        #发送证书
-        if self.url.lower().startswith(self.CAUrl):
-            return self.send_CA()
+        if path[0] != '/':
+            self.path = path = self.url[self.url.find('/', self.url.find('//')+3):]
         #本地地址
-        if self.host.startswith(self.localhosts):
+        if host.startswith(self.localhosts):
+            #发送证书
+            if path.lower() in self.CAPath:
+                return self.send_CA()
             return self.do_LOCAL()
         #不是本地地址则继续
         return True
@@ -624,18 +625,21 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         displaypath = html.escape(displaypath)
         # Win NT 不需要编码
         enc = None if os.name == 'nt' else sys.getfilesystemencoding()
-        charset = '; charset=%s' % enc if enc else ''
-        title = '目录列表 - %s' % displaypath
+        #设置为 str.encode 的默认值 UTF-8
+        enc = enc or 'UTF-8'
+        title = 'GotoX web 目录列表 - %s' % displaypath
         r.append('<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" '
-                 '"http://www.w3.org/TR/html4/strict.dtd">')
-        r.append('<html>\n<head>')
-        r.append('<meta http-equiv="Content-Type" content="text/html%s">' % charset)
-        r.append('<title>%s</title>\n</head>\n<body>' % title)
+                 '"http://www.w3.org/TR/html4/strict.dtd">\n'
+                 '<html>\n<head>\n'
+                 '<meta http-equiv="Content-Type" '
+                 'content="text/html; charset=%s">\n'
+                 '<title>%s</title>\n'
+                 '</head>\n<body>' % (enc, title))
         if displaypath == '/':
-            r.append('<h2>\n&diams;<a href="%s">安装 GotoX CA 证书到浏览器</a>'
-                     % self.CAUrl)
-            r.append('&diams;<a href="%sx">下载 GotoX CA 证书</a>\n</h2>\n<hr>'
-                     % self.CAUrl)
+            r.append('<h2>\n'
+                     '&diams;<a href="%s">点击安装 GotoX CA 证书到浏览器</a>\n'
+                     '&diams;<a href="%s">点击下载 GotoX CA 证书</a>\n'
+                     '</h2>\n<hr>' % self.CAPath)
         r.append('<h1>%s</h1>\n<hr>\n<ul>' % title)
         if displaypath != '/':
             r.append('<li><a href="%s/">返回上级目录</a><big>&crarr;</big></li>'
@@ -654,15 +658,15 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                      % (urlparse.quote(linkname, errors='surrogatepass'),
                         html.escape(displayname)))
         r.append('</ul>\n<hr>\n</body>\n</html>\n')
-        content = '\n'.join(r)
-        if enc:
-            content = content.encode(enc, 'surrogateescape')
+        content = '\n'.join(r).encode(enc, 'surrogateescape')
+        l = len(content)
         self.write('HTTP/1.1 200\r\n'
                    'Connection: close\r\n'
-                   'Content-Type: text/html%s\r\n\r\n'
-                   % charset)
+                   'Content-Length: %s\r\n'
+                   'Content-Type: text/html; charset=%s\r\n\r\n'
+                   % (l, enc))
         self.write(content)
-        return False
+        return l
 
     guess_type = BaseHTTPServer.SimpleHTTPRequestHandler.guess_type
     extensions_map = BaseHTTPServer.SimpleHTTPRequestHandler.extensions_map
@@ -682,13 +686,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             filename = os.path.join(web_dir, path[1:])
         #只列表 web_dir 文件夹
         if filename.startswith(web_dir) and os.path.isdir(filename):
-            err = self.list_dir(filename, path)
-            if err is False:
-                logging.info('%s "%s %s HTTP/1.1" 200 -',
-                    self.address_string(), self.command, self.url)
+            r = self.list_dir(filename, path)
+            if isinstance(r, int):
+                logging.info('%s "%s %s HTTP/1.1" 200 %s',
+                    self.address_string(), self.command, self.url, r)
             else:
                 logging.info('%s "%s %s HTTP/1.1" 403 -，无法打开本地文件：%r',
-                    self.address_string(), self.command, self.url, err)
+                    self.address_string(), self.command, self.url, r)
             return
         if os.path.isfile(filename):
             content_type = self.guess_type(filename)
@@ -830,10 +834,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         from .CertUtil import ca_certfile
         with open(ca_certfile, 'rb') as fp:
             data = fp.read()
-        logging.info('"HTTP/1.1 200"，发送 CA 证书到 %r', self.address_string())
+        logging.info('"%s HTTP/1.1 200"，发送 CA 证书到 %r', self.url, self.address_string())
         self.write(b'HTTP/1.1 200\r\n'
                    b'Content-Type: application/x-x509-ca-cert\r\n')
-        if self.url.lower() != self.CAUrl:
+        if self.path.lower() == self.CAPath[1]:
             self.write(b'Content-Disposition: attachment; filename="GotoXCA.crt"\r\n')
         self.write('Content-Length: %s\r\n\r\n' % len(data))
         self.write(data)
