@@ -40,10 +40,8 @@ from .FilterUtil import (
     get_connect_action
     )
 
-HAS_PYPY = hasattr(sys, 'pypy_version_info')
 normcookie = partial(re.compile(r',(?= [^ =]+(?:=|$))').sub, r'\r\nSet-Cookie:')
 normattachment = partial(re.compile(r'(?<=filename=)([^"\']+)').sub, r'"\1"')
-pypypath = partial(re.compile(r'(://[^/]+):\d+/').sub, r'\1/')
 getbytes = re.compile(r'bytes=(\d+)-').search
 getrange = re.compile(r'bytes (\d+)-(\d+)/(\d+)').search
 
@@ -132,8 +130,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.do_action()
 
     def _do_METHOD(self):
-        if HAS_PYPY:
-            self.path = pypypath(self.path)
         host = self.headers.get('Host')
         port = None
         url_parts = urlparse.urlsplit(self.path)
