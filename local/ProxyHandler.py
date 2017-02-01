@@ -848,7 +848,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             self.ipv6host = False
             host, _, port = host.partition(':')
-        return host, port
+        return host.lower(), port
 
     def address_string(self, response=None):
         '''Return the connected ip or the client's ip and port'''
