@@ -126,6 +126,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         '''handle CONNECT cmmand, do a filtered action'''
         self._do_CONNECT()
         self.action, self.target = get_connect_action(self.ssl, self.host)
+        #本地地址
+        if self.host.startswith(self.localhosts):
+            self.action = 'do_FAKECERT'
         self.fakecert = self.ssl and self.action == 'do_FAKECERT'
         self.do_action()
 
