@@ -499,7 +499,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         hostip = ''
         if not GC.PROXY_ENABLE:
             connection_cache_key = '%s:%d' % (hostname, port)
-            for i in range(5):
+            for i in range(3):
                 try:
                     remote = http_util.create_connection((host, port), connection_cache_key, self.fwd_timeout, self.ssl)
                     if remote is not None:
