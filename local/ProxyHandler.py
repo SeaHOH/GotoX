@@ -676,7 +676,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_LOCAL(self, filename=None):
         '''返回一个本地文件或目录'''
         path = urlparse.unquote(self.path)
-        filename = filename or os.path.join(web_dir, path[1:])
+        if filename:
+            filename = urlparse.unquote(filename)
+        else:
+            filename = os.path.join(web_dir, path[1:])
         #只列表 web_dir 文件夹
         if filename.startswith(web_dir) and os.path.isdir(filename):
             err = self.list_dir(filename, path)
