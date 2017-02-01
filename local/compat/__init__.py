@@ -15,14 +15,17 @@ if PY3:
     import urllib.request as urllib2
     import urllib.parse as urlparse
     import socketserver as SocketServer
-    from configparser import ConfigParser
-    #可添加属性
-    class socketMod(socket.socket): pass
-    socket.socket = socketMod
+    from configparser import RawConfigParser, ConfigParser
     #默认编码
     _read = ConfigParser.read
     ConfigParser.read = lambda s, f, encoding='utf8': _read(s, f, encoding)
+    #可添加属性
+    class socketMod(socket.socket): pass
+    socket.socket = socketMod
 else:
     from local import clogging as logging
     logging.error('请使用 Python 3 系列版本运行本程序！\n正在退出……')
     sys.exit(-1)
+
+#去掉 lower 以支持选项名称大小写共存
+RawConfigParser.optionxform = lambda s, opt: opt
