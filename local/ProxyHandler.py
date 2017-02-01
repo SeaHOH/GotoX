@@ -328,12 +328,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.action = 'do_DIRECT'
             return self.do_action()
         request_headers, payload = self.handle_request_headers()
-        host = self.host
-        path = self.url_parts.path
         if 'range=' in self.url_parts.query or self.command == 'HEAD':
             need_autorange = False
         else:
-            need_autorange = path.endswith(GC.AUTORANGE_ENDSWITH)
+            need_autorange = self.url_parts.path.endswith(GC.AUTORANGE_ENDSWITH)
         if need_autorange:
             logging.info('发现[autorange]匹配：%r', self.url)
             m = getbytes(request_headers.get('Range', ''))
@@ -440,7 +438,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 #第一个响应，不用重新写入头部
                 if not headers_sent:
                     #开始自动多线程
-                    if response.status == 206 and need_autorange:
+                    if response.status == 206:
                         rangefetch = RangeFetch(self, url, request_headers, payload, response)
                         return rangefetch.fetch()
                     length, data, need_chunked = self.handle_response_headers(response)

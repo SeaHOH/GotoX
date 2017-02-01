@@ -215,8 +215,8 @@ class RangeFetch():
                 logging.exception('RangeFetch._fetchlet 错误：%r', e)
                 raise
             finally:
-                qGAE.put(True)
                 if appid:
+                    qGAE.put(True)
                     self.appids.put(appid)
                 if response:
                     response.close()
