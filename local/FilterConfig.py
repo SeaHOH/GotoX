@@ -5,6 +5,7 @@ import re
 import threading
 from functools import partial
 from time import sleep
+from . import clogging as logging
 from .compat import thread, ConfigParser
 from .common import config_dir, isipv4, isipv6, classlist
 from .GlobalConfig import GC
@@ -137,9 +138,12 @@ class actionfilterlist(list):
         while True:
             filemtime = os.path.getmtime(self.CONFIG_FILENAME)
             if filemtime > self.FILE_MTIME and not self.RESET:
-                self.FILE_MTIME = filemtime
-                self.readconfig()
-                self.RESET = True
+                try:
+                    self.readconfig()
+                    self.FILE_MTIME = filemtime
+                    self.RESET = True
+                except Exception as e:
+                    logging.warning('%r 内容被修改，重新加载时出现错误，请检查后重新修改：\n%r', self.CONFIG_FILENAME, e)
             sleep(10)
 
 ACTION_FILTERS = actionfilterlist()
