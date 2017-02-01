@@ -247,7 +247,7 @@ class GAE_Finder(BaseHTTPUtil):
                 raise socket.error('handshake cost %dms timed out' % int(handshaked_time*1000))
             cert = self.get_peercert(ssl_sock)
             if not cert:
-                raise socket.error('无法从 %s 获取证书。', ip)
+                raise ssl.SSLError('无法从 %s 获取证书。', ip)
             domain = cert.get_subject().CN
             if not domain:
                 raise ssl.SSLError('%s 无法获取 commonName：%s ' % (ip, cert))

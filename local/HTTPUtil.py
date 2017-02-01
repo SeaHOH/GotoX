@@ -266,7 +266,7 @@ class HTTPUtil(BaseHTTPUtil):
                 # put socket object to output queobj
                 sock.xip = ipaddr
                 queobj.put(sock)
-            except (socket.error, OSError) as e:
+            except NetWorkIOError as e:
                 # any socket.error, put Excpetions to output queobj.
                 e.xip = ipaddr
                 queobj.put(e)

@@ -461,7 +461,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             except Exception as e:
                 noerror = False
                 errors.append(e)
-                if e.args[0] in (10053, ) or isinstance(e, NetWorkIOError) and 'bad write' in e.args[-1]:
+                if e.args[0] in (10053, ) or isinstance(e, NetWorkIOError) and e.args[-1] and 'bad write' in e.args[-1]:
                     #本地链接终止
                     logging.debug('do_GAE %r 返回 %r，终止', self.url, e)
                     return
