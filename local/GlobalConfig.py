@@ -50,6 +50,7 @@ class GC():
     LISTEN_AUTO_PORT = CONFIG.getint('listen', 'auto_port')
     LISTEN_VISIBLE = CONFIG.getboolean('listen', 'visible')
     LISTEN_DEBUGINFO = _LOGLv[min(CONFIG.getint('listen', 'debuginfo'), 3)]
+    LISTEN_CHECKPROCESS = CONFIG.getboolean('listen', 'checkprocess')
 
     GAE_APPIDS = re.findall(r'[\w\-\.]+', CONFIG.get('gae', 'appid').replace('.appspot.com', ''))
     GAE_PASSWORD = CONFIG.get('gae', 'password').strip()

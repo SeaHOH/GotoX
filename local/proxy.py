@@ -70,62 +70,38 @@ def main():
     def pre_start():
         from .common import isip, isipv4, isipv6
         from .common.dns import dns, _dns_remote_resolve as dns_remote_resolve
-        def get_process_list():
-            import collections
-            Process = collections.namedtuple('Process', 'pid name exe')
-            process_list = []
-            if os.name == 'nt':
-                import ctypes
-                PROCESS_QUERY_INFORMATION = 0x0400
-                PROCESS_VM_READ = 0x0010
-                lpidProcess= (ctypes.c_ulong * 1024)()
-                cb = ctypes.sizeof(lpidProcess)
-                cbNeeded = ctypes.c_ulong()
-                ctypes.windll.psapi.EnumProcesses(ctypes.byref(lpidProcess), cb, ctypes.byref(cbNeeded))
-                nReturned = cbNeeded.value/ctypes.sizeof(ctypes.c_ulong())
-                pidProcess = [i for i in lpidProcess][:nReturned]
-                has_queryimage = hasattr(ctypes.windll.kernel32, 'QueryFullProcessImageNameA')
-                for pid in pidProcess:
-                    hProcess = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, pid)
-                    if hProcess:
-                        modname = ctypes.create_string_buffer(2048)
-                        count = ctypes.c_ulong(ctypes.sizeof(modname))
-                        if has_queryimage:
-                            ctypes.windll.kernel32.QueryFullProcessImageNameA(hProcess, 0, ctypes.byref(modname), ctypes.byref(count))
-                        else:
-                            ctypes.windll.psapi.GetModuleFileNameExA(hProcess, 0, ctypes.byref(modname), ctypes.byref(count))
-                        exe = modname.value
-                        name = os.path.basename(exe)
-                        process_list.append(Process(pid=pid, name=name, exe=exe))
-                        ctypes.windll.kernel32.CloseHandle(hProcess)
-            elif sys.platform.startswith('linux'):
-                import glob
-                for filename in glob.glob('/proc/[0-9]*/cmdline'):
-                    pid = int(filename.split('/')[2])
-                    exe_link = '/proc/%d/exe' % pid
-                    if os.path.exists(exe_link):
-                        exe = os.readlink(exe_link)
-                        name = os.path.basename(exe)
-                        process_list.append(Process(pid=pid, name=name, exe=exe))
-            else:
-                try:
-                    import psutil
-                    process_list = psutil.get_process_list()
-                except Exception as e:
-                    logging.exception('psutil.get_process_list() failed: %r', e)
-            return process_list
 
-        def win32dns_query_dnsserver_list():
-            import ctypes, ctypes.wintypes
-            DNS_CONFIG_DNS_SERVER_LIST = 6
-            buf = ctypes.create_string_buffer(2048)
-            ctypes.windll.dnsapi.DnsQueryConfig(DNS_CONFIG_DNS_SERVER_LIST, 0, None, None, ctypes.byref(buf), ctypes.byref(ctypes.wintypes.DWORD(len(buf))))
-            ips = struct.unpack('I', buf[0:4])[0]
-            out = []
-            for i in range(ips):
-                start = (i+1) * 4
-                out.append(socket.inet_ntoa(buf[start:start+4]))
-            return out
+        def get_process_list():
+            process_list = []
+            if os.name != 'nt':
+                return process_list
+            import ctypes
+            import collections
+            Process = collections.namedtuple('Process', 'filename name')
+            PROCESS_QUERY_INFORMATION = 0x0400
+            PROCESS_VM_READ = 0x0010
+            lpidProcess= (ctypes.c_ulong * 1024)()
+            cb = ctypes.sizeof(lpidProcess)
+            cbNeeded = ctypes.c_ulong()
+            ctypes.windll.psapi.EnumProcesses(ctypes.byref(lpidProcess), cb, ctypes.byref(cbNeeded))
+            nReturned = int(cbNeeded.value/ctypes.sizeof(ctypes.c_ulong()))
+            pidProcess = [i for i in lpidProcess][:nReturned]
+            has_queryimage = hasattr(ctypes.windll.kernel32, 'QueryFullProcessImageNameA')
+            for pid in pidProcess:
+                hProcess = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, pid)
+                if hProcess:
+                    modname = ctypes.create_string_buffer(2048)
+                    count = ctypes.c_ulong(ctypes.sizeof(modname))
+                    if has_queryimage:
+                        ctypes.windll.kernel32.QueryFullProcessImageNameA(hProcess, 0, ctypes.byref(modname), ctypes.byref(count))
+                    else:
+                        ctypes.windll.psapi.GetModuleFileNameExA(hProcess, 0, ctypes.byref(modname), ctypes.byref(count))
+                    path = modname.value.decode()
+                    filename = os.path.basename(path)
+                    name, ext = os.path.splitext(filename)
+                    process_list.append(Process(filename=filename, name=name))
+                    ctypes.windll.kernel32.CloseHandle(hProcess)
+            return process_list
 
         def resolve_iplist():
             def do_resolve(host, dnsservers, queue):
@@ -190,20 +166,63 @@ def main():
                 ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
             else:
                 ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 1)
-        elif 0:
-            blacklist = {'360safe': False,
-                         'QQProtect': False, }
-            softwares = [k for k, v in blacklist.items() if v]
-            if softwares:
-                tasklist = '\n'.join(x.name for x in get_process_list()).lower()
+            if GC.LISTEN_CHECKPROCESS:
+                blacklist = {'BaiduSdSvc'   : '百毒',
+                             'BaiduSdTray'  : '百毒',
+                             'BaiduSd'      : '百毒',
+                             'BaiduAn'      : '百毒',
+                             'bddownloader' : '百毒',
+                             'baiduansvx'   : '百毒',
+                             '360sd'        : '360',
+                             '360tray'      : '360',
+                             '360Safe'      : '360',
+                             'safeboxTray'  : '360',
+                             '360safebox'   : '360',
+                             '360se'        : '360',
+                             'QQPCRTP'      : 'QQ',
+                             'QQPCTray'     : 'QQ',
+                             'QQProtect'    : 'QQ',
+                             'kismain'      : '金山',
+                             'ksafe'        : '金山',
+                             'KSafeSvc'     : '金山',
+                             'KSafeTray'    : '金山',
+                             'KAVStart'     : '金山',
+                             'KWatch'       : '金山',
+                             'KMailMon'     : '金山',
+                             'rstray'       : '瑞星',
+                             'ravmond'      : '瑞星',
+                             'rsmain'       : '瑞星',
+                             'UIHost'       : '江民',
+                             'KVMonXP'      : '江民',
+                             'kvsrvxp'      : '江民',
+                             'kvxp'         : '江民',
+                             '2345MPCSafe'  : '2345',
+                             'PFW'          : '天网防火墙',}
+                softwares = [k for k in blacklist]
+                tasklist = dict((x.name.lower(), x) for x in get_process_list())
                 softwares = [x for x in softwares if x.lower() in tasklist]
                 if softwares:
+                    displaylist = {}
+                    for software in softwares:
+                        k = blacklist[software]
+                        if k not in displaylist:
+                            displaylist[k] = []
+                        displaylist[k].append(software)
+                    displaystr = ['某些安全软件可能和本软件存在冲突，造成 CPU 占用过高。'
+                                  '如有此现象建议暂时退出以下安全软件来保证 GotoX 运行：',]
+                    for k, v in displaylist.items():
+                        displaystr.append('    %s：%s'
+                            % (k, '、'.join(tasklist[x].filename for x in v)))
                     title = 'GotoX 建议'
-                    error = '某些安全软件(如 %s)可能和本软件存在冲突，造成 CPU 占用过高。\n如有此现象建议暂时退出此安全软件来继续运行 GotoX' % ','.join(softwares)
+                    error = '\n'.join(displaystr)
+                    logging.warning(error)
                     ctypes.windll.user32.MessageBoxW(None, error, title, 0)
-                    #sys.exit(0)
-        if not GC.GAE_APPIDS or GC.GAE_APPIDS[0] == 'gotox':
-            logging.critical('请编辑 %r 文件，添加你的 appid 到 [gae] 配置中！', GC.CONFIG_FILENAME)
+        try:
+            GC.GAE_APPIDS.remove('gotox')
+        except:
+            pass
+        if not GC.GAE_APPIDS:
+            logging.critical('请编辑 %r 文件，添加可用的 appid 到 [gae] 配置中！', GC.CONFIG_FILENAME)
             sys.exit(-1)
         if not GC.PROXY_ENABLE:
             #logging.info('开始将 GC.IPLIST_MAP names=%s 解析为 IP 列表', list(GC.IPLIST_MAP))
