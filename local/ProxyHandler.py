@@ -42,7 +42,7 @@ from .FilterUtil import (
 
 normcookie = partial(re.compile(r',(?= [^ =]+(?:=|$))').sub, r'\r\nSet-Cookie:')
 normattachment = partial(re.compile(r'(?<=filename=)([^"\']+)').sub, r'"\1"')
-getbytes = re.compile(r'bytes=(\d+)-').search
+getbytes = re.compile(r'bytes=(\d+)-(\d*)').search
 getrange = re.compile(r'bytes (\d+)-(\d+)/(\d+)').search
 
 skip_request_headers = (
@@ -75,6 +75,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     #可修改
     ssl_context_cache = LRUCache(32)
     badhost = LRUCache(16, 120)
+    maxsize = int(GC.GAE_MAXSIZE or 1024*1024*4)
 
     #默认值
     ssl = False
@@ -328,15 +329,22 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.action = 'do_DIRECT'
             return self.do_action()
         request_headers, payload = self.handle_request_headers()
-        if 'range=' in self.url_parts.query or self.command == 'HEAD':
-            need_autorange = False
+        request_range = request_headers.get('Range', '')
+        if request_range:
+            range_start, range_end = tuple((x and int(x) or 0) for x in getbytes(request_range).group(1, 2))
+            self.range_end = range_end
+            range_length = range_end + 1 - range_start
         else:
-            need_autorange = self.url_parts.path.endswith(GC.AUTORANGE_ENDSWITH)
-        if need_autorange:
+            self.range_end = range_start = range_end = range_length = 0
+        need_autorange =  not (range_length > 0 and range_length < self.maxsize or 'range=' in self.url_parts.query or self.command == 'HEAD')
+        if self.url_parts.path.endswith(GC.AUTORANGE_ENDSWITH):
+            need_autorange = True
             logging.info('发现[autorange]匹配：%r', self.url)
-            m = getbytes(request_headers.get('Range', ''))
-            start = int(m.group(1) if m else 0)
-            request_headers['Range'] = 'bytes=%d-%d' % (start, start+GC.AUTORANGE_FIRSTSIZE-1)
+            if range_end:
+                range_end = min(range_start+GC.AUTORANGE_FIRSTSIZE-1, range_end)
+            else:
+                range_end = range_start+GC.AUTORANGE_FIRSTSIZE-1
+            request_headers['Range'] = 'bytes=%d-%d' % (range_start, range_end)
         response = None
         range_retry = None
         errors = []
@@ -438,7 +446,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 #第一个响应，不用重新写入头部
                 if not headers_sent:
                     #开始自动多线程
-                    if response.status == 206:
+                    if response.status == 206 and need_autorange:
                         rangefetch = RangeFetch(self, url, request_headers, payload, response)
                         return rangefetch.fetch()
                     length, data, need_chunked = self.handle_response_headers(response)

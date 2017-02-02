@@ -27,6 +27,7 @@ class RangeFetch():
     timeout = min(max(GC.LINK_TIMEOUT-2, 1.5), 3)
     sleeptime = GC.FINDER_MAXTIMEOUT/500.0
     delable = GC.GAE_USEGWSIPLIST
+    delay_size = max(min(maxsize, 1024*1024), 1024*128)
 
     def __init__(self, handler, url, headers, payload, response):
         self.tLock = threading.Lock()
@@ -43,6 +44,7 @@ class RangeFetch():
         self.write = handler.write
         self.command = handler.command
         self.host = handler.host
+        self.range_end = handler.range_end
         self.url = url
         self.headers = headers
         self.payload = payload
@@ -53,7 +55,7 @@ class RangeFetch():
         response_headers = dict((k.title(), v) for k, v in self.response.getheaders())
         content_range = response_headers['Content-Range']
         start, end, length = tuple(int(x) for x in getrange(content_range).group(1, 2, 3))
-        if start == 0:
+        if start == 0 and (not self.range_end or length == self.range_end + 1):
             response_status = 200
             response_headers['Content-Length'] = str(length)
             del response_headers['Content-Range']
@@ -70,6 +72,8 @@ class RangeFetch():
         data_queue = Queue.PriorityQueue()
         range_queue = Queue.PriorityQueue()
         range_queue.put((start, end))
+        if self.range_end:
+            length = self.range_end
         # py2 弃用，xrange 参数太大时会出错，range 不出错但耗时太多
         #for begin in range(end+1, length, self.maxsize):
         #    range_queue.put((begin, min(begin+self.maxsize-1, length-1)))
@@ -84,8 +88,7 @@ class RangeFetch():
             range_queue.put((a, length-1))
 
         for i in range(self.threads):
-            range_delay_size = int((self.threads-i) * self.maxsize * self.threads * 0.66)
-            spawn_later(sleeptime if i else 0, self.__fetchlet, range_queue, data_queue, range_delay_size, i+1)
+            spawn_later(sleeptime if i else 0, self.__fetchlet, range_queue, data_queue, i+1)
         has_peek = hasattr(data_queue, 'peek')
         peek_timeout = 120
         self.expect_begin = start
@@ -128,7 +131,7 @@ class RangeFetch():
     def address_string(self, response=None):
         return self.handler.address_string(response)
 
-    def __fetchlet(self, range_queue, data_queue, range_delay_size, threadorder):
+    def __fetchlet(self, range_queue, data_queue, threadorder):
         headers = dict((k.title(), v) for k, v in self.headers.items())
         headers['Connection'] = 'close'
         while True:
@@ -148,7 +151,8 @@ class RangeFetch():
                     appid = self.appids.get()
                     if self._last_app_status.get(appid, 200) >= 500:
                         sleep(2)
-                    while start - self.expect_begin > self.maxsize and data_queue.qsize() * self.bufsize > range_delay_size:
+                    while (start - self.expect_begin) / self.delay_size > 4.0 and data_queue.qsize() * self.bufsize / self.delay_size > 8.0:
+                        if self._stopped: return
                         sleep(0.1)
                     if self.response:
                         qGAE.get()
