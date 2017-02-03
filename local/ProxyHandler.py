@@ -36,6 +36,7 @@ from .RangeFetch import RangeFetch
 from .GAEFetch import qGAE, gae_urlfetch
 from .FilterUtil import (
     filters_cache,
+    ssl_filters_cache,
     get_action,
     get_connect_action
     )
@@ -766,9 +767,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         #最近是否失败（缓存设置超时两分钟）
         if host in self.badhost:
             if self.badhost[host]:
-                #记录临时规则加入时间
+                #记录临时规则的过期时间
                 key = self.url_parts.scheme + host
-                filters_cache[key][-1] = '', '', 'TEMPGAE', time()
+                now = time() + 900
+                filters_cache[key][-1] = '', '', 'TEMPGAE', now
+                ssl_filters_cache[host] = 'TEMPGAE', now
                 logging.warning('将 %r 加入 "GAE" 规则 15 分钟。', host)
                 self.badhost[host] = False
         else:
