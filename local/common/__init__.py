@@ -57,6 +57,16 @@ class LRUCache():
         self.key_expire = {}
         self.key_order = collections.deque()
         self.lock = threading.Lock()
+        if expire:
+            thread.start_new_thread(self._cleanup, ())
+
+    #def __delitem__(self, key):
+    #    with self.lock:
+    #        if key in self.cache:
+    #            self.key_order.remove(key)
+    #            if key in self.key_expire:
+    #                del self.key_expire[key]
+    #            del self.cache[key]
 
     def __setitem__(self, key, value):
         with self.lock:
@@ -101,10 +111,16 @@ class LRUCache():
                 return value
 
     def _expire_check(self, key):
-        if key in self.key_expire and time() > self.key_expire[key]:
-            self.key_order.remove(key)
-            del self.key_expire[key]
-            del self.cache[key]
+        if key in self.key_expire:
+            now = int(time())
+            timeleft = self.key_expire[key] - now
+            if timeleft <= 0:
+                self.key_order.remove(key)
+                del self.key_expire[key]
+                del self.cache[key]
+            elif timeleft < 8:
+                #保持足够的反应时间
+                self.key_expire[key] = now + 8
 
     def _mark(self, key):
         key_order = self.key_order
@@ -119,6 +135,29 @@ class LRUCache():
             if key in self.key_expire:
                 del self.key_expire[key]
             del self.cache[key]
+
+    def _cleanup(self):
+        '''按每秒一个的频率循环检查并清除靠后的 m 个项目中的过期项目'''
+        lock = self.lock
+        key_order = self.key_order
+        key_expire = self.key_expire
+        cache = self.cache
+        max_items = self.max_items
+        n = 0
+        m = min(max_items//4, 60)
+        while True:
+            sleep(1)
+            with lock:
+                l = len(key_order)
+                if max_items - l <= m:
+                    if l <= n:
+                        n = l - m
+                    key = key_order[n]
+                    if key_expire[key] <= int(time()):
+                        del key_order[n]
+                        del key_expire[key]
+                        del cache[key]
+                        n += 1
 
     def clear(self):
         with self.lock:
