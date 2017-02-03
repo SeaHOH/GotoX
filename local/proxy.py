@@ -84,7 +84,7 @@ def main():
             cb = ctypes.sizeof(lpidProcess)
             cbNeeded = ctypes.c_ulong()
             ctypes.windll.psapi.EnumProcesses(ctypes.byref(lpidProcess), cb, ctypes.byref(cbNeeded))
-            nReturned = int(cbNeeded.value/ctypes.sizeof(ctypes.c_ulong()))
+            nReturned = cbNeeded.value//ctypes.sizeof(ctypes.c_ulong())
             pidProcess = [i for i in lpidProcess][:nReturned]
             has_queryimage = hasattr(ctypes.windll.kernel32, 'QueryFullProcessImageNameA')
             for pid in pidProcess:
@@ -167,37 +167,39 @@ def main():
             else:
                 ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 1)
             if GC.LISTEN_CHECKPROCESS:
-                blacklist = {'BaiduSdSvc'   : '百毒',
-                             'BaiduSdTray'  : '百毒',
-                             'BaiduSd'      : '百毒',
-                             'BaiduAn'      : '百毒',
-                             'bddownloader' : '百毒',
-                             'baiduansvx'   : '百毒',
-                             '360sd'        : '360',
-                             '360tray'      : '360',
-                             '360Safe'      : '360',
-                             'safeboxTray'  : '360',
-                             '360safebox'   : '360',
-                             '360se'        : '360',
-                             'QQPCRTP'      : 'QQ',
-                             'QQPCTray'     : 'QQ',
-                             'QQProtect'    : 'QQ',
-                             'kismain'      : '金山',
-                             'ksafe'        : '金山',
-                             'KSafeSvc'     : '金山',
-                             'KSafeTray'    : '金山',
-                             'KAVStart'     : '金山',
-                             'KWatch'       : '金山',
-                             'KMailMon'     : '金山',
-                             'rstray'       : '瑞星',
-                             'ravmond'      : '瑞星',
-                             'rsmain'       : '瑞星',
-                             'UIHost'       : '江民',
-                             'KVMonXP'      : '江民',
-                             'kvsrvxp'      : '江民',
-                             'kvxp'         : '江民',
-                             '2345MPCSafe'  : '2345',
-                             'PFW'          : '天网防火墙',}
+                blacklist = {
+                    'BaiduSdSvc'   : '百毒',
+                    'BaiduSdTray'  : '百毒',
+                    'BaiduSd'      : '百毒',
+                    'BaiduAn'      : '百毒',
+                    'bddownloader' : '百毒',
+                    'baiduansvx'   : '百毒',
+                    '360sd'        : '360',
+                    '360tray'      : '360',
+                    '360Safe'      : '360',
+                    'safeboxTray'  : '360',
+                    '360safebox'   : '360',
+                    '360se'        : '360',
+                    'QQPCRTP'      : 'QQ',
+                    'QQPCTray'     : 'QQ',
+                    'QQProtect'    : 'QQ',
+                    'kismain'      : '金山',
+                    'ksafe'        : '金山',
+                    'KSafeSvc'     : '金山',
+                    'KSafeTray'    : '金山',
+                    'KAVStart'     : '金山',
+                    'KWatch'       : '金山',
+                    'KMailMon'     : '金山',
+                    'rstray'       : '瑞星',
+                    'ravmond'      : '瑞星',
+                    'rsmain'       : '瑞星',
+                    'UIHost'       : '江民',
+                    'KVMonXP'      : '江民',
+                    'kvsrvxp'      : '江民',
+                    'kvxp'         : '江民',
+                    '2345MPCSafe'  : '2345',
+                    'PFW'          : '天网防火墙',
+                    }
                 softwares = [k for k in blacklist]
                 tasklist = dict((x.name.lower(), x) for x in get_process_list())
                 softwares = [x for x in softwares if x.lower() in tasklist]
@@ -234,7 +236,7 @@ def main():
     logging.setLevel(GC.LISTEN_DEBUGINFO)
 
     info = '==================================================================================\n'
-    info += '* GotoX  版 本 : %s (python/%s %spyOpenSSL/%s)\n' % (__version__, sys.version.split(' ')[0], gevent and 'gevent/%s ' % gevent.__version__ or '', opensslver)
+    info += '* GotoX  版 本 : %s (python/%s gevent/%s pyOpenSSL/%s)\n' % (__version__, sys.version.split(' ')[0], gevent.__version__, opensslver)
     #info += '* Uvent Version    : %s (pyuv/%s libuv/%s)\n' % (__import__('uvent').__version__, __import__('pyuv').__version__, __import__('pyuv').LIBUV_VERSION) if all(x in sys.modules for x in ('pyuv', 'uvent')) else ''
     info += '* GAE    APPID : %s\n' % '|'.join(GC.GAE_APPIDS)
     info += '* GAE 远程验证 : %s启用\n' % '已' if GC.GAE_SSLVERIFY else '未'
@@ -245,7 +247,7 @@ def main():
     info += '*  链 接 模 式 : 远程 - %s / gevent%s\n' % (GC.LINK_REMOTESSLTXT, ' + OpenSSL' if GC.LINK_OPENSSL else '')
     info += '*                本地 - %s / gevent\n' % GC.LINK_LOCALSSLTXT
     info += '*  网 络 配 置 : %s\n' % GC.LINK_PROFILE
-    info += '*  安 装 证 书 : http://gotox.go/\n'
+    info += '*  安 装 证 书 : 设置代理后访问 http://gotox.go/\n'
     info += '==================================================================================\n'
     sys.stdout.write(info)
 

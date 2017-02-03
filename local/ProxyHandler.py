@@ -518,8 +518,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         #只提示第一次链接失败
                         logging.warning('转发失败，create_connection((%r), hostname:%r) 超时', self.url or host, hostname or '')
                 except NetWorkIOError as e:
-                    if e.args[0] == 9:
-                        logging.error('%s 转发到 %r 失败', remote.xip[0], self.url or host)
+                    if e.args[0] == 9 or i == 0:
+                        logging.error('%s 转发到 %r 失败', e.xip[0], self.url or host)
                         continue
                     else:
                         return

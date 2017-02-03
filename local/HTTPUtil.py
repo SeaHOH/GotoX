@@ -330,7 +330,7 @@ class HTTPUtil(BaseHTTPUtil):
                         pass
                     if i == 0:
                         #only output first error
-                        logging.warning('%s create_connection %r 返回 %r，重试', addr[0], host, result)
+                        logging.warning('%s _create_connection %r 返回 %r，重试', addr[0], host, result)
                 else:
                     thread.start_new_thread(_close_connection, (addrslen-i-1, queobj, result.tcp_time))
                     return result
@@ -474,7 +474,7 @@ class HTTPUtil(BaseHTTPUtil):
                         pass
                     if i == 0:
                         #only output first error
-                        logging.warning('%s create_ssl_connection %r 返回 %r，重试', addr[0], host, result)
+                        logging.warning('%s _create_ssl_connection %r 返回 %r，重试', addr[0], host, result)
                 else:
                     thread.start_new_thread(_close_ssl_connection, (addrslen-i-1, queobj, result.ssl_time))
                     return result

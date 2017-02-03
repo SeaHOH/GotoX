@@ -55,6 +55,7 @@ class RangeFetch():
         response_headers = dict((k.title(), v) for k, v in self.response.getheaders())
         content_range = response_headers['Content-Range']
         start, end, length = tuple(int(x) for x in getrange(content_range).group(1, 2, 3))
+        self.start = start
         if start == 0 and (not self.range_end or length == self.range_end + 1):
             response_status = 200
             response_headers['Content-Length'] = str(length)
@@ -210,7 +211,7 @@ class RangeFetch():
                         logging.warning('%s RangeFetch "%s %s" 重试 %s-%s', self.address_string(response), self.command, self.url, start, end)
                         range_queue.put((start, end))
                         continue
-                    logging.info('%s >>>>>>>>>>>>>>> 成功接收到 %d 字节', self.address_string(response), start - 1)
+                    logging.info('%s >>>>>>>>>>>>>>> 成功接收到 %d 字节', self.address_string(response), start + 1 - self.start)
                 else:
                     logging.error('%s RangeFetch %r 返回 %s', self.address_string(response), self.url, response.status)
                     range_queue.put((start, end))

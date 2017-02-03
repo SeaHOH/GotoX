@@ -1,11 +1,11 @@
 # coding:utf-8
-"""
+'''
 A simple colorful logging class for Python. The only format is '%H:%M:%S' +
 level code in head.
 
 To use, first 'import clogging' to replace the default logging module, then
 'import logging' to use it until reload logging module.
-"""
+'''
 
 import sys, os, time, traceback
 

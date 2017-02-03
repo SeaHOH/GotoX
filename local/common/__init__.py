@@ -24,15 +24,16 @@ try:
     import gevent.monkey
     gevent.monkey.patch_all(os=False, signal=False, subprocess=False, Event=True)
 except ImportError:
-    gevent = None
+    logging.warning('无法找到 gevent，请安装 gevent-1.0.0 以上版本，或将相应 .egg 放到 %r 文件夹！\n正在退出……', packages)
+    sys.exit(-1)
 except TypeError:
     gevent.monkey.patch_all(os=False)
-    logging.warning('警告：请更新 gevent 至 1.0 以上版本！')
+    logging.warning('警告：请更新 gevent 至 1.0.0 以上版本！')
 
 try:
     import OpenSSL
 except ImportError:
-    logging.error(u'无法找到 pyOpenSSL，请安装 pyOpenSSL-16.0.0 以上版本，或将相应 .egg 放到 %r 文件夹！\n正在退出……', packages)
+    logging.exception('无法找到 pyOpenSSL，请安装 pyOpenSSL-16.0.0 以上版本，或将相应 .egg 放到 %r 文件夹！\n正在退出……', packages)
     sys.exit(-1)
 
 from local.compat import thread
@@ -47,7 +48,7 @@ from time import time, sleep
 NetWorkIOError = (socket.error, ssl.SSLError, OSError) if not OpenSSL else (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
 
 class LRUCache():
-    """Modified from http://pypi.python.org/pypi/lru/"""
+    '''Modified from http://pypi.python.org/pypi/lru/'''
 
     def __init__(self, max_items, expire=None):
         self.cache = {}
