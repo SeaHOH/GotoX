@@ -55,7 +55,6 @@ class RangeFetch():
         response_headers = dict((k.title(), v) for k, v in self.response.getheaders())
         content_range = response_headers['Content-Range']
         start, end, length = tuple(int(x) for x in getrange(content_range).group(1, 2, 3))
-        self.start = start
         if start == 0 and (not self.range_end or length == self.range_end + 1):
             response_status = 200
             response_headers['Content-Length'] = str(length)
@@ -74,7 +73,7 @@ class RangeFetch():
         range_queue = Queue.PriorityQueue()
         range_queue.put((start, end))
         if self.range_end:
-            length = self.range_end
+            length = self.range_end + 1
         # py2 弃用，xrange 参数太大时会出错，range 不出错但耗时太多
         #for begin in range(end+1, length, self.maxsize):
         #    range_queue.put((begin, min(begin+self.maxsize-1, length-1)))
@@ -123,10 +122,10 @@ class RangeFetch():
                 self.write(data)
                 self.expect_begin += len(data)
             except Exception as e:
-                logging.info('RangeFetch %r 本地链接断开：%r', self.host, e)
+                logging.info('RangeFetch 本地链接断开：%r, %r', self.url, e)
                 break
         else:
-            logging.info('RangeFetch %r 成功完成', self.host)
+            logging.info('RangeFetch 成功完成 %r', self.url)
         self._stopped = True
 
     def address_string(self, response=None):
@@ -170,7 +169,7 @@ class RangeFetch():
                             range_queue.put((start, end))
                             continue
                 except Queue.Empty:
-                    continue
+                    return
                 except Exception as e:
                     logging.warning("Response %r in __fetchlet", e)
                     range_queue.put((start, end))
@@ -192,7 +191,7 @@ class RangeFetch():
                         range_queue.put((start, end))
                         continue
                     content_length = int(response.getheader('Content-Length', 0))
-                    logging.info('%s >>>>>>>>>>>>>>> [%s: %s] %s %s', self.address_string(response), self.host, threadorder, content_length, content_range)
+                    logging.info('%s >>>>>>>>>>>>>>> %s: 线程 %s %s %s', self.address_string(response), self.host, threadorder, content_length, content_range)
                     try:
                         data = response.read(self.bufsize)
                         while data:
@@ -211,7 +210,7 @@ class RangeFetch():
                         logging.warning('%s RangeFetch "%s %s" 重试 %s-%s', self.address_string(response), self.command, self.url, start, end)
                         range_queue.put((start, end))
                         continue
-                    logging.info('%s >>>>>>>>>>>>>>> 成功接收到 %d 字节', self.address_string(response), start + 1 - self.start)
+                    logging.info('%s >>>>>>>>>>>>>>> %s: 线程 %s 成功接收到 %d 字节', self.address_string(response), self.host, threadorder, start - 1)
                 else:
                     logging.error('%s RangeFetch %r 返回 %s', self.address_string(response), self.url, response.status)
                     range_queue.put((start, end))

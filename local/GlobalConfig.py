@@ -1,5 +1,5 @@
 # coding:utf-8
-"""Global Config Module"""
+'''Global Config Module'''
 
 
 import os
