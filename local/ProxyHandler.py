@@ -36,6 +36,7 @@ from .RangeFetch import RangeFetch
 from .GAEFetch import qGAE, gae_urlfetch
 from .FilterUtil import (
     filters_cache,
+    ssl_filters_cache,
     get_action,
     get_connect_action
     )
@@ -506,10 +507,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         hostname = self.hostname
         http_util = http_gws if hostname.startswith('google') else http_nor
         host, port = self.host, self.port
-        hostip = ''
+        hostip = None
+        remote = None
         if not GC.PROXY_ENABLE:
             connection_cache_key = '%s:%d' % (hostname, port)
-            for i in range(3):
+            for i in range(2):
                 try:
                     remote = http_util.create_connection((host, port), connection_cache_key, self.fwd_timeout, self.ssl)
                     if remote is not None:
@@ -518,11 +520,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         #只提示第一次链接失败
                         logging.warning('转发失败，create_connection((%r), hostname:%r) 超时', self.url or host, hostname or '')
                 except NetWorkIOError as e:
-                    if e.args[0] == 9 or i == 0:
+                    if i == 0:
                         logging.error('%s 转发到 %r 失败', e.xip[0], self.url or host)
                         continue
-                    else:
-                        return
             if hasattr(remote, 'fileno'):
                 # reset timeout default to avoid long http upload failure, but it will delay timeout retry :(
                 remote.settimeout(None)
@@ -530,8 +530,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             hostip = random.choice(dns_resolve(host))
             remote = http_util.create_connection((hostip, int(port)), self.fwd_timeout, self.ssl)
         if not remote:
-            logging.error('%s AutoProxyHandler proxy connect remote (%r, %r) failed', hostip, host, port)
-            return
+            logging.warning('%s do_FORWARD 链接远程主机 (%r, %r) 失败，尝试使用 "FAKECERT" 规则。', hostip or self.address_string(), host, port)
+            return self.go_FAKECERT()
         logging.info('%s "FWD %s %s:%d HTTP/1.1" - -', remote.xip[0], self.command, host, port)
         self.forward_socket(remote)
 
@@ -762,19 +762,32 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def go_GAE(self):
         if self.command not in ('GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'PATCH'):
             return self.go_BAD()
-        host = self.host
+        host = '%s://%s' % (self.url_parts.scheme, self.host)
         #最近是否失败（缓存设置超时两分钟）
         if host in self.badhost:
             if self.badhost[host]:
-                #记录临时规则加入时间
-                key = self.url_parts.scheme + host
-                filters_cache[key][-1] = '', '', 'TEMPGAE', time()
+                #记录临时规则的过期时间
+                filters_cache[host][-1] = '', '', 'TEMPGAE', time() + 900
                 logging.warning('将 %r 加入 "GAE" 规则 15 分钟。', host)
                 self.badhost[host] = False
         else:
             self.badhost[host] = True
         self.action = 'do_GAE'
         self.do_GAE()
+
+    def go_FAKECERT(self):
+        host = self.host
+        #最近是否失败（缓存设置超时两分钟）
+        if host in self.badhost:
+            if self.badhost[host]:
+                #设置临时规则的过期时间
+                ssl_filters_cache.set(host, ('do_FAKECERT', None), 900)
+                logging.warning('将 %r 加入 "FAKECERT" 规则 15 分钟。', host)
+                self.badhost[host] = False
+        else:
+            self.badhost[host] = True
+        self.action = 'do_FAKECERT'
+        self.do_FAKECERT()
 
     def go_BAD(self):
         logging.warn('request "%s %s" 失败, 返回 404', self.command, self.url)
