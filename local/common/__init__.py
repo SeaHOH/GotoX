@@ -143,15 +143,15 @@ class LRUCache():
         key_expire = self.key_expire
         cache = self.cache
         max_items = self.max_items
-        n = 0
         m = min(max_items//4, 60)
+        n = m = max_items - m
         while True:
             sleep(1)
             with lock:
                 l = len(key_order)
-                if max_items - l <= m:
+                if l > m:
                     if l <= n:
-                        n = l - m
+                        n = m
                     key = key_order[n]
                     if key_expire[key] <= int(time()):
                         del key_order[n]
