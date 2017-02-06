@@ -210,7 +210,7 @@ class RangeFetch():
                         logging.warning('%s RangeFetch "%s %s" 重试 %s-%s', self.address_string(response), self.command, self.url, start, end)
                         range_queue.put((start, end))
                         continue
-                    logging.info('%s >>>>>>>>>>>>>>> %s: 线程 %s 成功接收到 %d 字节', self.address_string(response), self.host, threadorder, start - 1)
+                    logging.info('%s >>>>>>>>>>>>>>> %s: 线程 %s 成功接收到 %d 字节', self.address_string(response), self.host, threadorder, start)
                 else:
                     logging.error('%s RangeFetch %r 返回 %s', self.address_string(response), self.url, response.status)
                     range_queue.put((start, end))

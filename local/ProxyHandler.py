@@ -514,15 +514,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             for i in range(2):
                 try:
                     remote = http_util.create_connection((host, port), connection_cache_key, self.fwd_timeout, self.ssl)
-                    if remote is not None:
+                    if remote:
                         break
-                    elif i == 0:
-                        #只提示第一次链接失败
-                        logging.warning('转发失败，create_connection((%r), hostname:%r) 超时', self.url or host, hostname or '')
                 except NetWorkIOError as e:
-                    if i == 0:
-                        logging.error('%s 转发到 %r 失败', e.xip[0], self.url or host)
-                        continue
+                    logging.warning('%s 转发到 %r 失败：%r', e.xip[0], self.url or host, e)
             if hasattr(remote, 'fileno'):
                 # reset timeout default to avoid long http upload failure, but it will delay timeout retry :(
                 remote.settimeout(None)

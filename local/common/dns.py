@@ -68,7 +68,7 @@ def dns_resolve(host):
                 iplist = [ip for ip in iplist if isipv6(ip)]
             dns[host] = iplist = list(set(iplist))
         else:
-            dns[host] = 0
+            dns.set(host, 0, 300)
     return iplist
 
 dnshostalias = 'dns.over.https'
