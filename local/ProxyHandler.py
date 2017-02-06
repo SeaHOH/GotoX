@@ -191,6 +191,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         wrote = 0
         err = None
         try:
+            if not data:
+                data = response.read(8192)
             while data:
                 if need_chunked:
                     self.write(hex(len(data))[2:].encode())
@@ -199,7 +201,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.write(b'\r\n')
                 else:
                     self.write(data)
-                    wrote += len(data)
+                wrote += len(data)
                 data = response.read(8192)
         except Exception as e:
             err = e
@@ -346,13 +348,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             else:
                 range_end = range_start+GC.AUTORANGE_FIRSTSIZE-1
             request_headers['Range'] = 'bytes=%d-%d' % (range_start, range_end)
-        response = None
-        range_retry = None
         errors = []
         headers_sent = False
         #为 GAE 代理请求网址加上端口
         n = self.url.find('/', self.url.find('//')+3)
         url = '%s:%s%s' % (self.url[:n], self.port, self.path)
+        need_chunked = False
+        length = 0
         for retry in range(GC.GAE_FETCHMAX):
             if payload and headers_sent:
                 logging.warning('do_GAE 由于有上传数据 "%s %s" 终止重试', self.command, self.url)
@@ -364,10 +366,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.__class__.nappid = nappid
                 appid = GC.GAE_APPIDS[nappid]
             noerror = True
-            need_chunked = False
-            data = b''
-            length = 0
-            end = 0
+            data = None
+            response = None
             try:
                 response = gae_urlfetch(self.command, url, request_headers, payload, appid)
                 if response is None:
@@ -453,11 +453,16 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     length, data, need_chunked = self.handle_response_headers(response)
                     headers_sent = True
                 content_range = response.getheader('Content-Range', '')
-                # Range 范围错误直接放弃、不尝试修复（Requested Range Not Satisfiable）
-                if content_range and response.status != 416:
+                accept_ranges = response.getheader('Accept-Ranges', '')
+                # Range 范围错误，直接放弃（Requested Range Not Satisfiable）
+                if response.status == 416:
+                    accept_ranges = ''
+                    start = True
+                    return
+                if content_range:
                     start, end, length = tuple(int(x) for x in getrange(content_range).group(1, 2, 3))
                 elif length:
-                    start, end = 0, length-1
+                    start, end = 0, length - 1
                 else:
                     start = 0
                 wrote, err = self.write_response_content(data, response, need_chunked)
@@ -472,18 +477,21 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     #本地链接终止
                     logging.debug('do_GAE %r 返回 %r，终止', self.url, e)
                     return
-                elif range_retry:
-                    # range 请求只重试一次
-                    logging.exception('%s do_GAE "%s %s" 失败：%r', self.address_string(response), self.command, self.url, e)
-                    return
                 elif retry < GC.GAE_FETCHMAX - 1:
-                    if end and start < end:
+                    if accept_ranges == 'bytes':
                         #重试中途失败的请求
-                        self.headers['Range'] = 'bytes=%d-%d' % (start, end)
-                        range_retry = True
+                        if range_start < start:
+                            if range_end:
+                                request_headers['Range'] = 'bytes=%d-%d' % (start, range_end)
+                            else:
+                                request_headers['Range'] = 'bytes=%d-' % start
+                    elif start:
+                        #终止不支持 Range 的失败请求
+                        logging.exception('%s do_GAE "%s %s" 失败：%r', self.address_string(response), self.command, self.url, e)
+                        return
                     logging.warning('%s do_GAE "%s %s" 返回：%r，重试', self.address_string(response), self.command, self.url, e)
                 else:
-                    #重试请求失败
+                    #请求失败
                     logging.exception('%s do_GAE "%s %s" 失败：%r', self.address_string(response), self.command, self.url, e)
             finally:
                 qGAE.put(True)
