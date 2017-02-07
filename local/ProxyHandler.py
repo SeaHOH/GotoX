@@ -379,11 +379,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         logging.warning('do_GAE 超时，url=%r，重试', self.url)
                         continue
                 #网关超时（Gateway Timeout）
-                if response.app_status == 504:
+                elif response.app_status == 504:
                     logging.warning('do_GAE 网关错误，url=%r，重试', self.url)
                     continue
                 #无法提供 GAE 服务（Found｜Forbidden｜Method Not Allowed｜Bad Gateway）
-                if response.app_status in (302, 403, 405, 502):
+                elif response.app_status in (302, 403, 405, 502):
                     if hasattr(response, 'app_reason'):
                         #密码错误
                         logging.error(response.app_reason)
@@ -394,7 +394,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         noerror = False
                         continue
                 #当前 appid 流量完结(Service Unavailable)
-                if response.app_status == 503:
+                elif response.app_status == 503:
                     if len(GC.GAE_APPIDS) > 1:
                         GC.GAE_APPIDS.remove(appid)
                         for i in range(GC.GAE_MAXREQUESTS):
@@ -406,14 +406,14 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     else:
                         logging.error('全部的 APPID 流量都使用完毕')
                 #服务端出错（Internal Server Error）
-                if response.app_status == 500:
+                elif response.app_status == 500:
                     logging.warning('"%s %s" GAE_APP 发生错误，重试', self.command, self.url)
                     continue
                 #服务端不兼容（Bad Request｜Unsupported Media Type）
-                if response.app_status in (400, 415):
+                elif response.app_status in (400, 415):
                     logging.error('%r 部署的可能是 GotoX 不兼容的服务端，如果这条错误反复出现请将之反馈给开发者。', appid)
                 # appid 不存在（Not Found）
-                if response.app_status == 404:
+                elif response.app_status == 404:
                     if len(GC.GAE_APPIDS) > 1:
                         GC.GAE_APPIDS.remove(appid)
                         for i in range(GC.GAE_MAXREQUESTS):
@@ -431,6 +431,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     _, data, need_chunked = self.handle_response_headers(response)
                     self.write_response_content(data, response, need_chunked)
                     return
+                content_range = response.getheader('Content-Range', '')
+                accept_ranges = response.getheader('Accept-Ranges', '')
                 #处理 goproxy 错误信息（Bad Gateway）
                 if response.status == 502:
                     data = response.read()
@@ -452,8 +454,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         return rangefetch.fetch()
                     length, data, need_chunked = self.handle_response_headers(response)
                     headers_sent = True
-                content_range = response.getheader('Content-Range', '')
-                accept_ranges = response.getheader('Accept-Ranges', '')
                 # Range 范围错误，直接放弃（Requested Range Not Satisfiable）
                 if response.status == 416:
                     accept_ranges = ''
