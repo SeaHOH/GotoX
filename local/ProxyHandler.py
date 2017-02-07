@@ -71,6 +71,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     nappid = 0
 
     fwd_timeout = GC.LINK_FWDTIMEOUT
+    listen_port = GC.LISTEN_GAE_PORT, GC.LISTEN_AUTO_PORT
     CAPath = '/ca', '/cadownload'
 
     #可修改
@@ -106,17 +107,21 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         getattr(self, self.action)()
 
     def _do_CONNECT(self):
-        host = self.headers.get('Host')
+        host = self.headers.get('Host', '')
         port = None
         #从命令获取主机、端口
         chost, cport = self.parse_netloc(self.path)
-        #从头域获取主机、端口
+        #确定主机，优先 Host 头域
         if host:
+            #从头域获取主机、端口
             host, port = self.parse_netloc(host)
-        #优先 Host 头域
-        #排除某些程序把本地地址当成主机名
-        if host and not host.startswith(self.localhosts):
-            self.host = host
+            #排除某些程序把代理当成主机名
+            if chost and port in self.listen_port and host.startswith(self.localhosts):
+                self.host = chost
+                port = cport
+                self.headers.replace_header('Host', chost)
+            else:
+                self.host = host
         else:
             self.host = chost
         self.port = int(port or cport or 443)
@@ -135,15 +140,25 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.do_action()
 
     def _do_METHOD(self):
-        host = self.headers.get('Host')
+        host = self.headers.get('Host', '')
         port = None
         path = self.path
         url_parts = urlparse.urlsplit(path)
         #从命令获取主机、端口
         chost, cport = self.parse_netloc(url_parts.netloc)
-        #从头域获取主机、端口
+        #确定主机，优先 Host 头域
         if host:
+            #从头域获取主机、端口
             host, port = self.parse_netloc(host)
+            #排除某些程序把代理当成主机名
+            if chost and port in self.listen_port and host.startswith(self.localhosts):
+                self.host = host = chost
+                port = cport
+                self.headers.replace_header('Host', chost)
+            else:
+                self.host = host
+        else:
+            self.host = host = chost
         #确定协议
         if url_parts.scheme:
             scheme = url_parts.scheme
@@ -151,8 +166,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.ssl = scheme == 'https'
         else:
             scheme = 'https' if self.ssl else 'http'
-        #确定主机
-        self.host = host = host or chost
         #确定端口
         self.port = int(port or cport or self.ssl and 443 or 80)
         #确定网址、去掉可能存在的端口
