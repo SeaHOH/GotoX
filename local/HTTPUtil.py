@@ -156,7 +156,7 @@ def check_tcp_connection_cache():
                         continue
                     cache.appendleft((ctime, sock))
                     break
-            except IndexError:
+            except (IndexError, OSError):
                 pass
             except Exception as e:
                 if e.args[0] == 9:
@@ -194,7 +194,7 @@ def check_ssl_connection_cache():
                         continue
                     cache.appendleft((ctime, ssl_sock))
                     break
-            except IndexError:
+            except (IndexError, OSError):
                 pass
             except Exception as e:
                 if e.args[0] == 9:
@@ -293,11 +293,14 @@ class HTTPUtil(BaseHTTPUtil):
             cache = tcp_connection_cache[cache_key]
             while cache:
                 ctime, sock = cache.pop()
-                rd, _, ed = select([sock], [], [sock], 0.01)
-                if rd or ed or time()-ctime > keeptime:
-                    sock.close()
-                else:
-                    return sock
+                try:
+                    rd, _, ed = select([sock], [], [sock], 0.01)
+                    if rd or ed or time()-ctime > keeptime:
+                        sock.close()
+                    else:
+                        return sock
+                except OSError:
+                    pass
         except IndexError:
             pass
         result = None
@@ -434,12 +437,15 @@ class HTTPUtil(BaseHTTPUtil):
             cache = ssl_connection_cache[cache_key]
             while cache:
                 ctime, ssl_sock = cache.pop()
-                rd, _, ed = select([ssl_sock.sock], [], [ssl_sock.sock], 0.01)
-                if rd or ed or time()-ctime > keeptime:
-                    ssl_sock.sock.close()
-                else:
-                    ssl_sock.settimeout(timeout)
-                    return ssl_sock
+                try:
+                    rd, _, ed = select([ssl_sock.sock], [], [ssl_sock.sock], 0.01)
+                    if rd or ed or time()-ctime > keeptime:
+                        ssl_sock.sock.close()
+                    else:
+                        ssl_sock.settimeout(timeout)
+                        return ssl_sock
+                except OSError:
+                    pass
         except IndexError:
             pass
         result = None
@@ -447,7 +453,7 @@ class HTTPUtil(BaseHTTPUtil):
         for i in range(self.max_retry):
             addresseslen = len(addresses)
             addresses.sort(key=lambda addr: ssl_connection_time.get(addr, False))
-            if rangefetch:
+            if rangefetch and GC.GAE_USEGWSIPLIST:
                 #按线程数量获取排序靠前的 IP
                 addrs = addresses[:GC.AUTORANGE_THREADS+1]
             else:

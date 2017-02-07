@@ -451,6 +451,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     #开始自动多线程
                     if response.status == 206 and need_autorange:
                         rangefetch = RangeFetch(self, url, request_headers, payload, response)
+                        response = None
                         return rangefetch.fetch()
                     length, data, need_chunked = self.handle_response_headers(response)
                     headers_sent = True
