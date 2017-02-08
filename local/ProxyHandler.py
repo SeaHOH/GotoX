@@ -343,6 +343,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if self.command not in ('GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'PATCH'):
             logging.warn('GAE 不支持 "%s %s"，转用 DIRECT', self.command, self.url)
             self.action = 'do_DIRECT'
+            self.target = dns_resolve(self.host)
             return self.do_action()
         request_headers, payload = self.handle_request_headers()
         request_range = request_headers.get('Range', '')
@@ -470,8 +471,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     headers_sent = True
                 # Range 范围错误，直接放弃（Requested Range Not Satisfiable）
                 if response.status == 416:
-                    accept_ranges = ''
-                    start = True
                     return
                 if content_range:
                     start, end, length = tuple(int(x) for x in getrange(content_range).group(1, 2, 3))
@@ -493,14 +492,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     return
                 elif retry < GC.GAE_FETCHMAX - 1:
                     if accept_ranges == 'bytes':
-                        #重试中途失败的请求
-                        if range_start < start:
-                            if range_end:
-                                request_headers['Range'] = 'bytes=%d-%d' % (start, range_end)
-                            else:
-                                request_headers['Range'] = 'bytes=%d-' % start
+                        #重试支持 Range 的失败请求
+                        request_headers['Range'] = 'bytes=%d-%s' % (start, self.range_end or '')
                     elif start:
-                        #终止不支持 Range 的失败请求
+                        #终止不支持 Range 的且中途失败的请求
                         logging.exception('%s do_GAE "%s %s" 失败：%r', self.address_string(response), self.command, self.url, e)
                         return
                     logging.warning('%s do_GAE "%s %s" 返回：%r，重试', self.address_string(response), self.command, self.url, e)

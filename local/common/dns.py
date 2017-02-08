@@ -41,7 +41,7 @@ def set_DNS(host, iporname):
 
 def dns_resolve(host):
     if isip(host):
-        dns[host] = iplist = [host,]
+        dns[host] = iplist = host,
         return iplist
     if host in dns:
         iplist = dns[host]
