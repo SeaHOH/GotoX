@@ -7,20 +7,21 @@
 # 部署
 - 配置 GAE 路径为“***/_gh/*** ”可使用 GoProxy、XX-Net 及 GoAgent 3.2.X 服务端，“***/2***  ”使用 GoAgent 3.1.X 服务端。
 - 推荐使用 [GoProxy 服务端](https://github.com/phuslu/goproxy/tree/server.gae)。
-- 部署服务端时，请在 VPN、Shadowsocks 等代理条件下上传，或者去 [XX-net 配置](https://github.com/XX-net/XX-Net/blob/master/code/default/gae_proxy/local/proxy.ini) 中取用公共 APPID 填入本代理来上传。公共 APPID **不支持视频和下载**。
+- 部署服务端时，请在 VPN、Shadowsocks 等代理条件下上传，或者去 [XX-Net 配置](https://github.com/XX-net/XX-Net/blob/master/code/default/gae_proxy/local/proxy.ini) 中取用公共 APPID 填入本代理来上传。公共 APPID **不支持视频和下载**。
     - **相关链接**
     - 简易教程 https://github.com/phuslu/goproxy/blob/wiki/SimpleGuide.md
     - 常见问题 https://github.com/phuslu/goproxy/blob/wiki/FAQ.md
     - 新版谷歌云部署问题 https://github.com/XX-net/XX-Net/issues/4720
     - GoProxy 服务端 https://github.com/phuslu/goproxy/tree/server.gae
     - XX-Net 服务端 https://github.com/jzp820927/Deploy_XXNET_Server
-    - XX-net 公共 APPID https://github.com/XX-net/XX-Net/blob/master/code/default/gae_proxy/local/proxy.ini
+    - XX-Net 公共 APPID https://github.com/XX-net/XX-Net/blob/master/code/default/gae_proxy/local/proxy.ini
 
 # 使用
 - 具体配置说明，在配置文件中都有较为详细的描述。只有 **Config.ini** 支持 **Config.user.ini** 用户配置。
 - 需事先提供由**其它扫描工具**取得一个较大的（**上万也支持**）**可用** GAE IP 列表以供筛选，放入“**data/ip.txt**”或“**data/ipex.txt**”（优先）中，格式为每行一个完整 IP。
 - 也可以在**［GAE/iplist］**配置中指定使用固定的 GAE IP 列表，不再进行 IP 检查筛选。
 - 自动代理规则和 IP 列表文件可以在运行时替换，无需重启 GotoX。
+- 直连和转发规则失败后，如果主机 IP 地址不属于国内会根据条件判断是否尝试使用 GAE 规则。
 -  google IP 列表名称“**google_gws、google_com**”选项由代理自身维护，无需用户填写；用户可以使用其它名称配置自己的 IP 列表，以供自动规则使用。
     - “**google_gws**”是未分类的 gws 服务器，用于 GAE 代理，一般不用设置成这个。
     - “**google_com**”是支持一般谷歌域名反向代理的服务器，可用于大部分 google 域名直连，转发则有极小概率出现证书错误。
