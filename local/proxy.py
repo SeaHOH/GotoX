@@ -50,10 +50,29 @@ __version__ = '3.3.3'
 import sys
 sys.dont_write_bytecode = True
 
+#在使用 pkg_resources 导入被打包的 _hashlib 时正确导入 hashlib
+#为节约空间，发布版本中不包含 _hashlib
+import os
+if os.name == 'nt':
+    try:
+        import pkg_resources
+    except ImportError:
+        pass
+    else:
+        import hashlib
+        try:
+            import _hashlib
+        except ImportError:
+            pass
+        else:
+            from importlib import reload
+            reload(hashlib)
+            del reload, _hashlib
+        del pkg_resources, hashlib
+
 #这条代码负责导入依赖库路径，不要改变位置
 from .common import gevent
 
-import os
 import struct
 import threading
 import socket

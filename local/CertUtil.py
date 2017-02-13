@@ -6,7 +6,6 @@ import sys
 import threading
 import glob
 import base64
-import hashlib
 import random
 import OpenSSL
 from OpenSSL import crypto
