@@ -24,7 +24,7 @@ from .common import (
     isip
     )
 from .common.dns import set_DNS, dns_resolve
-from .common.region import iscn
+from .common.region import isdirect
 from .GlobalConfig import GC
 from .GAEUpdata import testip, testipuseable
 from .HTTPUtil import (
@@ -281,7 +281,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         '''Direct http relay'''
         hostname = self.hostname
         http_util = http_gws if hostname.startswith('google') else http_nor
-        path = self.url_parts.path
+        host = self.host
         response = None
         noerror = True
         request_headers, payload = self.handle_request_headers()
@@ -289,16 +289,17 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             connection_cache_key = '%s:%d' % (hostname, self.port)
             response = http_util.request(self, payload, request_headers, connection_cache_key=connection_cache_key, timeout=self.fwd_timeout)
             if not response:
-                if self.target is not None or path.endswith('ico') or any(path.endswith(x) for x in GC.AUTORANGE_ENDSWITH) or iscn(self.host):
-                    #非默认规则、网站图标、符合自动多线程规则
-                    logging.warn('request "%s %s" 失败，返回 404', self.command, self.url)
+                if self.target is not None or self.url_parts.path.endswith('ico') or isdirect(host):
+                    #非默认规则、网站图标、直连 IP
+                    logging.warn('do_DIRECT "%s %s" 失败，返回 404', self.command, self.url)
                     self.write('HTTP/1.1 404 %s\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n%s' % self.responses[404])
                     return
                 else:
                     logging.warn('request "%s %s" 失败，尝试使用 "GAE" 规则。', self.command, self.url)
                     return self.go_GAE()
-            if response.status == 403 and not any(path.endswith(x) for x in GC.AUTORANGE_ENDSWITH) and not iscn(response.xip[0]): #不符合自动多线程规则
-                logging.warn('request "%s %s" 链接被拒绝，尝试使用 "GAE" 规则。', self.command, self.url)
+            #拒绝服务、非直连 IP
+            if response.status == 403 and not isdirect(host):
+                logging.warn('do_DIRECT "%s %s" 链接被拒绝，尝试使用 "GAE" 规则。', self.command, self.url)
                 return self.go_GAE()
             _, data, need_chunked = self.handle_response_headers(response)
             _, err = self.write_response_content(data, response, need_chunked)
@@ -306,11 +307,12 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 raise err
         except NetWorkIOError as e:
             noerror = False
-            if e.args[0] == errno.ECONNRESET and not any(path.endswith(x) for x in GC.AUTORANGE_ENDSWITH) and not iscn(self.host): #不符合自动多线程规则
-                logging.warn('request "%s %s" 链接被重置，尝试使用 "GAE" 规则。', self.command, self.url)
+            #链接重置、非直连 IP
+            if e.args[0] == errno.ECONNRESET and not isdirect(host):
+                logging.warning('%s do_DIRECT "%s %s" 链接被重置，尝试使用 "GAE" 规则。', self.address_string(response), self.command, self.url)
                 return self.go_GAE()
             elif e.args[0] in (errno.WSAENAMETOOLONG, errno.ENAMETOOLONG):
-                logging.warn('%s request "%s %s" 失败：%r，返回 408', self.address_string(response), self.command, self.url, e)
+                logging.error('%s do_DIRECT "%s %s" 失败：%r，返回 408', self.address_string(response), self.command, self.url, e)
                 self.write('HTTP/1.1 408 %s\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n%s' % self.responses[408])
                 #logging.warn('request "%s %s" failed:%s, try addto `withgae`', self.command, self.url, e)
                 #self.go_GAE()
@@ -318,7 +320,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 raise
         except Exception as e:
             noerror = False
-            logging.warn('%s do_DIRECT "%s %s" 失败：%r', self.address_string(response), self.command, self.url, e)
+            logging.warning('%s do_DIRECT "%s %s" 失败：%r', self.address_string(response), self.command, self.url, e)
             raise
         finally:
             if response:
@@ -542,7 +544,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             hostip = random.choice(dns_resolve(host))
             remote = http_util.create_connection((hostip, int(port)), self.fwd_timeout, self.ssl)
-        if not (remote or iscn(host)):
+        if not (remote or isdirect(host)):
             logging.warning('%s do_FORWARD 链接远程主机 (%r, %r) 失败，尝试使用 "FAKECERT" 规则。', hostip or self.address_string(), host, port)
             return self.go_FAKECERT()
         logging.info('%s "FWD %s %s:%d HTTP/1.1" - -', remote.xip[0], self.command, host, port)
