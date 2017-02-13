@@ -45,7 +45,7 @@ from .FilterUtil import (
 normcookie = partial(re.compile(r',(?= [^ =]+(?:=|$))').sub, r'\r\nSet-Cookie:')
 normattachment = partial(re.compile(r'(?<=filename=)([^"\']+)').sub, r'"\1"')
 getbytes = re.compile(r'bytes=(\d+)-(\d*)').search
-getrange = re.compile(r'bytes (\d+)-(\d+)/(\d+)').search
+getstart = re.compile(r'bytes (\d+)-.+').search
 
 skip_request_headers = (
     'Vary',
@@ -240,10 +240,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def handle_response_headers(self, response):
         response_headers = dict((k.title(), v) for k, v in response.getheaders() if k.title() not in skip_response_headers)
-        if hasattr(response.msg, 'get_all'):
-            cookies = response.msg.get_all('Set-Cookie')
-        else:
-            cookies = response.msg.getheaders('Set-Cookie')
         length = response_headers.get('Content-Length', '0')
         length = int(length) if length.isdigit() else 0
         if hasattr(response, 'data'):
@@ -258,6 +254,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 del response_headers['Content-Length']
         else:
             response_headers['Content-Length'] = length
+        cookies = response.headers.get_all('Set-Cookie')
         if cookies:
             if self.action == 'do_GAE' and len(cookies) == 1:
                 response_headers['Set-Cookie'] = normcookie(cookies[0])
@@ -268,14 +265,14 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         headers_data = 'HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response_headers.items()))
         self.write(headers_data)
         if response.status in (300, 301, 302, 303, 307) and 'Location' in response_headers:
-                logging.info('%r 返回包含重定向 %r', self.url, response_headers['Location'])
-                self.close_connection = 3
+            logging.info('%r 返回包含重定向 %r', self.url, response_headers['Location'])
+            self.close_connection = 3
         logging.debug('headers_data=%s', headers_data)
         if response.status == 304:
             logging.debug('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), self.action[3:], self.command, self.url, response.status, length or '-')
         else:
             logging.info('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), self.action[3:], self.command, self.url, response.status, length or '-')
-        return length, data, need_chunked
+        return data, need_chunked
 
     def do_DIRECT(self):
         '''Direct http relay'''
@@ -295,13 +292,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.write('HTTP/1.1 404 %s\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n%s' % self.responses[404])
                     return
                 else:
-                    logging.warn('request "%s %s" 失败，尝试使用 "GAE" 规则。', self.command, self.url)
+                    logging.warn('do_DIRECT "%s %s" 失败，尝试使用 "GAE" 规则。', self.command, self.url)
                     return self.go_GAE()
             #拒绝服务、非直连 IP
             if response.status == 403 and not isdirect(host):
                 logging.warn('do_DIRECT "%s %s" 链接被拒绝，尝试使用 "GAE" 规则。', self.command, self.url)
                 return self.go_GAE()
-            _, data, need_chunked = self.handle_response_headers(response)
+            data, need_chunked = self.handle_response_headers(response)
             _, err = self.write_response_content(data, response, need_chunked)
             if err:
                 raise err
@@ -371,7 +368,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         n = self.url.find('/', self.url.find('//')+3)
         url = '%s:%s%s' % (self.url[:n], self.port, self.path)
         need_chunked = False
-        length = 0
+        start = range_start
         for retry in range(GC.GAE_FETCHMAX):
             if payload and headers_sent:
                 logging.warning('do_GAE 由于有上传数据 "%s %s" 终止重试', self.command, self.url)
@@ -445,11 +442,14 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         return
                 #输出服务端返回的错误信息
                 if response.app_status != 200:
-                    _, data, need_chunked = self.handle_response_headers(response)
+                    data, need_chunked = self.handle_response_headers(response)
                     self.write_response_content(data, response, need_chunked)
                     return
+                #发生异常时的判断条件，放在 read 操作之前
                 content_range = response.getheader('Content-Range', '')
                 accept_ranges = response.getheader('Accept-Ranges', '')
+                if content_range:
+                    start = int(getstart(content_range).group(1)[0])
                 #处理 goproxy 错误信息（Bad Gateway）
                 if response.status == 502:
                     data = response.read()
@@ -463,24 +463,21 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         logging.warning('GAE：%r urlfetch %r 返回 urlfetch: CLOSED，重试', appid, self.url)
                         continue
                     response.data = data
-                #第一个响应，不用重新写入头部
+                # 服务器不支持 Range 且错误返回成功状态
+                if range_start > 0 and response.status != 206 and response.status < 300:
+                    response.status = 416
+                #第一个响应，不用重复写入头部
                 if not headers_sent:
-                    #开始自动多线程
+                    #开始自动多线程（Partial Content）
                     if response.status == 206 and need_autorange:
                         rangefetch = RangeFetch(self, url, request_headers, payload, response)
                         response = None
                         return rangefetch.fetch()
-                    length, data, need_chunked = self.handle_response_headers(response)
+                    data, need_chunked = self.handle_response_headers(response)
                     headers_sent = True
                 # Range 范围错误，直接放弃（Requested Range Not Satisfiable）
                 if response.status == 416:
                     return
-                if content_range:
-                    start, end, length = tuple(int(x) for x in getrange(content_range).group(1, 2, 3))
-                elif length:
-                    start, end = 0, length - 1
-                else:
-                    start = 0
                 wrote, err = self.write_response_content(data, response, need_chunked)
                 start += wrote
                 if err:
@@ -497,9 +494,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if accept_ranges == 'bytes':
                         #重试支持 Range 的失败请求
                         request_headers['Range'] = 'bytes=%d-%s' % (start, self.range_end or '')
-                    elif start:
+                    elif start > 0:
                         #终止不支持 Range 的且中途失败的请求
-                        logging.exception('%s do_GAE "%s %s" 失败：%r', self.address_string(response), self.command, self.url, e)
+                        logging.error('%s do_GAE "%s %s" 失败：%r', self.address_string(response), self.command, self.url, e)
                         return
                     logging.warning('%s do_GAE "%s %s" 返回：%r，重试', self.address_string(response), self.command, self.url, e)
                 else:
