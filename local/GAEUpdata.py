@@ -47,13 +47,15 @@ def _refreship(gaeip):
             GC.IPLIST_MAP[name][:] = gaeip[name] + GC.IPLIST_MAP[name]
     testip.lastupdata = time()
 
-def refreship(needcom=None, threads=None):
+def refreship(needgws=None, needcom=None):
     threading.current_thread().setName('Ping-IP')
     #检测当前 IP 并搜索新的 IP
     network_test()
+    if needgws is None:
+        needgws = countneedgws()
     if needcom is None:
-        needcom = max(GC.FINDER_MINIPCNT/3 - len(GC.IPLIST_MAP['google_com']), 0) 
-    gaeip = getgaeip(GC.IPLIST_MAP['google_gws'], needcom, threads)
+        needcom = countneedcom()
+    gaeip = getgaeip(GC.IPLIST_MAP['google_gws'], needgws, needcom)
     #更新 IP
     if gaeip and gaeip['google_gws']:
         _refreship(gaeip)
@@ -70,18 +72,24 @@ def refreship(needcom=None, threads=None):
     #sleep(10)
     updataip.running = False
 
-def updataip(needcom=None, threads=None):
+def updataip(needgws=None, needcom=None):
     with tLock:
         if updataip.running: #是否更新
             return
         updataip.running = True
-    thread.start_new_thread(refreship, (needcom, threads))
+    thread.start_new_thread(refreship, (needgws, needcom))
 updataip.running = False
 
 def gettimeout():
     nowtime = int(strftime('%H'))
     timeout = max(GC.FINDER_MAXTIMEOUT*1.3, 1000) + min(len(GC.IPLIST_MAP['google_gws']), 20)*10 + timeToDelay[nowtime]
     return int(timeout)
+
+def countneedgws():
+    return max(GC.FINDER_MINIPCNT - len(GC.IPLIST_MAP['google_gws']), 0)
+
+def countneedcom():
+    return max(max(min(GC.FINDER_MINIPCNT//3, 5), 1) - len(GC.IPLIST_MAP['google_com']), 0)
 
 def _testallgaeip():
     iplist = GC.IPLIST_MAP['google_gws'] or []
@@ -108,14 +116,13 @@ def _testallgaeip():
         for ip in badip:
             removeip(ip)
     logging.test('连接测试完毕%s', '，Bad IP 已删除' if nbadip > 0 else '')
-    testip.lasttest = time()
-    testip.lastactive = testip.lasttest
+    testip.lastactive = testip.lasttest = time()
     testip.running = False
     #刷新开始
-    needgws = max(GC.FINDER_MINIPCNT - len(GC.IPLIST_MAP['google_gws']), 0)
-    needcom = max(GC.FINDER_MINIPCNT/3 - len(GC.IPLIST_MAP['google_com']), 0)
+    needgws = countneedgws()
+    needcom = countneedcom()
     if needgws > 0 or needcom > 0:
-        updataip(needcom, needgws + needcom*2 + 1)
+        updataip(needgws, needcom)
 
 def dummy(*args, **kwargs):
     pass
@@ -189,16 +196,17 @@ def testonegaeip(again=False):
     savestatistics()
     testip.lasttest = time()
     #刷新开始
-    needgws = max(GC.FINDER_MINIPCNT - len(GC.IPLIST_MAP['google_gws']), 0)
-    needcom = max(GC.FINDER_MINIPCNT/3 - len(GC.IPLIST_MAP['google_com']), 0)
+    needgws = countneedgws()
+    needcom = countneedcom()
     if needgws > 0 or needcom > 0:
         testip.running = False
-        updataip(needcom, needgws + needcom*2 + 1)
+        updataip(needgws, needcom)
     elif badip:
         testonegaeip(True)
     testip.running = False
 
 def testipserver():
+    looptime = max(120, GC.GAE_KEEPTIME)
     while True:
         now = time()
         try:
@@ -207,7 +215,7 @@ def testipserver():
             elif ((now - testip.lastactive > 6 or # X 秒钟未使用
                     now - testip.lasttest > 30) and  #强制 X 秒钟检测
                     #and not GC.PROXY_ENABLE              #无代理
-                    now - testip.lasttest > 120/(len(GC.IPLIST_MAP['google_gws']) or 1)): #强制 x 秒间隔
+                    now - testip.lasttest > looptime/(len(GC.IPLIST_MAP['google_gws']) or 1)): #强制 x 秒间隔
                 testonegaeip()
         except Exception as e:
             logging.error(' IP 测试守护线程错误：%r', e)

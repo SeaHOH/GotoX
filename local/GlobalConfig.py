@@ -89,11 +89,11 @@ class GC():
     FILTER_SSLACTION = CONFIG.getint('filter', 'sslaction')
     FILTER_SSLACTION = FILTER_SSLACTION if FILTER_SSLACTION in (1, 2, 3, 4) else 2
 
-    FINDER_MINIPCNT = CONFIG.getint('finder', 'minipcnt')
+    FINDER_MINIPCNT = CONFIG.getint('finder', 'minipcnt') or 6
     FINDER_MAXTIMEOUT = CONFIG.getint('finder', 'maxtimeout') or 1000
-    FINDER_THREADS = CONFIG.getint('finder', 'threads')
-    FINDER_BLOCKTIME = CONFIG.getint('finder', 'blocktime')
-    FINDER_TIMESBLOCK = CONFIG.getint('finder', 'timesblock')
+    FINDER_MAXTHREADS = CONFIG.getint('finder', 'maxthreads') or 30
+    FINDER_BLOCKTIME = CONFIG.getint('finder', 'blocktime') or 12
+    FINDER_TIMESBLOCK = CONFIG.getint('finder', 'timesblock') or 2
     FINDER_STATDAYS = max(min(CONFIG.getint('finder', 'statdays'), 5), 2)
     FINDER_BLOCK = CONFIG.get('finder', 'block')
     FINDER_BLOCK = tuple(FINDER_BLOCK.split('|')) if FINDER_BLOCK else ()
@@ -130,7 +130,7 @@ class GC():
     AUTORANGE_THREADS = CONFIG.getint('autorange', 'threads')
     AUTORANGE_LOWSPEED = CONFIG.getint('autorange', 'lowspeed')
 
-    DNS_SERVERS = CONFIG.get('dns', 'servers').split('|')
+    DNS_SERVERS = CONFIG.get('dns', 'servers').split('|') or ['8.8.8.8',]
     DNS_OVER_HTTPS = CONFIG.getboolean('dns', 'overhttps')
     DNS_OVER_HTTPS_LIST = CONFIG.get('dns', 'overhttpslist') or 'google_gws'
     DNS_PRIORITY = CONFIG.get('dns', 'priority').split('|')

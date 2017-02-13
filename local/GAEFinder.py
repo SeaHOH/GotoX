@@ -23,28 +23,24 @@ from .GlobalConfig import GC
 
 #全局只读写数据
 #最大 IP 延时，单位：毫秒
-g_maxhandletimeout = GC.FINDER_MAXTIMEOUT or 1000
+g_maxhandletimeout = GC.FINDER_MAXTIMEOUT
 #扫描得到的可用 IP 数量
-g_maxgaeipcnt = GC.FINDER_MINIPCNT or 12
-#扫描 IP 的线程数量
-g_maxthreads = GC.FINDER_THREADS or 10
+g_maxgaeipcnt = GC.FINDER_MINIPCNT
+#最大扫描 IP 的线程数量
+g_maxthreads = GC.FINDER_MAXTHREADS
 #容忍 badip 的次数
 g_timesblock = GC.FINDER_TIMESBLOCK
 #屏蔽 badip 的时限，单位：小时
-g_blocktime = GC.FINDER_BLOCKTIME or 36
-g_blocktime *= 3600
+g_blocktime = GC.FINDER_BLOCKTIME * 3600
 #是否允许 gvs IP: 0否，1是
 g_gvs = 1
 #连接超时设置，单位：秒
 g_timeout = 4
 g_conntimeout = 1
 g_handshaketimeout = 1.5
-# SSL 连接是否使用 OpenSSL
-g_useOpenSSL = GC.LINK_OPENSSL or 1
 #屏蔽列表（通过测试、但无法使用 GAE）
 g_block = GC.FINDER_BLOCK #('74.125.', '173.194.', '203.208.', '113.171.')
 
-g_cacertfile = os.path.join(cert_dir, 'cacert.pem')
 g_ipfile = os.path.join(data_dir, 'ip.txt')
 g_ipexfile = os.path.join(data_dir, 'ipex.txt')
 g_badfile = os.path.join(data_dir, 'ip_bad.txt')
@@ -217,11 +213,14 @@ def savebadlist(baddict=None):
             f.write(' * '.join([ip, str(baddict[ip][0]), str(baddict[ip][1])]))
             f.write('\n')
 
-from .HTTPUtil import BaseHTTPUtil, gws_ciphers
-class GAE_Finder(BaseHTTPUtil):
+from .HTTPUtil import http_gws
+
+class GAE_Finder():
 
     httpreq = b'HEAD / HTTP/1.1\r\nHost: www.appspot.com\r\nConnection: Close\r\n\r\n'
-    ssl_ciphers = gws_ciphers
+
+    def __init__(self):
+        pass
 
     def getipinfo(self, ip, retry=None):
         if ipnotuse(ip):
@@ -236,7 +235,7 @@ class GAE_Finder(BaseHTTPUtil):
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
-            ssl_sock = self.get_ssl_socket(sock, b'www.google.com')
+            ssl_sock = http_gws.get_ssl_socket(sock, b'www.google.com')
             ssl_sock.settimeout(g_conntimeout)
             ssl_sock.connect((ip, 443))
             ssl_sock.settimeout(g_handshaketimeout)
@@ -245,7 +244,7 @@ class GAE_Finder(BaseHTTPUtil):
             ssl_sock.settimeout(g_timeout)
             if handshaked_time > g_handshaketimeout:
                 raise socket.error('handshake cost %dms timed out' % int(handshaked_time*1000))
-            cert = self.get_peercert(ssl_sock)
+            cert = http_gws.get_peercert(ssl_sock)
             if not cert:
                 raise ssl.SSLError('无法从 %s 获取证书。', ip)
             domain = cert.get_subject().CN
@@ -276,7 +275,7 @@ class GAE_Finder(BaseHTTPUtil):
         finally:
             sock.close()
 
-gae_finder = GAE_Finder(g_useOpenSSL, g_cacertfile)
+gae_finder = GAE_Finder()
 
 def runfinder(ip):
     with gLock:
@@ -382,18 +381,15 @@ g.ipmtime = 0
 g.ipexmtime = 0
 g.statistics = readstatistics()
 g.baddict = readbadlist()
-def getgaeip(nowgaelist=[], needcomcnt=0, threads=None):
-    if g.running:
+def getgaeip(nowgaelist, needgwscnt, needcomcnt):
+    if g.running or needgwscnt == needcomcnt == 0:
         return
-    #获取参数
     g.running = True
+    #获取参数
     nowgaeset = set(nowgaelist)
-    g.needgwscnt = needgwscnt = max(g_maxgaeipcnt - len(nowgaeset), 0)
+    g.needgwscnt = needgwscnt
     g.needcomcnt = needcomcnt
-    if needgwscnt == needcomcnt == 0:
-        g.running = False
-        return
-    threads = int(threads or g_maxthreads)
+    threads = min(needgwscnt + needcomcnt*2 + 1, g_maxthreads)
     now = time()
     #日期变更、重新加载统计文件
     if not g.statisticsfiles[0].endswith(strftime('%y%j')):
