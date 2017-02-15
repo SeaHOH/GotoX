@@ -82,7 +82,7 @@ from OpenSSL import __version__ as opensslver
 from . import clogging as logging
 from .compat import Queue, thread, SocketServer
 from .GlobalConfig import GC
-from .ProxyServer import start_proxyserver
+from .ProxyServer import network_test, start_proxyserver
 from .ProxyHandler import AutoProxyHandler
 
 def main():
@@ -270,7 +270,6 @@ def main():
     info += '==================================================================================\n'
     sys.stdout.write(info)
 
-    from .ProxyServer import network_test
     pre_start()
     del pre_start, info
 

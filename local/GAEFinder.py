@@ -137,16 +137,16 @@ def savestatistics(statistics=None):
             os.remove(g_statisticsfilebak)
         os.rename(statisticsfile, g_statisticsfilebak)
     statistics = statistics or g.statistics[1]
-    statistics = [(ip, stats[0], stats[1]) for ip, stats in statistics.items()]
+    statistics = [(ip, stats1, stats2) for ip, (stats1, stats2) in statistics.items()]
     statistics.sort(key=lambda x: -(x[1]+0.01)/(x[2]**2+0.1))
     op = 'w'
     with open(statisticsfile, op) as f:
-        for ip in statistics:
-            f.write(str(ip[0]).rjust(15))
+        for ip, good, bad in statistics:
+            f.write(str(ip).rjust(15))
             f.write(' * ')
-            f.write(str(ip[1]).rjust(3))
+            f.write(str(good).rjust(3))
             f.write(' * ')
-            f.write(str(ip[2]).rjust(3))
+            f.write(str(bad).rjust(3))
             f.write('\n')
 
 #读取 checkgoogleip 输出 ip.txt
@@ -158,9 +158,9 @@ def readiplist(nowgaeset):
     blockset = set()
     weakset = set()
     #判断是否屏蔽
-    for ip, v in baddict.copy().items():
-        if v[0] > g_timesblock:
-            if now - v[1] > g_blocktime:
+    for ip, (v1, v2) in baddict.copy().items():
+        if v1 > g_timesblock:
+            if now - v2 > g_blocktime:
                 del baddict[ip]
             else:
                 blockset.add(ip)
@@ -399,7 +399,7 @@ def getgaeip(nowgaelist, needgwscnt, needcomcnt):
     #不然干扰严重时可能过多丢弃可用 IP
     # baddict 只用来排除没有进入统计的IP 以减少尝试次数
     statistics = g.statistics[0]
-    statistics = [(ip, stats[0], stats[1]) for ip, stats in statistics.items() if ip not in nowgaeset and stats[0] >= 0]
+    statistics = [(ip, stats1, stats2) for ip, (stats1, stats2) in statistics.items() if ip not in nowgaeset and stats1 >= 0]
     #根据统计数据排序（bad 降序、good 升序）供 pop 使用
     statistics.sort(key=lambda x: (x[1]+0.01)/(x[2]**2+0.1))
     g.goodlist = [ip[0] for ip in statistics]
