@@ -60,6 +60,7 @@ skip_request_headers = (
     )
 
 skip_response_headers = (
+    'Content-Length',
     'Transfer-Encoding',
     'Content-MD5',
     'Set-Cookie',
@@ -202,6 +203,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     do_PATCH = do_METHOD
 
     def write_response_content(self, data, response, need_chunked):
+        if hasattr(response, 'data'):
+            # goproxy 服务端错误信息处理预读数据
+            self.write(data)
+            return len(data), None
         wrote = 0
         err = None
         try:
@@ -240,19 +245,17 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def handle_response_headers(self, response):
         response_headers = dict((k.title(), v) for k, v in response.getheaders() if k.title() not in skip_response_headers)
-        length = response_headers.get('Content-Length', '0')
-        length = int(length) if length.isdigit() else 0
+        length = response.getheader('Content-Length')
         if hasattr(response, 'data'):
             # goproxy 服务端错误信息处理预读数据
             data = response.data
+            length = str(len(data))
         else:
             data = response.read(8192)
         need_chunked = data and not length # response 中的数据已经正确解码
         if need_chunked:
             response_headers['Transfer-Encoding'] = 'chunked'
-            if 'Content-Length' in response_headers:
-                del response_headers['Content-Length']
-        else:
+        elif length:
             response_headers['Content-Length'] = length
         cookies = response.headers.get_all('Set-Cookie')
         if cookies:
@@ -262,11 +265,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 response_headers['Set-Cookie'] = '\r\nSet-Cookie: '.join(cookies)
         if 'Content-Disposition' in response_headers:
             response_headers['Content-Disposition'] = normattachment(response_headers['Content-Disposition'])
-        headers_data = 'HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response_headers.items()))
+        headers_data = 'HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % x for x in response_headers.items()))
         self.write(headers_data)
         if response.status in (300, 301, 302, 303, 307) and 'Location' in response_headers:
             logging.info('%r 返回包含重定向 %r', self.url, response_headers['Location'])
-            self.close_connection = 3
+            self.close_connection = True
         logging.debug('headers_data=%s', headers_data)
         if response.status == 304:
             logging.debug('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), self.action[3:], self.command, self.url, response.status, length or '-')
@@ -281,6 +284,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         host = self.host
         response = None
         noerror = True
+        self.close_connection = 2
         request_headers, payload = self.handle_request_headers()
         try:
             connection_cache_key = '%s:%d' % (hostname, self.port)
@@ -323,10 +327,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if response:
                 response.close()
                 if noerror:
-                    if self.close_connection < 2:
+                    if self.close_connection is 2:
                         connection = response.getheader('Connection')
-                        if connection and connection.lower() != 'close':
-                            self.close_connection = 0
+                        if connection:
+                            self.close_connection = connection.lower() == 'close'
                     #放入套接字缓存
                     if self.ssl:
                         if GC.GAE_KEEPALIVE or not connection_cache_key.startswith('google'):
@@ -442,12 +446,17 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         return
                 #输出服务端返回的错误信息
                 if response.app_status != 200:
-                    data, need_chunked = self.handle_response_headers(response)
-                    self.write_response_content(data, response, need_chunked)
+                    if not headers_sent:
+                        data, need_chunked = self.handle_response_headers(response)
+                        self.write_response_content(data, response, need_chunked)
                     return
+                #与已经写入的头部状态不同
+                if headers_sent and headers_sent != response.status:
+                    continue
                 #发生异常时的判断条件，放在 read 操作之前
-                content_range = response.getheader('Content-Range', '')
-                accept_ranges = response.getheader('Accept-Ranges', '')
+                self.close_connection = 2
+                content_range = response.getheader('Content-Range')
+                accept_ranges = response.getheader('Accept-Ranges')
                 if content_range:
                     start = int(getstart(content_range).group(1)[0])
                 #处理 goproxy 错误信息（Bad Gateway）
@@ -474,7 +483,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         response = None
                         return rangefetch.fetch()
                     data, need_chunked = self.handle_response_headers(response)
-                    headers_sent = True
+                    headers_sent = response.status
                 # Range 范围错误，直接放弃（Requested Range Not Satisfiable）
                 if response.status == 416:
                     return
@@ -491,7 +500,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     logging.debug('do_GAE %r 返回 %r，终止', self.url, e)
                     return
                 elif retry < GC.GAE_FETCHMAX - 1:
-                    if accept_ranges == 'bytes':
+                    if accept_ranges is 'bytes':
                         #重试支持 Range 的失败请求
                         request_headers['Range'] = 'bytes=%d-%s' % (start, self.range_end or '')
                     elif start > 0:
@@ -507,11 +516,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if response:
                     response.close()
                     if noerror:
-                        if self.close_connection < 2:
+                        if self.close_connection is 2:
                             #connection = self.headers.get('Connection') or self.headers.get('Proxy-Connection')
                             connection = response.getheader('Connection')
-                            if connection and connection.lower() != 'close':
-                                self.close_connection = 0
+                            if connection:
+                                self.close_connection = connection.lower() == 'close'
                         if GC.GAE_KEEPALIVE:
                             #放入套接字缓存
                             ssl_connection_cache['google_gws:443'].append((time(), response.sock))
