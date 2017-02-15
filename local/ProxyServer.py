@@ -101,7 +101,11 @@ class LocalProxyServer(SocketServer.ThreadingTCPServer):
             del exc_info, error
             SocketServer.ThreadingTCPServer.handle_error(self, *args)
 
-from .ProxyHandler import AutoProxyHandler, GAEProxyHandler
+from .ProxyHandler import AutoProxyHandler, GAEProxyHandler, AutoProxyAuthHandler, GAEProxyAuthHandler
 
-AutoProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_AUTO_PORT), AutoProxyHandler)
-GAEProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_GAE_PORT), GAEProxyHandler)
+if GC.LISTEN_AUTH:
+    AutoProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_AUTO_PORT), AutoProxyAuthHandler)
+    GAEProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_GAE_PORT), GAEProxyAuthHandler)
+else:
+    AutoProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_AUTO_PORT), AutoProxyHandler)
+    GAEProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_GAE_PORT), GAEProxyHandler)

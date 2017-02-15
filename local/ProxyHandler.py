@@ -928,3 +928,105 @@ class GAEProxyHandler(AutoProxyHandler):
 
     def go_GAE(self):
         self.go_BAD()
+
+from base64 import b64decode
+
+class ProxyAuthHandler():
+
+    auth_warning = (
+            'HTTP/1.1 407 Proxy Authentication Required\r\n'
+            'Proxy-Connection: close\r\n\r\n'
+            '<h1>密码错误！使用此代理之前你必须先进行认证。</h1>').encode()
+    require_auth_header = (
+            b'HTTP/1.1 407 Proxy Authentication Required\r\n'
+            b'Access-Control-Allow-Origin: *\r\n'
+            b'Proxy-Authenticate: Basic realm=GotoX\r\n'
+            b'Content-Length: 0\r\n'
+            b'Proxy-Connection: keep-alive\r\n\r\n')
+    skip_auth_check = False
+    auth_header_send_count = 0
+
+    auth_white_list = '127.0.0.1',
+    auth_black_list = LRUCache(32, 3600*6)
+    users = GC.LISTEN_AUTHUSER
+    every_try_times = 2
+    #最大失败次数，超出后加入黑名单，时效 6 小时
+    max_try_times = 5
+
+    def setup(self):
+        AutoProxyHandler.setup(self)
+        if not self.skip_auth_check:
+            self.skip_auth_check = self.client_address[0] in self.auth_white_list
+
+    def check_auth(self):
+        if self.skip_auth_check:
+            return True
+        client_ip = self.client_address[0]
+        if client_ip in self.auth_black_list and auth_black_list[client_ip] > self.max_try_times:
+            auth_black_list[client_ip] = times = auth_black_list[client_ip] + 1
+            logging.error('%r 黑名单 IP 第 %s 次请求代理！"%s %s"',
+                    self.address_string(), times, self.command, self.url or self.path)
+            return
+        auth_data = self.headers.get('Proxy-Authorization')
+        if auth_data:
+            method, _, auth_user = auth_data.partition(' ')
+            if method.lower() == 'basic':
+                try:
+                    auth_user = b64decode(auth_user).decode()
+                except:
+                    pass
+                else:
+                    if auth_user in self.users:
+                        self.skip_auth_check = True
+                        return True
+        if self.auth_header_send_count < self.every_try_times:
+            self.write(self.require_auth_header)
+            self.auth_header_send_count += 1
+            self.close_connection = False
+        elif self.command == 'CONNECT':
+            self._do_CONNECT()
+            self.do_FAKECERT()
+        else:
+            self.write(self.auth_warning)
+            if client_ip in self.auth_black_list:
+                auth_black_list[client_ip] += self.every_try_times
+            else:
+                auth_black_list[client_ip] = self.every_try_times
+            logging.error('%r 请求代理，但密码错误！"%s %s"',
+                    self.address_string(), self.command, self.url or self.path)
+
+class AutoProxyAuthHandler(ProxyAuthHandler, AutoProxyHandler):
+
+    def do_CONNECT(self):
+        if self.check_auth():
+            AutoProxyHandler.do_CONNECT(self)
+
+    def do_METHOD(self):
+        if self.check_auth():
+            AutoProxyHandler.do_METHOD(self)
+
+    do_GET = do_METHOD
+    do_PUT = do_METHOD
+    do_POST = do_METHOD
+    do_HEAD = do_METHOD
+    do_DELETE = do_METHOD
+    do_OPTIONS = do_METHOD
+    do_PATCH = do_METHOD
+
+class GAEProxyAuthHandler(ProxyAuthHandler, GAEProxyHandler):
+
+    def do_CONNECT(self):
+        if self.check_auth():
+            GAEProxyHandler.do_CONNECT(self)
+
+    def do_METHOD(self):
+        if self.check_auth():
+            GAEProxyHandler.do_METHOD(self)
+
+    do_GET = do_METHOD
+    do_PUT = do_METHOD
+    do_POST = do_METHOD
+    do_HEAD = do_METHOD
+    do_DELETE = do_METHOD
+    do_OPTIONS = do_METHOD
+    do_PATCH = do_METHOD
