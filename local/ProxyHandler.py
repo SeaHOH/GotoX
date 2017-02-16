@@ -407,9 +407,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         logging.error(response.app_reason)
                     else:
                         #检查 IP 可用性
-                        ip = response.xip[0]
-                        testipuseable(ip)
+                        testipuseable(response.xip[0])
                         noerror = False
+                    if response.app_status != 502:
                         continue
                 #当前 appid 流量完结(Service Unavailable)
                 elif response.app_status == 503:
@@ -553,6 +553,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if not (remote or isdirect(host)):
             logging.warning('%s do_FORWARD 链接远程主机 (%r, %r) 失败，尝试使用 "FAKECERT" 规则。', hostip or self.address_string(), host, port)
             return self.go_FAKECERT()
+        elif not remote:
+            return
         logging.info('%s "FWD %s %s:%d HTTP/1.1" - -', remote.xip[0], self.command, host, port)
         self.forward_socket(remote)
 
