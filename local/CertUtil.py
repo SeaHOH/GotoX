@@ -71,7 +71,8 @@ def dump_subkey():
         fp.write(sub_keystr)
     return sub_keystr
 
-def create_subcert(certfile, commonname, ip=False, sans=[]):
+def create_subcert(certfile, commonname, ip=False, sans=None):
+    sans = sans or []
     cert = crypto.X509()
     cert.set_version(2)
     cert.set_serial_number(int((int(time()-sub_serial)+random.random())*100)) #setting the only number
@@ -100,7 +101,8 @@ def create_subcert(certfile, commonname, ip=False, sans=[]):
     with open(certfile, 'wb') as fp:
         fp.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
 
-def get_cert(commonname, ip=False, sans=[]):
+def get_cert(commonname, ip=False, sans=None):
+    sans = sans or []
     #if commonname.count('.') >= 2 and [len(x) for x in reversed(commonname.split('.'))] > [2, 4]:
     #    commonname = '.'+commonname.partition('.')[-1]
     if ip:

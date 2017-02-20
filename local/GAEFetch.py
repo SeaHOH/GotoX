@@ -19,7 +19,7 @@ def make_errinfo(htmltxt):
     response.read = response.fp.read
     return response
 
-class gae_params():
+class gae_params:
     port = 443
     ssl = True
     path = GC.GAE_PATH

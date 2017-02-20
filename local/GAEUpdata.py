@@ -20,7 +20,7 @@ from .GAEFinder import (
 lLock = threading.Lock()
 tLock = threading.Lock()
 
-class testip():
+class testip:
     running = False
     lastactive = None
     queobj = Queue.Queue()

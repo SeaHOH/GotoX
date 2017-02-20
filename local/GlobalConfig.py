@@ -32,7 +32,7 @@ ENV_CONFIG_PREFIX = 'GOTOX_'
 CONFIG = ConfigParser()
 CONFIG._optcre = re.compile(r'(?P<option>[^=\s]+)\s*(?P<vi>=?)\s*(?P<value>.*)')
 
-class GC():
+class GC:
 
     CONFIG_FILENAME = os.path.join(config_dir, 'Config.ini')
     CONFIG_IPDB = os.path.join(data_dir, 'ip.use')
@@ -64,7 +64,7 @@ class GC():
     GAE_KEEPTIME = CONFIG.getint('gae', 'keeptime')
     GAE_MAXREQUESTS = min(CONFIG.getint('gae', 'maxrequsts'), 5)
     GAE_SSLVERIFY = CONFIG.getboolean('gae', 'sslverify')
-    GAE_FETCHMAX = CONFIG.get('gae', 'fetchmax') or 2
+    GAE_FETCHMAX = int(CONFIG.get('gae', 'fetchmax') or 2)
     GAE_MAXSIZE = CONFIG.get('gae', 'maxsize')
     GAE_IPLIST = CONFIG.get('gae', 'iplist')
     GAE_USEGWSIPLIST = True
@@ -94,12 +94,13 @@ class GC():
     FILTER_SSLACTION = CONFIG.getint('filter', 'sslaction')
     FILTER_SSLACTION = FILTER_SSLACTION if FILTER_SSLACTION in (1, 2, 3, 4) else 2
 
-    FINDER_MINIPCNT = CONFIG.getint('finder', 'minipcnt') or 6
-    FINDER_MAXTIMEOUT = CONFIG.getint('finder', 'maxtimeout') or 1000
-    FINDER_MAXTHREADS = CONFIG.getint('finder', 'maxthreads') or 30
-    FINDER_BLOCKTIME = CONFIG.getint('finder', 'blocktime') or 12
-    FINDER_TIMESBLOCK = CONFIG.getint('finder', 'timesblock') or 2
-    FINDER_STATDAYS = max(min(CONFIG.getint('finder', 'statdays'), 5), 2)
+    FINDER_MINIPCNT = int(CONFIG.get('finder', 'minipcnt') or 6)
+    FINDER_MAXTIMEOUT = int(CONFIG.get('finder', 'maxtimeout') or 1000)
+    FINDER_MAXTHREADS = int(CONFIG.get('finder', 'maxthreads') or 30)
+    FINDER_BLOCKTIME = int(CONFIG.get('finder', 'blocktime') or 12)
+    FINDER_TIMESBLOCK = int(CONFIG.get('finder', 'timesblock') or 2)
+    FINDER_STATDAYS = int(CONFIG.get('finder', 'statdays') or 4)
+    FINDER_STATDAYS = max(min(FINDER_STATDAYS, 5), 2)
     FINDER_BLOCK = CONFIG.get('finder', 'block')
     FINDER_BLOCK = tuple(FINDER_BLOCK.split('|')) if FINDER_BLOCK else ()
 
@@ -150,8 +151,8 @@ class GC():
             DNS_PRIORITY.remove(dnstype)
     DNS_PRIORITY.extend(DNS_DEF_PRIORITY)
 
-    DNS_CACHE_ENTRIES = CONFIG.getint('dns/cache', 'entries') or 128
-    DNS_CACHE_EXPIRATION = CONFIG.getint('dns/cache', 'expiration') or 3600
+    DNS_CACHE_ENTRIES = int(CONFIG.get('dns/cache', 'entries') or 128)
+    DNS_CACHE_EXPIRATION = int(CONFIG.get('dns/cache', 'expiration') or 3600)
 
 del CONFIG, fnmatch, ConfigParser
 del sys.modules['fnmatch']

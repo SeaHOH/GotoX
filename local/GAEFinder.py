@@ -215,7 +215,7 @@ def savebadlist(baddict=None):
 
 from .HTTPUtil import http_gws
 
-class GAE_Finder():
+class GAE_Finder:
 
     httpreq = b'HEAD / HTTP/1.1\r\nHost: www.appspot.com\r\nConnection: Close\r\n\r\n'
 

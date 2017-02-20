@@ -47,7 +47,7 @@ from time import time, sleep
 
 NetWorkIOError = (socket.error, ssl.SSLError, OSError) if not OpenSSL else (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
 
-class LRUCache():
+class LRUCache:
     '''Modified from http://pypi.python.org/pypi/lru/'''
 
     def __init__(self, max_items, expire=None):

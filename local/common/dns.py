@@ -78,7 +78,7 @@ from local.HTTPUtil import ssl_connection_cache, http_gws
 def address_string(item):
    return item.xip[0] if hasattr(item, 'xip') else ''
 
-class dns_params():
+class dns_params:
     ssl = True
     host = 'dns.google.com'
     port = 443
