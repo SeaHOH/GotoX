@@ -11,10 +11,11 @@ qGAE = Queue.LifoQueue()
 for i in range(GC.GAE_MAXREQUESTS * len(GC.GAE_APPIDS)):
     qGAE.put(True)
 
-def make_errinfo(htmltxt):
-    if not isinstance(htmltxt, bytes):
-        htmltxt = htmltxt.encode()
-    response.msg['Content-Type'] = 'text/html'
+def make_errinfo(response, htmltxt):
+    del response.headers['Content-Type']
+    del response.headers['Connection']
+    response.headers['Content-Type'] = 'text/plain; charset=UTF-8'
+    response.headers['Connection'] = 'close'
     response.fp = io.BytesIO(htmltxt)
     response.read = response.fp.read
     return response
@@ -46,6 +47,7 @@ def gae_urlfetch(method, url, headers, payload, appid, timeout=None, rangefetch=
     #if payload:
         #if not isinstance(payload, bytes):
         #    payload = payload.encode()
+        #服务器不支持 deflate 编码会出错
         #if len(payload) < 10 * 1024 * 1024 and 'Content-Encoding' not in headers:
         #    zpayload = zlib.compress(payload)[2:-4]
         #    if len(zpayload) < len(payload):
@@ -85,33 +87,40 @@ def gae_urlfetch(method, url, headers, payload, appid, timeout=None, rangefetch=
         data = response.read(4)
         if len(data) < 4:
             response.status = 502
-            return make_errinfo(b'connection aborted. too short leadtype data=' + data)
+            return make_errinfo(response, b'connection aborted. too short leadtype data=' + data)
         response.status, headers_length = struct.unpack('!hh', data)
     else:
         data = response.read(2)
         if len(data) < 2:
             response.status = 502
-            return make_errinfo(b'connection aborted. too short leadtype data=' + data)
+            return make_errinfo(response, b'connection aborted. too short leadtype data=' + data)
         headers_length, = struct.unpack('!h', data)
     data = response.read(headers_length)
     if len(data) < headers_length:
         response.status = 502
-        return make_errinfo(b'connection aborted. too short headers data=' + data)
+        return make_errinfo(response, b'connection aborted. too short headers data=' + data)
     #读取实际的头部
     if GC.GAE_PATH == '/2':
         headers_data= zlib.decompress(data, -zlib.MAX_WBITS)
     else:
         raw_response_line, headers_data = zlib.decompress(data, -zlib.MAX_WBITS).split(b'\r\n', 1)
         raw_response_list = raw_response_line.split(None, 2)
-        if len(raw_response_list) < 3:
-            _, response.status = raw_response_list
-            response.app_status = response.status = int(response.status)
-            if response.app_status == 403:
-                response.app_reason = 'APP 密码错误！请修改后重试。'
-                return make_errinfo('<h1>******   APP 密码错误！请修改后重试。******</h1>')
+        raw_response_length = len(raw_response_list)
+        if raw_response_length == 3:
+            _, status, reason = raw_response_list
+            response.status = int(status)
+            response.reason = reason.strip()
+        elif raw_response_length == 2:
+            _, status = raw_response_list
+            status = int(status)
+            #标记 GoProxy 错误信息
+            if status in (400, 403, 502):
+                response.app_status = response.status = status
+                response.reason = 'debug error'
+            else:
+                response.status = status
+                response.reason = ''
         else:
-            _, response.status, response.reason = raw_response_list
-            response.status = int(response.status)
-            response.reason = response.reason.strip()
+            return
     response.headers = response.msg = httplib.parse_headers(io.BytesIO(headers_data))
     return response

@@ -19,6 +19,7 @@ from .compat import BaseHTTPServer, urlparse, thread
 from .common import (
     web_dir,
     NetWorkIOError,
+    get_refreshtime,
     LRUCache,
     message_html,
     isip
@@ -79,6 +80,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     #可修改
     ssl_context_cache = LRUCache(32)
     badhost = LRUCache(16, 120)
+    badappids = LRUCache(len(GC.GAE_APPIDS))
     maxsize = int(GC.GAE_MAXSIZE or 1024*1024*4)
 
     #默认值
@@ -250,6 +252,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             # goproxy 服务端错误信息处理预读数据
             data = response.data
             length = str(len(data))
+            response_headers.headers['Content-Type'] = 'text/html; charset=UTF-8'
+            self.close_connection = True
         else:
             data = response.read(8192)
         need_chunked = data and not length # response 中的数据已经正确解码
@@ -257,6 +261,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             response_headers['Transfer-Encoding'] = 'chunked'
         elif length:
             response_headers['Content-Length'] = length
+        #无内容且发生错误时关闭链接
+        elif response.status in (400, 403, 405, 413, 414, 415) or response.status >= 500:
+            self.close_connection = True
+        else:
+            response_headers['Content-Length'] = 0
         cookies = response.headers.get_all('Set-Cookie')
         if cookies:
             if self.action == 'do_GAE' and len(cookies) == 1:
@@ -267,7 +276,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             response_headers['Content-Disposition'] = normattachment(response_headers['Content-Disposition'])
         headers_data = 'HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % x for x in response_headers.items()))
         self.write(headers_data)
-        if response.status in (300, 301, 302, 303, 307) and 'Location' in response_headers:
+        if response.status in (300, 301, 302, 303, 305, 307) and 'Location' in response_headers:
             logging.info('%r 返回包含重定向 %r', self.url, response_headers['Location'])
             self.close_connection = True
         logging.debug('headers_data=%s', headers_data)
@@ -378,11 +387,19 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 logging.warning('do_GAE 由于有上传数据 "%s %s" 终止重试', self.command, self.url)
                 return
             with self.nLock:
-                nappid = self.__class__.nappid + 1
-                if nappid >= len(GC.GAE_APPIDS):
-                    nappid = 0
+                nappid = self.__class__.nappid
+                while True:
+                    nappid += 1
+                    if nappid >= len(GC.GAE_APPIDS):
+                        nappid = 0
+                    appid = GC.GAE_APPIDS[nappid]
+                    contains, expired = self.badappids.getstate(appid)
+                    if contains and expired:
+                        for i in range(GC.GAE_MAXREQUESTS):
+                            qGAE.put(True)
+                    if not contains or expired:
+                        break
                 self.__class__.nappid = nappid
-                appid = GC.GAE_APPIDS[nappid]
             noerror = True
             data = None
             response = None
@@ -395,34 +412,56 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         return
                     else:
                         logging.warning('do_GAE 超时，url=%r，重试', self.url)
+                        sleep(0.5)
                         continue
-                #网关超时（Gateway Timeout）
-                elif response.app_status == 504:
+                #处理 GoProxy 错误信息
+                elif response.reason == 'debug error':
+                    data = response.read().decode()
+                    #密码错误
+                    if response.app_status == 403:
+                        logging.warning('GAE：%r 密码错误！你设置的密码是： %r', appid, GC.GAE_PASSWORD)
+                        data = '<h1>******   GAE：%r 密码错误！请修改后重试。******</h1>' % appid
+                    # GoProxy 临时错误，重试
+                    elif response.app_status == 502:
+                        if 'DEADLINE_EXCEEDED' in data:
+                            logging.warning('GAE：%r urlfetch %r 返回 DEADLINE_EXCEEDED，重试', appid, self.url)
+                        elif 'ver quota' in data:
+                            logging.warning('GAE：%r urlfetch %r 返回 over quota，重试', appid, self.url)
+                            self.badappids.set(appid, True, 60)
+                            for i in range(GC.GAE_MAXREQUESTS):
+                                qGAE.get()
+                        elif 'urlfetch: CLOSED' in data:
+                            logging.warning('GAE：%r urlfetch %r 返回 urlfetch: CLOSED，重试', appid, self.url)
+                            sleep(0.5)
+                        continue
+                    # GoProxy 服务端版本可能不兼容
+                    elif response.app_status == 400:
+                        logging.error('%r 部署的可能是 GotoX 不兼容的 GoProxy 服务端版本，如果这条错误反复出现请将之反馈给开发者。', appid)
+                        data = ('<h2>GotoX：%r 部署的可能是 GotoX 不兼容的 GoProxy 服务端版本，如果这条错误反复出现请将之反馈给开发者。<h2>\n'
+                                '错误信息：\n%r' % (appid, data))
+                    response.data = data.encode()
+                #网关错误（Gateway Timeout｜Bad Gateway）
+                elif response.app_status in (502, 504):
                     logging.warning('do_GAE 网关错误，url=%r，重试', self.url)
+                    sleep(0.5)
                     continue
-                #无法提供 GAE 服务（Found｜Forbidden｜Method Not Allowed｜Bad Gateway）
-                elif response.app_status in (302, 403, 405, 502):
-                    if hasattr(response, 'app_reason'):
-                        #密码错误
-                        logging.error(response.app_reason)
-                    else:
-                        #检查 IP 可用性
-                        testipuseable(response.xip[0])
+                #无法提供 GAE 服务（Found｜Forbidden｜Method Not Allowed）
+                elif response.app_status in (302, 403, 405):
+                    #检查 IP 可用性
+                    if not testipuseable(response.xip[0]):
                         noerror = False
-                    if response.app_status != 502:
-                        continue
+                    continue
                 #当前 appid 流量完结(Service Unavailable)
                 elif response.app_status == 503:
-                    if len(GC.GAE_APPIDS) > 1:
-                        GC.GAE_APPIDS.remove(appid)
-                        for i in range(GC.GAE_MAXREQUESTS):
-                            qGAE.get()
-                        #appid = None
-                        logging.info('当前 appid[%s] 流量使用完毕，切换下一个…', appid)
-                        self.do_GAE()
-                        return
-                    else:
+                    if len(GC.GAE_APPIDS) - len(self.badappids) <= 1:
                         logging.error('全部的 APPID 流量都使用完毕')
+                    else:
+                        logging.info('当前 appid[%s] 流量使用完毕，切换下一个…', appid)
+                    self.badappids.set(appid, True, get_refreshtime())
+                    for i in range(GC.GAE_MAXREQUESTS):
+                        qGAE.get()
+                    self.do_GAE()
+                    return
                 #服务端出错（Internal Server Error）
                 elif response.app_status == 500:
                     logging.warning('"%s %s" GAE_APP 发生错误，重试', self.command, self.url)
@@ -432,20 +471,25 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     logging.error('%r 部署的可能是 GotoX 不兼容的服务端，如果这条错误反复出现请将之反馈给开发者。', appid)
                 # appid 不存在（Not Found）
                 elif response.app_status == 404:
-                    if len(GC.GAE_APPIDS) > 1:
-                        GC.GAE_APPIDS.remove(appid)
-                        for i in range(GC.GAE_MAXREQUESTS):
-                            qGAE.get()
-                        #appid = None
-                        logging.warning('APPID %r 不存在，将被移除', appid)
-                        continue
-                    else:
-                        logging.error('APPID %r 不存在，请将你的 APPID 填入 Config.ini 中', appid)
-                        self.write(b'HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n')
-                        self.write(message_html('404 Appid 不存在', 'Appid %r 不存在' % appid, '请编辑 Config.ini 文件，将你的 APPID 填入其中。'))
+                    if testipuseable(response.xip[0]):
+                        if len(GC.GAE_APPIDS) > 1:
+                            GC.GAE_APPIDS.remove(appid)
+                            for i in range(GC.GAE_MAXREQUESTS):
+                                qGAE.get()
+                            logging.warning('APPID %r 不存在，将被移除', appid)
+                            self.do_GAE()
+                        else:
+                            logging.error('APPID %r 不存在，请将你的 APPID 填入 Config.ini 中', appid)
+                            self.write(b'HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n')
+                            self.write(message_html('404 Appid 不存在', 'Appid %r 不存在' % appid, '请编辑 Config.ini 文件，将你的 APPID 填入其中。'))
                         return
+                    else:
+                        #只是 IP 错误，继续
+                        noerror = False
+                        continue
                 #输出服务端返回的错误信息
                 if response.app_status != 200:
+                    self.close_connection = True
                     if not headers_sent:
                         data, need_chunked = self.handle_response_headers(response)
                         self.write_response_content(data, response, need_chunked)
@@ -459,19 +503,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 accept_ranges = response.getheader('Accept-Ranges')
                 if content_range:
                     start = int(getstart(content_range).group(1)[0])
-                #处理 goproxy 错误信息（Bad Gateway）
-                if response.status == 502:
-                    data = response.read()
-                    if b'DEADLINE_EXCEEDED' in data:
-                        logging.warning('GAE：%r urlfetch %r 返回 DEADLINE_EXCEEDED，重试', appid, self.url)
-                        continue
-                    if b'ver quota' in data:
-                        logging.warning('GAE：%r urlfetch %r 返回 over quota，重试', appid, self.url)
-                        continue
-                    if b'urlfetch: CLOSED' in data:
-                        logging.warning('GAE：%r urlfetch %r 返回 urlfetch: CLOSED，重试', appid, self.url)
-                        continue
-                    response.data = data
                 # 服务器不支持 Range 且错误返回成功状态
                 if range_start > 0 and response.status != 206 and response.status < 300:
                     response.status = 416
@@ -616,7 +647,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 elif origssl and self.port == 443:
                     self.port = 80
                 else:
-                    #不改变非 80、443 端口
+                    #不改变非标准端口
                     self.ssl = origssl
             #重设路径
             self.path = target[target.find('/', target.find('//')+3):]

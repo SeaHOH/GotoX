@@ -43,35 +43,50 @@ import socket
 import string
 import threading
 import collections
-from time import time, sleep
+from time import time, sleep, timezone, localtime, strftime, strptime, mktime
 
 NetWorkIOError = (socket.error, ssl.SSLError, OSError) if not OpenSSL else (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
 
+refreshzone = timezone - 28800
+def get_refreshtime():
+    #距离 GAE 流量配额每日刷新的时间
+    now = time() + refreshzone
+    refreshtime = strftime('%y %j', localtime(now + 86400))
+    refreshtime = mktime(strptime(refreshtime, '%y %j'))
+    return refreshtime - now
+
 class LRUCache:
-    '''Modified from http://pypi.python.org/pypi/lru/'''
+    # Modified from http://pypi.python.org/pypi/lru/
+    #最近最少使用缓存，支持过期时间设置
 
     def __init__(self, max_items, expire=None):
         self.cache = {}
         self.max_items = int(max_items)
         self.expire = expire
         self.key_expire = {}
+        self.key_noexpire = set()
         self.key_order = collections.deque()
         self.lock = threading.Lock()
         if expire:
             thread.start_new_thread(self._cleanup, ())
 
-    #def __delitem__(self, key):
-    #    with self.lock:
-    #        if key in self.cache:
-    #            self.key_order.remove(key)
-    #            if key in self.key_expire:
-    #                del self.key_expire[key]
-    #            del self.cache[key]
+    def __delitem__(self, key):
+        with self.lock:
+            if key in self.cache:
+                self.key_order.remove(key)
+                if key in self.key_expire:
+                    del self.key_expire[key]
+                if key in self.key_noexpire:
+                    del self.key_noexpire[key]
+                del self.cache[key]
+            else:
+                raise KeyError(key)
 
     def __setitem__(self, key, value):
         with self.lock:
-            if self.expire:
-                self.key_expire[key] = int(time()) + self.expire
+            expire = False if key in self.key_noexpire else self.expire
+            if expire:
+                self.key_expire[key] = int(time()) + expire
             self._mark(key)
             self.cache[key] = value
 
@@ -93,9 +108,15 @@ class LRUCache:
         with self.lock:
             return len(self.key_order)
 
-    def set(self, key, value, expire=None):
-        expire = expire or self.expire
+    def set(self, key, value, expire=False, noexpire=False):
         with self.lock:
+            if noexpire:
+                expire = False
+                self.key_noexpire.add(key)
+            elif key in self.key_noexpire:
+                expire = False
+            else:
+                expire = expire or self.expire
             if expire:
                 self.key_expire[key] = int(time()) + expire
             self._mark(key)
@@ -110,37 +131,77 @@ class LRUCache:
             else:
                 return value
 
+    def getstate(self, key):
+        with self.lock:
+            contains = key in self.cache
+            self._expire_check(key)
+            expired = key in self.cache
+            return contains, expired
+
+    def pop(self, key=False):
+        with self.lock:
+            if key:
+                self._expire_check(key)
+                if key in self.cache:
+                    self._mark(key)
+                    value = self.cache[key]
+                    self.key_order.remove(key)
+                    if key in self.key_expire:
+                        del self.key_expire[key]
+                    if key in self.key_noexpire:
+                        del self.key_noexpire[key]
+                    del self.cache[key]
+                    return value
+                else:
+                    raise KeyError(key)
+            #未指明 key 时不检查抛出项是否过期，慎用！
+            #返回元组 (key, value)
+            if self.key_order:
+                key = self.key_order.pop()
+                value = self.cache[key]
+                if key in self.key_noexpire:
+                    del self.key_noexpire[key]
+                if key in self.key_expire:
+                    del self.key_expire[key]
+                del self.cache[key]
+                return key, value
+            else:
+                raise IndexError('pop from empty LRUCache')
+
     def _expire_check(self, key):
-        if key in self.key_expire:
+        key_expire = self.key_expire
+        if key in key_expire:
             now = int(time())
-            timeleft = self.key_expire[key] - now
+            timeleft = key_expire[key] - now
             if timeleft <= 0:
                 self.key_order.remove(key)
-                del self.key_expire[key]
+                del key_expire[key]
                 del self.cache[key]
             elif timeleft < 8:
-                #保持足够的反应时间
-                self.key_expire[key] = now + 8
+                #为可能存在的紧接的调用保持足够的反应时间
+                key_expire[key] = now + 8
 
     def _mark(self, key):
         key_order = self.key_order
-        if key in self.cache:
-            try:
-                key_order.remove(key)
-            except ValueError:
-                pass
+        cache = self.cache
+        if key in cache:
+            key_order.remove(key)
         key_order.appendleft(key)
         while len(key_order) > self.max_items:
             key = key_order.pop()
-            if key in self.key_expire:
-                del self.key_expire[key]
-            del self.cache[key]
+            if key in self.key_noexpire:
+                key_order.appendleft(key)
+            else:
+                if key in self.key_expire:
+                    del self.key_expire[key]
+                del cache[key]
 
     def _cleanup(self):
-        '''按每秒一个的频率循环检查并清除靠后的 m 个项目中的过期项目'''
+        #按每秒一个的频率循环检查并清除靠后的 m 个项目中的过期项目
         lock = self.lock
         key_order = self.key_order
         key_expire = self.key_expire
+        key_noexpire = self.key_noexpire
         cache = self.cache
         max_items = self.max_items
         m = min(max_items//4, 60)
@@ -153,7 +214,10 @@ class LRUCache:
                     if l <= n:
                         n = m
                     key = key_order[n]
-                    if key_expire[key] <= int(time()):
+                    if key in key_noexpire:
+                        del key_order[n]
+                        key_order.appendleft(key)
+                    elif key_expire[key] <= int(time()):
                         del key_order[n]
                         del key_expire[key]
                         del cache[key]
@@ -163,6 +227,7 @@ class LRUCache:
         with self.lock:
             self.cache.clear()
             self.key_expire.clear()
+            self.key_noexpire.clear()
             self.key_order.clear()
 
 def message_html(title, banner, detail=''):

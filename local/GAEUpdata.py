@@ -12,6 +12,7 @@ from .HTTPUtil import http_gws
 from .GAEFinder import (
     g as finder,
     timeToDelay,
+    gae_finder,
     getgaeip,
     savestatistics,
     #savebadlist
@@ -30,16 +31,11 @@ class testip:
 def removeip(ip):
     with lLock:
         for name in GC.IPLIST_MAP:
-            try:
-                GC.IPLIST_MAP[name].remove(ip)
-            except:
-                pass
-
-#def addtoblocklist(ip):
-#    removeip(ip)
-#    finder.baddict[ip] = GC.FINDER_TIMESBLOCK+1, int(time())
-#    finder.reloadlist = True
-#    savebadlist()
+            if name.startswith('google_'):
+                try:
+                    GC.IPLIST_MAP[name].remove(ip)
+                except:
+                    pass
 
 def _refreship(gaeip):
     with lLock:
@@ -91,6 +87,42 @@ def countneedgws():
 def countneedcom():
     return max(max(min(GC.FINDER_MINIPCNT//3, 5), 1) - len(GC.IPLIST_MAP['google_com']), 0)
 
+def testipuseable(ip):
+    _, _, isgaeserver = gae_finder.getipinfo(ip)
+    if not isgaeserver:
+        removeip(ip)
+        addtoblocklist(ip)
+        logging.warning('IP：%r 暂时不可用，已经删除', ip)
+    return isgaeserver
+
+if GC.GAE_USEGWSIPLIST:
+    def addtoblocklist(ip):
+        finder.baddict[ip] = GC.FINDER_TIMESBLOCK+1, int(time())
+        for ipdict in finder.statistics:
+            if ip in ipdict:
+                ipdict[ip] = -1, 0
+        #finder.reloadlist = True
+
+    def testallgaeip(force=False):
+        with tLock:
+            if updataip.running:
+                return
+            elif force:
+                if testip.running == 9:
+                    return
+                while testip.running == 1:
+                    sleep(0.2)
+            elif testip.running:
+                return
+            testip.running = 9
+        thread.start_new_thread(_testallgaeip, ())
+        return True
+else:
+    def dummy(*args, **kwargs):
+        pass
+
+    addtoblocklist = testallgaeip = dummy
+
 def _testallgaeip():
     iplist = GC.IPLIST_MAP['google_gws'] or []
     if not iplist:
@@ -123,36 +155,6 @@ def _testallgaeip():
     needcom = countneedcom()
     if needgws > 0 or needcom > 0:
         updataip(needgws, needcom)
-
-def dummy(*args, **kwargs):
-    pass
-
-if GC.GAE_USEGWSIPLIST:
-    def testipuseable(ip):
-        timeout = gettimeout()
-        queobj = Queue.Queue()
-        http_gws.create_ssl_connection((ip, 443), 'google_gws:443', timeout/1000.0, queobj)
-        result = queobj.get()
-        if isinstance(result, Exception):
-            removeip(ip)
-            logging.warning('IP：%r 暂时不可用，已经删除', ip)
-
-    def testallgaeip(force=False):
-        with tLock:
-            if updataip.running:
-                return
-            elif force:
-                if testip.running == 9:
-                    return
-                while testip.running == 1:
-                    sleep(0.2)
-            elif testip.running:
-                return
-            testip.running = 9
-        thread.start_new_thread(_testallgaeip, ())
-        return True
-else:
-    testipuseable = testallgaeip = dummy
 
 def testonegaeip(again=False):
     if not again:
