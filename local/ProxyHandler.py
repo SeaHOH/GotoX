@@ -550,10 +550,18 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             hostip = random.choice(dns_resolve(host))
             remote = http_util.create_connection((hostip, int(port)), self.fwd_timeout, self.ssl)
-        if not (remote or isdirect(host)):
-            logging.warning('%s do_FORWARD 链接远程主机 (%r, %r) 失败，尝试使用 "FAKECERT" 规则。', hostip or self.address_string(), host, port)
-            return self.go_FAKECERT()
-        elif not remote:
+        if not remote:
+            if not isdirect(host):
+                if self.command == 'CONNECT':
+                    if self.ssl:
+                        logging.warning('%s do_FORWARD 链接远程主机 (%r, %r) 失败，尝试使用 "FAKECERT" 规则。', hostip or self.address_string(), host, port)
+                        self.go_FAKECERT()
+                    else:
+                        logging.warning('%s do_FORWARD 链接远程主机 (%r, %r) 失败，尝试跳过 "CONNECT" 命令。', hostip or self.address_string(), host, port)
+                        self.write(b'HTTP/1.1 200 OK\r\n\r\n')
+                else:
+                    logging.warning('%s do_FORWARD 链接远程主机 (%r, %r) 失败，尝试使用 "GAE" 规则。', hostip or self.address_string(), host, port)
+                    self.go_GAE()
             return
         logging.info('%s "FWD %s %s:%d HTTP/1.1" - -', remote.xip[0], self.command, host, port)
         self.forward_socket(remote)
@@ -819,7 +827,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def forward_socket(self, remote, timeout=30, tick=4, maxping=None, maxpong=None):
         '''Forward local and remote connection'''
-        if self.ssl:
+        if self.command == 'CONNECT':
             self.connection.sendall(b'HTTP/1.1 200 OK\r\n\r\n')
         else:
             http_headers = ''.join('%s: %s\r\n' % (k.title(), v) for k, v in self.headers.items() if k.title() not in skip_request_headers)
