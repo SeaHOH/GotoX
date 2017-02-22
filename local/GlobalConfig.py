@@ -49,9 +49,11 @@ class GC:
     LISTEN_GAE_PORT = CONFIG.getint('listen', 'gae_port')
     LISTEN_AUTO_PORT = CONFIG.getint('listen', 'auto_port')
     LISTEN_VISIBLE = CONFIG.getboolean('listen', 'visible')
-    LISTEN_AUTH = CONFIG.getboolean('listen', 'auth')
+    LISTEN_AUTH = min(CONFIG.getint('listen', 'auth'), 2)
     if LISTEN_IP == '127.0.0.1':
-        LISTEN_AUTH = False
+        LISTEN_AUTH = 0
+    LISTEN_AUTHWHITELIST = CONFIG.get('listen', 'authwhitelist')
+    LISTEN_AUTHWHITELIST = tuple(LISTEN_AUTHWHITELIST.split('|')) if LISTEN_AUTHWHITELIST else ()
     LISTEN_AUTHUSER = CONFIG.get('listen', 'authuser')
     LISTEN_AUTHUSER = tuple(LISTEN_AUTHUSER.split('|')) if LISTEN_AUTHUSER else (':',)
     LISTEN_DEBUGINFO = _LOGLv[min(CONFIG.getint('listen', 'debuginfo'), 3)]

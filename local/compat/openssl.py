@@ -5,7 +5,7 @@ import socket
 from OpenSSL import SSL
 from select import select
 
-class SSLConnection(object):
+class SSLConnection:
     '''API-compatibility wrapper for Python OpenSSL's Connection-class.'''
 
     def __init__(self, context, sock):
