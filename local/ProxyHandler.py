@@ -954,9 +954,15 @@ class GAEProxyHandler(AutoProxyHandler):
 
     def do_METHOD(self):
         '''handle others cmmand, do a filtered action'''
-        if self._do_METHOD():
-            self.action = 'do_GAE'
-            self.do_action()
+        self._do_METHOD()
+        #本地地址
+        if self.host.startswith(self.localhosts):
+            #发送证书
+            if self.path.lower() in self.CAPath:
+                return self.send_CA()
+            return self.do_LOCAL()
+        self.action = 'do_GAE'
+        self.do_action()
 
     do_GET = do_METHOD
     do_PUT = do_METHOD
