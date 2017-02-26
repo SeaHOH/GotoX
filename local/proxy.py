@@ -253,6 +253,8 @@ def main():
         #    logging.info('Uvent enabled, patch forward_socket')
         #    AutoProxyHandler.forward_socket = AutoProxyHandler.green_forward_socket
 
+    from .common.region import IPDBVer
+
     logging.setLevel(GC.LISTEN_DEBUGINFO)
 
     info = '==================================================================================\n'
@@ -268,6 +270,7 @@ def main():
     info += '\n  链 接 模 式 : 远程 - %s / gevent%s\n' % (GC.LINK_REMOTESSLTXT, ' + OpenSSL' if GC.LINK_OPENSSL else '')
     info += '                本地 - %s / gevent\n' % GC.LINK_LOCALSSLTXT
     info += '\n  网 络 配 置 : %s\n' % GC.LINK_PROFILE
+    info += '\n  IP 数 据 库 : %s 、更新时间为单数月份第一天\n' % IPDBVer
     info += '\n  安 装 证 书 : 设置代理后访问 http://gotox.go/\n'
     info += '==================================================================================\n'
     sys.stdout.write(info)
