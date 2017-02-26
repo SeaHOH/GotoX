@@ -257,23 +257,23 @@ def main():
 
     logging.setLevel(GC.LISTEN_DEBUGINFO)
 
-    info = '==================================================================================\n'
-    info += ' GotoX  版 本 : %s (python/%s gevent/%s pyOpenSSL/%s)\n' % (__version__, sys.version.split(' ')[0], gevent.__version__, opensslver)
-    #info += ' Uvent Version    : %s (pyuv/%s libuv/%s)\n' % (__import__('uvent').__version__, __import__('pyuv').__version__, __import__('pyuv').LIBUV_VERSION) if all(x in sys.modules for x in ('pyuv', 'uvent')) else ''
-    info += '\n GAE    APPID : %s\n' % '|'.join(GC.GAE_APPIDS)
-    info += '\n GAE 远程验证 : %s启用\n' % '已' if GC.GAE_SSLVERIFY else '未'
-    info += '\n  监 听 地 址 : 自动代理 - %s:%d\n' % (GC.LISTEN_IP, GC.LISTEN_AUTO_PORT)
-    info += '                GAE 代理 - %s:%d\n' % (GC.LISTEN_IP, GC.LISTEN_GAE_PORT)
-    info += '\n Local Proxy  : %s:%s\n' % (GC.PROXY_HOST, GC.PROXY_PORT) if GC.PROXY_ENABLE else ''
-    info += '\n  代 理 认 证 : %s认证\n' % (GC.LISTEN_AUTH == 0 and '无需' or (GC.LISTEN_AUTH == 2 and 'IP ') or 'Basic ')
-    info += '\n  调 试 信 息 : %s\n' % logging._levelToName[GC.LISTEN_DEBUGINFO]
-    info += '\n  链 接 模 式 : 远程 - %s / gevent%s\n' % (GC.LINK_REMOTESSLTXT, ' + OpenSSL' if GC.LINK_OPENSSL else '')
-    info += '                本地 - %s / gevent\n' % GC.LINK_LOCALSSLTXT
-    info += '\n  网 络 配 置 : %s\n' % GC.LINK_PROFILE
-    info += '\n  IP 数 据 库 : %s 、更新时间为单数月份第一天\n' % IPDBVer
-    info += '\n  安 装 证 书 : 设置代理后访问 http://gotox.go/\n'
-    info += '==================================================================================\n'
-    sys.stdout.write(info)
+    info = ['==================================================================================\n',]
+    info.append(' GotoX  版 本 : %s (python/%s gevent/%s pyOpenSSL/%s)\n' % (__version__, sys.version.split(' ')[0], gevent.__version__, opensslver))
+    #info.append(' Uvent Version    : %s (pyuv/%s libuv/%s)\n' % (__import__('uvent').__version__, __import__('pyuv').__version__, __import__('pyuv').LIBUV_VERSION) if all(x in sys.modules for x in ('pyuv', 'uvent')) else '')
+    info.append('\n GAE    APPID : %s\n' % '|'.join(GC.GAE_APPIDS))
+    info.append('\n GAE 远程验证 : %s启用\n' % '已' if GC.GAE_SSLVERIFY else '未')
+    info.append('\n  监 听 地 址 : 自动代理 - %s:%d\n' % (GC.LISTEN_IP, GC.LISTEN_AUTO_PORT))
+    info.append('                GAE 代理 - %s:%d\n' % (GC.LISTEN_IP, GC.LISTEN_GAE_PORT))
+    info.append('\n Local Proxy  : %s:%s\n' % (GC.PROXY_HOST, GC.PROXY_PORT) if GC.PROXY_ENABLE else '')
+    info.append('\n  代 理 认 证 : %s认证\n' % (GC.LISTEN_AUTH == 0 and '无需' or (GC.LISTEN_AUTH == 2 and 'IP ') or 'Basic '))
+    info.append('\n  调 试 信 息 : %s\n' % logging._levelToName[GC.LISTEN_DEBUGINFO])
+    info.append('\n  链 接 模 式 : 远程 - %s / gevent%s\n' % (GC.LINK_REMOTESSLTXT, ' + OpenSSL' if GC.LINK_OPENSSL else ''))
+    info.append('                本地 - %s / gevent\n' % GC.LINK_LOCALSSLTXT)
+    info.append('\n  网 络 配 置 : %s\n' % GC.LINK_PROFILE)
+    info.append('\n  IP 数 据 库 : %s 、更新时间为单数月份第一天\n' % IPDBVer)
+    info.append('\n  安 装 证 书 : 设置代理后访问 http://gotox.go/\n')
+    info.append('==================================================================================\n')
+    sys.stdout.write(''.join(info))
 
     pre_start()
     del pre_start, info
