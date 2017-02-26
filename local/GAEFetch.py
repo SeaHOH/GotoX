@@ -104,11 +104,14 @@ def gae_urlfetch(method, url, headers, payload, appid, timeout=None, rangefetch=
         headers_data= zlib.decompress(data, -zlib.MAX_WBITS)
     else:
         raw_response_line, headers_data = zlib.decompress(data, -zlib.MAX_WBITS).split(b'\r\n', 1)
+        raw_response_line = str(raw_response_line, 'iso-8859-1')
         raw_response_list = raw_response_line.split(None, 2)
         raw_response_length = len(raw_response_list)
         if raw_response_length == 3:
             _, status, reason = raw_response_list
             response.status = int(status)
+            if reason[0].isdigit():
+                _, reason = reason.split(None, 1)
             response.reason = reason.strip()
         elif raw_response_length == 2:
             _, status = raw_response_list

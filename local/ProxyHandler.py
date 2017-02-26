@@ -207,7 +207,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def write_response_content(self, data, response, need_chunked):
         if hasattr(response, 'data'):
             # goproxy 服务端错误信息处理预读数据
-            self.write(data)
+            if data:
+                self.write(data)
             return len(data), None
         wrote = 0
         err = None
@@ -252,7 +253,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             # goproxy 服务端错误信息处理预读数据
             data = response.data
             length = str(len(data))
-            response_headers.headers['Content-Type'] = 'text/html; charset=UTF-8'
+            response_headers['Content-Type'] = 'text/html; charset=UTF-8'
             self.close_connection = True
         else:
             data = response.read(8192)
@@ -274,7 +275,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 response_headers['Set-Cookie'] = '\r\nSet-Cookie: '.join(cookies)
         if 'Content-Disposition' in response_headers:
             response_headers['Content-Disposition'] = normattachment(response_headers['Content-Disposition'])
-        headers_data = 'HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % x for x in response_headers.items()))
+        headers_data = 'HTTP/1.1 %s %s\r\n%s\r\n' % (response.status, response.reason, ''.join('%s: %s\r\n' % x for x in response_headers.items()))
         self.write(headers_data)
         if response.status in (300, 301, 302, 303, 305, 307) and 'Location' in response_headers:
             logging.info('%r 返回包含重定向 %r', self.url, response_headers['Location'])
@@ -425,15 +426,17 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     elif response.app_status == 502:
                         if 'DEADLINE_EXCEEDED' in data:
                             logging.warning('GAE：%r urlfetch %r 返回 DEADLINE_EXCEEDED，重试', appid, self.url)
+                            continue
                         elif 'ver quota' in data:
                             logging.warning('GAE：%r urlfetch %r 返回 over quota，重试', appid, self.url)
                             self.badappids.set(appid, True, 60)
                             for i in range(GC.GAE_MAXREQUESTS):
                                 qGAE.get()
+                            continue
                         elif 'urlfetch: CLOSED' in data:
                             logging.warning('GAE：%r urlfetch %r 返回 urlfetch: CLOSED，重试', appid, self.url)
                             sleep(0.5)
-                        continue
+                            continue
                     # GoProxy 服务端版本可能不兼容
                     elif response.app_status == 400:
                         logging.error('%r 部署的可能是 GotoX 不兼容的 GoProxy 服务端版本，如果这条错误反复出现请将之反馈给开发者。', appid)
