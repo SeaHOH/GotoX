@@ -384,7 +384,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         need_chunked = False
         start = range_start
         for retry in range(GC.GAE_FETCHMAX):
-            if payload and headers_sent:
+            if retry > 0 and payload:
                 logging.warning('do_GAE 由于有上传数据 "%s %s" 终止重试', self.command, self.url)
                 return
             with self.nLock:
