@@ -17,7 +17,7 @@ packages = os.path.join(py_dir, 'site-packages')
 if os.path.dirname(sys.executable) != py_dir:
     #优先导入当前运行 py 已安装模块
     sys.path.append(packages)
-    sys.path += glob.glob('%s/*.egg' % packages)
+    sys.path.extend(glob.glob('%s/*.egg' % packages))
 
 try:
     import gevent

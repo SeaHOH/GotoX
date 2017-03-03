@@ -45,7 +45,7 @@
 #          https://github.com/XX-net/XX-Net/tree/master/code/default/gae_proxy/server
 #          https://github.com/jzp820927/Deploy_XXNET_Server
 
-__version__ = '3.3.4'
+from . import __version__
 
 import sys
 sys.dont_write_bytecode = True
@@ -71,7 +71,7 @@ if os.name == 'nt':
         del pkg_resources, hashlib
 
 #这条代码负责导入依赖库路径，不要改变位置
-from .common import gevent
+from .common import gevent, app_root
 
 import struct
 import threading
@@ -182,10 +182,21 @@ def main():
         elif os.name == 'nt':
             import ctypes
             ctypes.windll.kernel32.SetConsoleTitleW('GotoX v%s' % __version__)
-            if not GC.LISTEN_VISIBLE:
-                ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
+            hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+            icon_file = os.path.join(app_root, 'gotox.ico')
+            if os.path.exists(icon_file):
+                hicon = ctypes.windll.user32.LoadImageW(0, icon_file, 1, 0, 0, 16)
+                if hicon == 0:
+                    logging.warning('加载图标文件“GotoX.ico”失败。')
+                else:
+                    ctypes.windll.user32.SendMessageW(hwnd, 128, 0, hicon) #窗口
+                    ctypes.windll.user32.SendMessageW(hwnd, 128, 1, hicon) #任务栏
             else:
-                ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 1)
+                logging.warning('图标文件“GotoX.ico”丢失。')
+            if not GC.LISTEN_VISIBLE:
+                ctypes.windll.user32.ShowWindow(hwnd, 0)
+            else:
+                ctypes.windll.user32.ShowWindow(hwnd, 1)
             if GC.LISTEN_CHECKPROCESS:
                 blacklist = {
                     'BaiduSdSvc'   : '百毒',
@@ -231,14 +242,14 @@ def main():
                             displaylist[k] = []
                         displaylist[k].append(software)
                     displaystr = ['某些安全软件可能和本软件存在冲突，造成 CPU 占用过高。'
-                                  '如有此现象建议暂时退出以下安全软件来保证 GotoX 运行：',]
+                                  '如有此现象建议暂时退出以下安全软件来保证 GotoX 运行：\n',]
                     for k, v in displaylist.items():
                         displaystr.append('    %s：%s'
                             % (k, '、'.join(tasklist[x].filename for x in v)))
                     title = 'GotoX 建议'
                     error = '\n'.join(displaystr)
                     logging.warning(error)
-                    ctypes.windll.user32.MessageBoxW(None, error, title, 0)
+                    ctypes.windll.user32.MessageBoxW(None, error, title, 48)
         try:
             GC.GAE_APPIDS.remove('gotox')
         except:
