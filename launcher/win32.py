@@ -128,6 +128,7 @@ def on_right_click(systray):
     visible = ctypes.windll.user32.IsWindowVisible(hwnd)
     ctypes.windll.user32.ShowWindow(hwnd, visible^1)
 
+last_main_menu = None
 sub_menu1 = (('打开默认配置', on_main_setting), #双击打开第一个有效命令
              ('打开用户配置', on_user_setting),
              ('打开自动规则配置', on_auto_setting))
@@ -154,7 +155,10 @@ def build_menu(systray):
                  ('重启 GotoX', on_refresh),
                  (None, '-'),
                  ('关于', on_about))
-    systray.update(menu=main_menu)
+    global last_main_menu
+    if main_menu != last_main_menu:
+        systray.update(menu=main_menu)
+        last_main_menu = main_menu
 
 MFS_CHECKED = win32_adapter.MFS_CHECKED
 MFS_DISABLED = win32_adapter.MFS_DISABLED
