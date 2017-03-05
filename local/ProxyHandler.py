@@ -850,6 +850,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.badhost[host] = False
         else:
             self.badhost[host] = True
+        #同时标记直连 badhost
+        host = 'http%s://%s' % ('s' if self.ssl else '', host)
+        self.badhost[host] = True
         self.action = 'do_FAKECERT'
         self.do_FAKECERT()
 
