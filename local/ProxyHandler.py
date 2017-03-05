@@ -587,8 +587,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if not isdirect(host):
                 if self.command == 'CONNECT':
                     if self.ssl:
-                        logging.warning('%s do_FORWARD 链接远程主机 (%r, %r) 失败，尝试使用 "GAE" 规则。', hostip or self.address_string(), host, port)
-                        self.go_GAE_FAKECERT()
+                        logging.warning('%s do_FORWARD 链接远程主机 (%r, %r) 失败，尝试使用 "FAKECERT" 规则。', hostip or self.address_string(), host, port)
+                        self.go_FAKECERT()
                     else:
                         logging.warning('%s do_FORWARD 链接远程主机 (%r, %r) 失败，尝试跳过 "CONNECT" 命令。', hostip or self.address_string(), host, port)
                         self.write(b'HTTP/1.1 200 OK\r\n\r\n')
@@ -839,7 +839,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.action = 'do_GAE'
         self.do_GAE()
 
-    def go_GAE_FAKECERT(self):
+    def go_FAKECERT(self):
         host = self.host
         #最近是否失败（缓存设置超时两分钟）
         if host in self.badhost:
@@ -848,10 +848,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 ssl_filters_cache.set(host, ('do_FAKECERT', None), 900)
                 logging.warning('将 %r 加入 "FAKECERT" 规则 15 分钟。', host)
                 self.badhost[host] = False
-                #同时设置临时 GAE 规则
-                host = 'http%s://%s' % ('s' if self.ssl else '', host)
-                filters_cache[host][-1] = '', '', 'TEMPGAE', time() + 900
-                logging.warning('将 %r 加入 "GAE" 规则 15 分钟。', host)
         else:
             self.badhost[host] = True
         self.action = 'do_FAKECERT'
