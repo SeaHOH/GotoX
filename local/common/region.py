@@ -93,7 +93,10 @@ if os.path.exists(_17monipdb):
     from .dns import dns_resolve, dns_remote_resolve
     from local.GlobalConfig import GC
 
-    direct_region = '中国', '局域网', '共享地址', '本地链路', '保留地址'
+    direct_region = ('中国', 'BAIDU', '阿里云骨干网', 'alibaba.com 骨干网',
+                     'CHINATELECOM', 'CHINATELECOM 骨干网', 'CHINAUNICOM 骨干网',
+                     'CHINANETCENTER', 'CHINAMOBILE 骨干网',
+                     '局域网', '共享地址', '本地链路', '保留地址')
     indep_region = '台湾', '香港'
     direct_cache = LRUCache(GC.DNS_CACHE_ENTRIES//2)
     ipdb = IPv4Database(_17monipdb)

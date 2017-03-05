@@ -281,7 +281,7 @@ def main():
     info.append('\n  链 接 模 式 : 远程 - %s / gevent%s\n' % (GC.LINK_REMOTESSLTXT, ' + OpenSSL' if GC.LINK_OPENSSL else ''))
     info.append('                本地 - %s / gevent\n' % GC.LINK_LOCALSSLTXT)
     info.append('\n  网 络 配 置 : %s\n' % GC.LINK_PROFILE)
-    info.append('\n  IP 数 据 库 : %s 、更新时间为单数月份第一天\n' % IPDBVer)
+    info.append('\n  IP 数 据 库 : %s\n' % IPDBVer)
     info.append('\n  安 装 证 书 : 设置代理后访问 http://gotox.go/\n')
     info.append('==================================================================================\n')
     sys.stdout.write(''.join(info))
