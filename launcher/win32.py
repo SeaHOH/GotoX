@@ -14,6 +14,7 @@ py_exe = os.path.join(app_root, 'python', 'python.exe')
 app_start = os.path.join(app_root, 'start.py')
 icon_gotox = os.path.join(app_root, 'gotox.ico')
 config_dir = os.path.join(app_root, 'config')
+ipdb_direct = os.path.join(app_root, 'data', 'directip.db')
 
 sys.path.insert(0, app_root)
 
@@ -23,8 +24,9 @@ import ctypes
 from winsystray import SysTrayIcon, win32_adapter
 import winreg
 from time import sleep
-from win32_proxy_manager import disable_proxy, set_proxy
+import win32_proxy_manager as proxy_manager
 import re
+import buildipdb
 from configparser import ConfigParser
 #默认编码
 _read = ConfigParser.read
@@ -68,6 +70,7 @@ def start_GotoX():
     global GotoX_app, LISTEN_GAE, LISTEN_AUTO
     LISTEN_GAE, LISTEN_AUTO = get_listen_addr()
     GotoX_app = Popen((py_exe, app_start))
+    os.environ['HTTPS_PROXY'] = os.environ['HTTP_PROXY'] = LISTEN_AUTO
 
 def stop_GotoX():
     if GotoX_app is None:
@@ -78,15 +81,6 @@ def stop_GotoX():
             GotoX_app.terminate()
         else:
             logging.warning('GotoX 进程已经结束，code：%s。', retcode)
-
-def on_main_setting(systray):
-    Popen(CONFIG_FILENAME, shell=True)
-
-def on_user_setting(systray):
-    Popen(CONFIG_USER_FILENAME, shell=True)
-
-def on_auto_setting(systray):
-    Popen(CONFIG_AUTO_FILENAME, shell=True)
 
 def on_show(systray):
     ctypes.windll.user32.ShowWindow(hwnd, 1)
@@ -112,13 +106,13 @@ def on_quit(systray):
     running = False
 
 def on_disable_proxy(systray):
-    disable_proxy()
+    proxy_manager.disable_proxy()
 
 def on_enable_auto_proxy(systray):
-    set_proxy(LISTEN_AUTO)
+    proxy_manager.set_proxy(LISTEN_AUTO)
 
 def on_enable_gae_proxy(systray):
-    set_proxy(LISTEN_GAE)
+    proxy_manager.set_proxy(LISTEN_GAE)
 
 def on_left_click(systray):
     build_menu(systray)
@@ -128,17 +122,28 @@ def on_right_click(systray):
     visible = ctypes.windll.user32.IsWindowVisible(hwnd)
     ctypes.windll.user32.ShowWindow(hwnd, visible^1)
 
+MFS_CHECKED = win32_adapter.MFS_CHECKED
+MFS_DISABLED = win32_adapter.MFS_DISABLED
+MFS_DEFAULT = win32_adapter.MFS_DEFAULT
+MFT_RADIOCHECK = win32_adapter.MFT_RADIOCHECK
+fixed_fState = MFS_CHECKED | MFS_DISABLED
+
 last_main_menu = None
-sub_menu1 = (('打开默认配置', on_main_setting), #双击打开第一个有效命令
-             ('打开用户配置', on_user_setting),
-             ('打开自动规则配置', on_auto_setting))
+sub_menu1 = (('打开默认配置', lambda x: Popen(CONFIG_FILENAME, shell=True)), #双击打开第一个有效命令
+             ('打开用户配置', lambda x: Popen(CONFIG_USER_FILENAME, shell=True)),
+             ('打开自动规则配置', lambda x: Popen(CONFIG_AUTO_FILENAME, shell=True)))
+sub_menu2 = (('建议更新频率：10～30 天一次', 'pass', MFS_DISABLED),
+             (None, '-'),
+             ('从 APNIC 下载（每日更新）', lambda x: buildipdb.download_apnic_cniplist_as_db(ipdb_direct)),
+             ('从 17mon 下载（每月初更新）', lambda x: buildipdb.download_17mon_cniplist_as_db(ipdb_direct)),
+             ('从以上两者下载后合并', lambda x: buildipdb.download_both_cniplist_as_db(ipdb_direct)))
 
 def build_menu(systray):
     proxy_state = get_proxy_state()
     disable_item_state = proxy_state == '无' and fixed_fState or 0
     auto_item_state = proxy_state == LISTEN_AUTO and fixed_fState or 0
     gae_item_state = proxy_state == LISTEN_GAE and fixed_fState or 0
-    sub_menu2 = (('当前代理：', 'pass', MFS_DISABLED),
+    sub_menu3 = (('当前代理：', 'pass', MFS_DISABLED),
                  (proxy_state, 'pass', MFS_DISABLED),
                  (None, '-'),
                  ('禁用代理', on_disable_proxy, disable_item_state, MFT_RADIOCHECK),
@@ -148,10 +153,11 @@ def build_menu(systray):
     show_item_state = visible and fixed_fState or 0
     hide_item_state = not visible and fixed_fState or 0
     main_menu = (('GotoX 设置', sub_menu1, icon_gotox, MFS_DEFAULT),
+                 ('更新直连 IP 库', sub_menu2),
                  (None, '-'),
                  ('显示窗口', on_show, show_item_state, MFT_RADIOCHECK),
                  ('隐藏窗口', on_hide, hide_item_state, MFT_RADIOCHECK),
-                 ('设置系统（IE）代理', sub_menu2),
+                 ('设置系统（IE）代理', sub_menu3),
                  ('重启 GotoX', on_refresh),
                  (None, '-'),
                  ('关于', on_about))
@@ -159,12 +165,6 @@ def build_menu(systray):
     if main_menu != last_main_menu:
         systray.update(menu=main_menu)
         last_main_menu = main_menu
-
-MFS_CHECKED = win32_adapter.MFS_CHECKED
-MFS_DISABLED = win32_adapter.MFS_DISABLED
-MFS_DEFAULT = win32_adapter.MFS_DEFAULT
-MFT_RADIOCHECK = win32_adapter.MFT_RADIOCHECK
-fixed_fState = MFS_CHECKED | MFS_DISABLED
 
 quit_item = '退出', on_quit
 systray_GotoX = SysTrayIcon(icon_gotox, 'GotoX', None, quit_item,

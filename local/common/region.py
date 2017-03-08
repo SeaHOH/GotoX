@@ -1,138 +1,145 @@
 # coding:utf-8
 
 import os
-import socket
-from . import data_dir
+import _thread as thread
+from time import sleep
+from socket import inet_aton
+from . import logging, data_dir, launcher_dir, LRUCache, isip, isipv4
+from local.GlobalConfig import GC
 
-class IPv4Database:
-    #载入 17mon IPv4 地理信息数据库免费版
-    #参考：http://www.ipip.net/
-    #      https://github.com/lxyu/17monip
-    #      https://github.com/wangtuanjie/ip17mon
-    # The 17mon dat file format in bytes:
-    #    -----------
-    #    | 4 bytes |                     <- offset number + 1024
-    #    -----------------
-    #    | 256 * 4 bytes |               <- first ip number index
-    #    -----------------------
-    #    | offset - 1028 bytes |         <- ip index
-    #    -----------------------
-    #    |    data  storage    |
-    #    -----------------------
+if '4' in GC.LINK_PROFILE:
+    from .dns import dns_resolve
+else:
+    from .dns import dns_resolve1, dns_resolve2, dns_resolve3
+
+    def dns_resolve(host):
+        iplist = dns_resolve1(host)
+        if not iplist:
+            iplist = dns_resolve2(host)
+            if not iplist:
+                iplist = dns_resolve3(host)
+        return iplist
+
+class DirectIPv4Database:
+    #载入 IPv4 保留地址和 CN 地址数据库，数据来源：
+    #    https://ftp.apnic.net/apnic/stats/apnic/delegated-apnic-latest
+    #    https://github.com/17mon/china_ip_list/raw/master/china_ip_list.txt
+    #    +---------+
+    #    | 4 bytes |                     <- data length
+    #    +---------------+
+    #    | 224 * 4 bytes |               <- first ip number index
+    #    +---------------+
+    #    |  2n * 4 bytes |               <- cn ip ranges data
+    #    +------------------------+
+    #    | b'end' and update info |      <- end verify
+    #    +------------------------+
     def __init__(self, filename):
         from struct import unpack
         with open(filename, 'rb') as f:
-            #读取地理信息数据偏移 BE Ulong -> int
-            offset, = unpack('>L', f.read(4))
+            #读取 IP 范围数据长度 BE Ulong -> int
+            data_len, = unpack('>L', f.read(4))
             #读取索引数据
-            indexIP = f.read(1024)
-            #这里多减去一个 1024
-            #因为储存在头部的偏移量比实际多了 1024，不知道有什么意义
-            index_data_len = offset - 4 - 1024 - 1024
-            self.index_data = f.read(index_data_len)
-            #读取并缓存地理信息数据
-            self.data = f.read()
+            index = f.read(224 * 4)
+            #读取 IP 范围数据
+            data = f.read(data_len)
+            #简单验证结束
+            if f.read(3) != b'end':
+                raise ValueError('%s 文件格式损坏！' % filename)
+            #读取更新信息
+            self.update = f.read(64).decode('utf-8')
         #格式化并缓存索引数据
-        #使用 struct.unpack 一次性分割数据速度稍快
-        #每 4 字节为一个索引 fip：LE Ulong -> int，对应二级索引序数
-        self.index = unpack('<' + 'L' * 256, indexIP)
-        #以下索引格式化多耗 50M 内存和一点时间，不使用
-        #每 8 字节为一组索引，对应 IP 范围和地理信息储存位置
-        # nip：BE Uint32 -> 4 bytes（实际不用转换，bytes 之间的比较就是按大端序规则）
-        # pos：LE Ulong 3/4 -> int
-        # len：Uint -> int
-        #index_data = unpack('8s' * (index_data_len // 8), indexData)
-        #index_nip = []
-        #index_pos = []
-        #index_len = []
-        #for b in index_data:
-        #    index_nip.append(b[:4])     
-        #    #直接使用位运算速度快很多，减少约 20% 耗时       
-        #    index_pos.append(b[4] | b[5] << 8 | b[6] << 16)
-        #    index_len.append(b[7])
-        #self.index_nip = tuple(index_nip)
-        #self.index_pos = tuple(index_pos)
-        #self.index_len = tuple(index_len)
+        #使用 struct.unpack 一次性分割数据效率更高
+        #每 4 字节为一个索引范围 fip：BE short -> int，对应 IP 范围序数
+        self.index = unpack('>' + 'h' * (224 * 2), index)
+        #每 8 字节对应一段直连 IP 范围和一段非直连 IP 范围
+        self.data = unpack('4s' * (data_len // 4), data)
 
-        #获取 IP 数据库版本
-        #_pos = ipdb.index_pos[-1]
-        #_len = ipdb.index_len[-1]
-        b1, b2, b3, _len = self.index_data[-4:]
-        _pos = b1 | b2 << 8 | b3 << 16
-        self.version = self.data[_pos:_pos + _len].decode('utf-8').split()[1]
-
-    def find(self, ip):
+    def __contains__(self, ip):
         #转换 IP 为 BE Uint32，实际类型 bytes
-        nip = socket.inet_aton(ip)
-        #确定二级索引范围
+        nip = inet_aton(ip)
+        #确定索引范围
+        index = self.index
         fip = nip[0]
-        lo = self.index[fip]
-        hi = self.index[min(fip + 1, 255)]
-        #与索引的 IP 范围条目比较确定索引位置
-        index_data = self.index_data
+        #从 224 开始都属于保留地址
+        if fip >= 224:
+            return True
+        fip *= 2
+        lo = index[fip]
+        if lo < 0:
+            return False
+        #结束位置加 1
+        #避免无法搜索从当前索引结尾地址到下个索引开始地址
+        hi = index[fip + 1] + 1
+        #与 IP 范围比较确定 IP 位置
+        data = self.data
         while lo < hi:
             mid = (lo + hi) // 2
-            index_off = mid * 8
-            if index_data[index_off:index_off + 4] < nip:
-                lo = mid + 1
-            else:
+            if data[mid] > nip:
                 hi = mid
-        #获取二级索引数据
-        index_off = lo * 8 + 4
-        b1, b2, b3, data_len = index_data[index_off:index_off + 4]
-        data_pos = b1 | b2 << 8 | b3 << 16
-        #减去最后一个制表符的长度，保证结果分割出正确的列表长度
-        data = self.data[data_pos:data_pos + data_len - 1]
-        #返回列表 [country, region, city]
-        return data.decode('utf-8').split('\t')
+            else:
+                lo = mid + 1
+        #根据位置序数奇偶确定是否属于直连 IP
+        return lo & 1
 
-_17monipdb = os.path.join(data_dir, '17monipdb.dat')
+directipdb = os.path.join(data_dir, 'directip.db')
+direct_cache = LRUCache(GC.DNS_CACHE_ENTRIES//2)
+ipdbmtime = 0
 
-if os.path.exists(_17monipdb):
-    from . import LRUCache, isip, isipv4
-    from .dns import dns_resolve, dns_remote_resolve
-    from local.GlobalConfig import GC
+def isdirect(host):
+    if ipdb is None:
+        return False
+    hostisip = isip(host)
+    if hostisip:
+        ips = host,
+    elif host in direct_cache:
+        return direct_cache[host]
+    else:
+        ips = dns_resolve(host)
+    ipv4 = None
+    for ip in ips:
+        if isipv4(ip):
+            ipv4 = ip
+            break
+    if ipv4:
+        direct = ipv4 in ipdb
+    else:
+        direct = False
+    if not hostisip:
+        direct_cache[host] = direct
+    return direct
 
-    direct_region = ('中国', 'BAIDU', '阿里云骨干网', 'alibaba.com 骨干网',
-                     'CHINATELECOM', 'CHINATELECOM 骨干网', 'CHINAUNICOM 骨干网',
-                     'CHINANETCENTER', 'CHINAMOBILE 骨干网',
-                     '局域网', '共享地址', '本地链路', '保留地址')
-    indep_region = '台湾', '香港'
-    direct_cache = LRUCache(GC.DNS_CACHE_ENTRIES//2)
-    ipdb = IPv4Database(_17monipdb)
-    IPDBVer = ipdb.version
-    if '4' not in GC.LINK_PROFILE:
-        dns_resolve = dns_remote_resolve
+ipdbmtime = os.path.getmtime(directipdb)
 
-    def isdirect(host):
-        hostisip = isip(host)
-        if hostisip:
-            ips = host,
-        elif host in direct_cache:
-            return direct_cache[host]
+def load_ipdb():
+    global ipdb, IPDBVer
+    ipdb = DirectIPv4Database(directipdb)
+    IPDBVer = ipdb.update
+
+def check_modify():
+    global ipdbmtime
+    while True:
+        sleep(10)
+        if os.path.exists(directipdb):
+            filemtime = os.path.getmtime(directipdb)
         else:
-            ips = dns_resolve(host)
-        ipv4 = None
-        for ip in ips:
-            if isipv4(ip):
-                ipv4 = ip
-                break
-        if ipv4:
-            country, region, city = ipdb.find(ipv4)
-            #更改 country 以适应网络现状
-            if country == '中国' and region in indep_region:
-                country = region
-            direct = country in direct_region
-        else:
-            direct = False
-        if not hostisip:
-            direct_cache[host] = direct
-        return direct
+            filemtime = 0
+        if filemtime > ipdbmtime:
+            try:
+                load_ipdb()
+                ipdbmtime = filemtime
+                direct_cache.clear()
+                logging.warning('检测到直连 IP 数据库更新，已重新加载：%s。', IPDBVer)
+            except Exception as e:
+                logging.warning('检测到直连 IP 数据库更新，重新加载时出现错误，'
+                                '请重新下载：\n%r', e)
+
+if os.path.exists(directipdb):
+    load_ipdb()
 else:
-    from . import logging
-    IPDBVer = '数据库文件未安装'
-    logging.warning('无法在 %r 找到 IP 地理信息数据库，'
-                    '请下载后（http://www.ipip.net）放入相应位置。',
-                    _17monipdb)
     ipdb = None
-    isdirect = lambda x: False
+    IPDBVer = '数据库文件未安装'
+    buildscript = os.path.join(launcher_dir, 'buildipdb.py')
+    logging.warning('无法在找到直连 IP 数据库，Win 用户可用托盘工具下载更新，'
+                    '其它系统请运行脚本 %r 下载更新。', buildscript)
+
+thread.start_new_thread(check_modify, ())

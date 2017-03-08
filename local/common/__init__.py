@@ -9,6 +9,7 @@ app_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 cert_dir = os.path.join(app_root, 'cert')
 config_dir = os.path.join(app_root, 'config')
 data_dir = os.path.join(app_root, 'data')
+launcher_dir = os.path.join(app_root, 'launcher')
 py_dir = os.path.join(app_root, 'python')
 web_dir = os.path.join(app_root, 'web')
 packages = os.path.join(py_dir, 'site-packages')
