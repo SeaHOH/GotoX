@@ -12,7 +12,7 @@ from .common import spawn_later
 from .GAEFetch import qGAE, gae_urlfetch
 from .GlobalConfig import GC
 from .HTTPUtil import ssl_connection_cache
-from .GAEUpdata import testip, testallgaeip
+from .GAEUpdate import testip, testallgaeip
 
 getrange = re.compile(r'bytes (\d+)-(\d+)/(\d+)').search
 
@@ -38,7 +38,7 @@ class RangeFetch:
         self.expect_begin = 0
         self._stopped = False
         self._last_app_status = {}
-        self.lastupdata = testip.lastupdata
+        self.lastupdate = testip.lastupdate
         self.iplist = GC.IPLIST_MAP['google_gws'][:]
         self.appids = Queue.Queue()
         for id in GC.GAE_APPIDS:
@@ -155,8 +155,8 @@ class RangeFetch:
         while True:
             try:
                 with self.tLock:
-                    if self.lastupdata != testip.lastupdata:
-                        self.lastupdata = testip.lastupdata
+                    if self.lastupdate != testip.lastupdate:
+                        self.lastupdate = testip.lastupdate
                         self.iplist = GC.IPLIST_MAP['google_gws'][:]
                 noerror = True
                 response = None

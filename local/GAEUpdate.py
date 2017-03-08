@@ -1,5 +1,5 @@
 # coding:utf-8
-'''Auto check and updata GAE IP'''
+'''Auto check and update GAE IP'''
 
 import threading
 from . import clogging as logging
@@ -25,8 +25,8 @@ class testip:
     running = False
     lastactive = None
     queobj = Queue.Queue()
-    lastupdata = time()
-    lasttest = lastupdata - 30
+    lastupdate = time()
+    lasttest = lastupdate - 30
 
 def removeip(ip):
     with lLock:
@@ -41,7 +41,7 @@ def _refreship(gaeip):
     with lLock:
         for name in gaeip:
             GC.IPLIST_MAP[name][:] = gaeip[name] + GC.IPLIST_MAP[name]
-    testip.lastupdata = time()
+    testip.lastupdate = time()
 
 def refreship(needgws=None, needcom=None):
     threading.current_thread().setName('Ping-IP')
@@ -66,15 +66,15 @@ def refreship(needgws=None, needcom=None):
         logging.warning('没有检测到足够数量符合要求的 GAE IP，请重新设定参数！')
     #更新完毕
     #sleep(10)
-    updataip.running = False
+    updateip.running = False
 
-def updataip(needgws=None, needcom=None):
+def updateip(needgws=None, needcom=None):
     with tLock:
-        if updataip.running: #是否更新
+        if updateip.running: #是否更新
             return
-        updataip.running = True
+        updateip.running = True
     thread.start_new_thread(refreship, (needgws, needcom))
-updataip.running = False
+updateip.running = False
 
 def gettimeout():
     nowtime = int(strftime('%H'))
@@ -105,7 +105,7 @@ if GC.GAE_USEGWSIPLIST:
 
     def testallgaeip(force=False):
         with tLock:
-            if updataip.running:
+            if updateip.running:
                 return
             elif force:
                 if testip.running == 9:
@@ -126,7 +126,7 @@ else:
 def _testallgaeip():
     iplist = GC.IPLIST_MAP['google_gws'] or []
     if not iplist:
-        return updataip()
+        return updateip()
     badip = set()
     timeout = gettimeout()
     logging.test('连接测试开始，超时：%d 毫秒', timeout)
@@ -154,12 +154,12 @@ def _testallgaeip():
     needgws = countneedgws()
     needcom = countneedcom()
     if needgws > 0 or needcom > 0:
-        updataip(needgws, needcom)
+        updateip(needgws, needcom)
 
 def testonegaeip(again=False):
     if not again:
         with tLock:
-            if updataip.running or testip.running:
+            if updateip.running or testip.running:
                 return
             testip.running = 1
     ip = GC.IPLIST_MAP['google_gws'][-1]
@@ -202,7 +202,7 @@ def testonegaeip(again=False):
     needcom = countneedcom()
     if needgws > 0 or needcom > 0:
         testip.running = False
-        updataip(needgws, needcom)
+        updateip(needgws, needcom)
     elif badip:
         testonegaeip(True)
     testip.running = False

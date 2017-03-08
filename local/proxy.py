@@ -295,7 +295,7 @@ def main():
     start_proxyserver()
 
     if GC.GAE_USEGWSIPLIST:
-        from .GAEUpdata import testipserver
+        from .GAEUpdate import testipserver
         testipserver()
     else:
         logging.warning('正在使用固定的 GAE IP 列表 [%s]，将不会进行 IP 检查。', GC.GAE_IPLIST)

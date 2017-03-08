@@ -27,7 +27,7 @@ from .common import (
 from .common.dns import set_DNS, dns_resolve
 from .common.region import isdirect
 from .GlobalConfig import GC
-from .GAEUpdata import testip, testipuseable
+from .GAEUpdate import testip, testipuseable
 from .HTTPUtil import (
     tcp_connection_cache,
     ssl_connection_cache,
