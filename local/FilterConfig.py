@@ -136,6 +136,7 @@ class actionfilterlist(list):
 
     def check_modify(self):
         while True:
+            sleep(10)
             filemtime = os.path.getmtime(self.CONFIG_FILENAME)
             if filemtime > self.FILE_MTIME and not self.RESET:
                 try:
@@ -144,6 +145,5 @@ class actionfilterlist(list):
                     self.RESET = True
                 except Exception as e:
                     logging.warning('%r 内容被修改，重新加载时出现错误，请检查后重新修改：\n%r', self.CONFIG_FILENAME, e)
-            sleep(10)
 
 ACTION_FILTERS = actionfilterlist()
