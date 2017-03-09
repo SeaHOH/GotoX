@@ -102,8 +102,7 @@ def on_about(systray):
 def on_quit(systray):
     stop_GotoX()
     winreg.CloseKey(SETTINGS)
-    global running
-    running = False
+    sys.exit(0)
 
 def on_disable_proxy(systray):
     proxy_manager.disable_proxy()
@@ -182,8 +181,7 @@ systray_GotoX.show_balloon('\nGotoX 已经启动。        \n\n'
                            '    %s' % proxy_state,
                            'GotoX 通知', 4 | 32, 15)
 
-running = True
-while running:
+while True:
     now_proxy_state = get_proxy_state()
     if proxy_state != now_proxy_state:
         text = '设置由：\n      %s\n变更为：\n      %s' % (proxy_state, now_proxy_state)
