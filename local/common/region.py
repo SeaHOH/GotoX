@@ -67,9 +67,7 @@ class DirectIPv4Database:
         lo = index[fip]
         if lo < 0:
             return False
-        #结束位置加 1
-        #避免无法搜索从当前索引结尾地址到下个索引开始地址
-        hi = index[fip + 1] + 1
+        hi = index[fip + 1]
         #与 IP 范围比较确定 IP 位置
         data = self.data
         while lo < hi:
@@ -131,7 +129,7 @@ def check_modify():
                 logging.warning('检测到直连 IP 数据库更新，已重新加载：%s。', IPDBVer)
             except Exception as e:
                 logging.warning('检测到直连 IP 数据库更新，重新加载时出现错误，'
-                                '请重新下载：\n%r', e)
+                                '请重新下载：%r', e)
 
 if os.path.exists(directipdb):
     load_ipdb()

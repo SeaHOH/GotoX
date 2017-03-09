@@ -9,10 +9,6 @@ def ip2int(ip):
     '''将 IPv4 地址转换为整数'''
     return reduce(lambda a, b: a << 8 | b, map(int, ip.split('.')))
 
-def int2ip(n):
-    u'''将整数转换为 IPv4 地址'''
-    return '.'.join(map(lambda b: str(n >> b & 255), (24, 16, 8, 0)))
-
 def int2bytes2(n):
     '''将整数转换为大端序字节'''
     return bytes(map(lambda b: (n >> b & 255), (8, 0)))
@@ -91,8 +87,9 @@ def save_iplist_as_db(iplist, ipdb):
             #一个索引分为开始和结束
             fip = lastip_s[0] * 2
             if fip != index_fip:
-                #前一个索引结束
-                index[index_fip + 1] = int2bytes2(index_n - 1)
+                #前一个索引结束，序数多 1
+                #避免无法搜索从当前索引结尾地址到下个索引开始地址
+                index[index_fip + 1] = int2bytes2(index_n)
                 #当前索引开始
                 index[fip] = int2bytes2(index_n)
                 index_fip = fip
@@ -106,12 +103,12 @@ def save_iplist_as_db(iplist, ipdb):
     buffer[offset_t:] = int2bytes4(lastip_e)
     fip = lastip_s[0] * 2
     if fip != index_fip:
-        index[index_fip + 1] = int2bytes2(index_n - 1)
+        index[index_fip + 1] = int2bytes2(index_n)
         index[fip] = int2bytes2(index_n)
-    #添加最后一个结束索引
-    index[fip + 1] = int2bytes2(index_n + 1)
     index_n += 2
     offset += 8
+    #添加最后一个结束索引
+    index[fip + 1] = int2bytes2(index_n)
     #写入文件
     fd = open(ipdb, 'wb', buffering)
     fd.write(int2bytes4(offset))
@@ -222,8 +219,8 @@ if __name__ == '__main__':
         __file__ = getattr(os, 'readlink', lambda x: x)(__file__)
     file_dir = os.path.dirname(__file__)
     root_dir = os.path.dirname(file_dir)
-    ipdb1 = os.path.join(file_dir, 'directip.db')
-    ipdb2 = os.path.join(root_dir, 'data', 'directip.db')
+    ipdb1 = os.path.join(root_dir, 'data', 'directip.db')
+    ipdb2 = os.path.join(file_dir, 'directip.db')
     Tips = '''
 ********************************************
 *   从 APNIC 下载，放入数据目录 --- 按 1   *
@@ -258,7 +255,7 @@ if __name__ == '__main__':
         elif n == 6:
             download_both_cniplist_as_db(ipdb2)
         elif n == 7:
-            test(ipdb1)
+            test(ipdb2)
         else:
             print('输入错误！')
 else:
