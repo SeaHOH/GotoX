@@ -81,7 +81,6 @@ class DirectIPv4Database:
 
 directipdb = os.path.join(data_dir, 'directip.db')
 direct_cache = LRUCache(GC.DNS_CACHE_ENTRIES//2)
-ipdbmtime = 0
 
 def isdirect(host):
     if ipdb is None:
@@ -97,15 +96,16 @@ def isdirect(host):
     direct_cache[host] = direct = ipv4 in ipdb if ipv4 else False
     return direct
 
-ipdbmtime = os.path.getmtime(directipdb)
-
 def load_ipdb():
     global ipdb, IPDBVer
     ipdb = DirectIPv4Database(directipdb)
     IPDBVer = ipdb.update
 
 def check_modify():
-    global ipdbmtime
+    if os.path.exists(directipdb):
+        ipdbmtime = os.path.getmtime(directipdb)
+    else:
+        ipdbmtime = 0
     while True:
         sleep(10)
         if os.path.exists(directipdb):
