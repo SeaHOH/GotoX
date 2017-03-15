@@ -138,6 +138,7 @@ def download_apnic_cniplist(ipdb):
         elif line.startswith(b'apnic|CN|ipv4'):
             ip = line.decode().split('|')
             iplist.append((ip2int(ip[3]), mask_dict[ip[4]]))
+    fd.close()
     log('APNIC IP 下载完毕')
     return iplist
 
@@ -151,6 +152,7 @@ def download_17mon_cniplist(ipdb):
     for line in fd:
         ip, mask = line.decode().strip('\r\n').split('/')
         iplist.append((ip2int(ip), 32 - int(mask)))
+    fd.close()
     log('17mon IP 下载完毕')
     return iplist
 
@@ -259,5 +261,4 @@ if __name__ == '__main__':
         else:
             print('输入错误！')
 else:
-    import local.clogging
-    log = local.clogging.debug
+    from local.clogging import debug as log
