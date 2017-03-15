@@ -86,24 +86,15 @@ ipdbmtime = 0
 def isdirect(host):
     if ipdb is None:
         return False
-    hostisip = isip(host)
-    if hostisip:
-        ips = host,
-    elif host in direct_cache:
+    if host in direct_cache:
         return direct_cache[host]
-    else:
-        ips = dns_resolve(host)
+    ips = (host,) if isip(host) else dns_resolve(host)
     ipv4 = None
     for ip in ips:
         if isipv4(ip):
             ipv4 = ip
             break
-    if ipv4:
-        direct = ipv4 in ipdb
-    else:
-        direct = False
-    if not hostisip:
-        direct_cache[host] = direct
+    direct_cache[host] = direct = ipv4 in ipdb if ipv4 else False
     return direct
 
 ipdbmtime = os.path.getmtime(directipdb)
