@@ -25,6 +25,7 @@ from .common import (
     isip
     )
 from .common.dns import set_DNS, dns_resolve
+from .common.proxy import parse_proxy
 from .common.region import isdirect
 from .GlobalConfig import GC
 from .GAEUpdate import testip, testipuseable
@@ -611,7 +612,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         proxy = socks.socksocket()
         proxy.set_proxy(socks.PROXY_TYPES[proxytype], proxyhost, proxyport, True, proxyuser, proxypass)
         proxy.connect((self.host, self.port))
-        logging.info('%s 转发"%s %s" 到[%s]代理 %r', self.target, self.command, self.url or self.path, proxytype, proxyhost)
+        logging.info('%s:%d 转发 "%s %s" 到 [%s] 代理', proxyhost, proxyport, self.command, self.url or self.path, proxytype)
         self.forward_socket(proxy)
 
     def do_REDIRECT(self):
