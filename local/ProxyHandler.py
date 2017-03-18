@@ -592,7 +592,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         self.go_FAKECERT()
                     else:
                         logging.warning('%s do_FORWARD 链接远程主机 (%r, %r) 失败，尝试跳过 "CONNECT" 命令。', hostip or self.address_string(), host, port)
-                        self.write(b'HTTP/1.1 200 OK\r\n\r\n')
+                        self.write(b'HTTP/1.1 200 Connection Established\r\n\r\n')
                 else:
                     logging.warning('%s do_FORWARD 链接远程主机 (%r, %r) 失败，尝试使用 "GAE" 规则。', hostip or self.address_string(), host, port)
                     self.go_GAE()
@@ -666,7 +666,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_FAKECERT(self):
         '''Deploy a fake cert to client'''
         #logging.debug('%s "AGENT %s %s:%d HTTP/1.1" - -', self.address_string(), self.command, self.host, self.port)
-        self.write(b'HTTP/1.1 200 OK\r\n\r\n')
+        self.write(b'HTTP/1.1 200 Connection Established\r\n\r\n')
         ssl_context = self.get_ssl_context()
         try:
             ssl_sock = ssl_context.wrap_socket(self.connection, server_side=True)
@@ -865,7 +865,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def forward_socket(self, remote, timeout=30, tick=4, maxping=None, maxpong=None):
         '''Forward local and remote connection'''
         if self.command == 'CONNECT':
-            self.connection.sendall(b'HTTP/1.1 200 OK\r\n\r\n')
+            self.connection.sendall(b'HTTP/1.1 200 Connection Established\r\n\r\n')
         else:
             http_headers = ''.join('%s: %s\r\n' % (k.title(), v) for k, v in self.headers.items() if k.title() not in skip_request_headers)
             rebuilt_request = '%s\r\n%s\r\n' % (self.requestline, http_headers)
