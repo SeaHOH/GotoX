@@ -74,7 +74,7 @@ class actionfilterlist(list):
         thread.start_new_thread(self.check_modify, ())
 
     def readconfig(self):
-        CONFIG = ConfigParser()
+        CONFIG = ConfigParser(inline_comment_prefixes=('#', ';'))
         CONFIG._optcre = re.compile(r'(?P<option>[^\s]+)(?P<vi>\s+=)?\s*(?P<value>.*)')
         CONFIG.read(self.CONFIG_FILENAME)
 

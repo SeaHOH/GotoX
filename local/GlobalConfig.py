@@ -29,7 +29,7 @@ _SSLv = {
 
 #load config from proxy.ini
 ENV_CONFIG_PREFIX = 'GOTOX_'
-CONFIG = ConfigParser()
+CONFIG = ConfigParser(inline_comment_prefixes=('#', ';'))
 CONFIG._optcre = re.compile(r'(?P<option>[^=\s]+)\s*(?P<vi>=?)\s*(?P<value>.*)')
 
 class GC:
