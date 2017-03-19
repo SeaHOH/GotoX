@@ -134,7 +134,7 @@ def main():
             # https://support.google.com/websearch/answer/186669?hl=zh-Hans
             google_blacklist = ['216.239.32.20', '74.125.127.102', '74.125.155.102', '74.125.39.102', '74.125.39.113', '209.85.229.138']
             for name, need_resolve_hosts in list(GC.IPLIST_MAP.items()):
-                if name in ('google_gws', 'google_com', 'google_yt', 'google_gs') or all(isip(x) for x in need_resolve_hosts):
+                if name in ('google_gws', 'google_com') or all(isip(x) for x in need_resolve_hosts):
                     continue
                 need_resolve_remote = [x for x in need_resolve_hosts if ':' not in x and not isipv4(x)]
                 resolved_iplist = [x for x in need_resolve_hosts if x not in need_resolve_remote]
@@ -153,12 +153,9 @@ def main():
                         resolved_iplist += sum([socket.gethostbyname_ex(x)[-1] for x in need_resolve_remote], [])
                         break
                 if name.startswith('google_'):
-                    iplist_prefix = re.split(r'[\.:]', resolved_iplist[0])[0]
-                    resolved_iplist = list(set(x for x in resolved_iplist if x.startswith(iplist_prefix)))
+                    resolved_iplist = list(set(resolved_iplist) - set(google_blacklist))
                 else:
                     resolved_iplist = list(set(resolved_iplist))
-                if name.startswith('google_'):
-                    resolved_iplist = list(set(resolved_iplist) - set(google_blacklist))
                 if len(resolved_iplist) == 0:
                     logging.warning('自定义 host 列表 %r 解析结果为空，请检查你的配置 %r。', name, GC.CONFIG_FILENAME)
                     sys.exit(-1)
@@ -193,10 +190,7 @@ def main():
                     ctypes.windll.user32.SendMessageW(hwnd, 128, 1, hicon) #任务栏
             else:
                 logging.warning('图标文件“GotoX.ico”丢失。')
-            if not GC.LISTEN_VISIBLE:
-                ctypes.windll.user32.ShowWindow(hwnd, 0)
-            else:
-                ctypes.windll.user32.ShowWindow(hwnd, 1)
+            ctypes.windll.user32.ShowWindow(hwnd, 1 if GC.LISTEN_VISIBLE else 0)
             if GC.LISTEN_CHECKPROCESS:
                 blacklist = {
                     'BaiduSdSvc'   : '百毒',

@@ -2,7 +2,6 @@
 
 import os
 import sys
-import glob
 from local import clogging as logging
 
 app_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -16,6 +15,7 @@ packages = os.path.join(py_dir, 'site-packages')
 
 #自带 py 已经添加
 if os.path.dirname(sys.executable) != py_dir:
+    import glob
     #优先导入当前运行 py 已安装模块
     sys.path.append(packages)
     sys.path.extend(glob.glob('%s/*.egg' % packages))
