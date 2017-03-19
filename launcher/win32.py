@@ -10,12 +10,18 @@ if os.path.islink(__file__):
     __file__ = getattr(os, 'readlink', lambda x: x)(__file__)
 
 app_root = os.path.dirname(os.path.dirname(__file__))
-py_exe = os.path.join(app_root, 'python', 'python.exe')
+py_path = os.path.join(app_root, 'python')
+py_exe = sys.executable
 app_start = os.path.join(app_root, 'start.py')
 icon_gotox = os.path.join(app_root, 'gotox.ico')
 config_dir = os.path.join(app_root, 'config')
 ipdb_direct = os.path.join(app_root, 'data', 'directip.db')
 
+#使用安装版 Python
+if os.path.dirname(py_exe) != py_path:
+    import glob
+    helpers = os.path.join(py_path, 'site-packages', 'helpers_win32.egg')
+    sys.path.insert(0, helpers)
 sys.path.insert(0, app_root)
 
 from local import __version__ as gotoxver, clogging as logging
