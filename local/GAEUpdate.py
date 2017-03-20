@@ -77,8 +77,7 @@ def updateip(needgws=None, needcom=None):
 updateip.running = False
 
 def gettimeout():
-    nowtime = int(strftime('%H'))
-    timeout = max(GC.FINDER_MAXTIMEOUT*1.3, 1000) + min(len(GC.IPLIST_MAP['google_gws']), 20)*10 + timeToDelay[nowtime]
+    timeout = max(GC.FINDER_MAXTIMEOUT*1.3, 1000) + min(len(GC.IPLIST_MAP['google_gws']), 20)*10 + timeToDelay[strftime('%H')]
     return int(timeout)
 
 def countneedgws():

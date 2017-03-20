@@ -48,12 +48,16 @@ g_badfilebak = os.path.join(data_dir, 'ip_badbak.txt')
 g_statisticsfilebak = os.path.join(data_dir, 'statisticsbak')
 
 #加各时段 IP 延时，单位：毫秒
-timeToDelay = {    0 :   0,
-         1 :   0,  2 :   0,  3 :   0,  4 :   0,  5 :   0,  6 :   0, 
-         7 :   0,  8 :   0,  9 :  50, 10 :  50, 11 :  50, 12 : 100,
-        13 : 100, 14 : 100, 15 :  50, 16 :  50, 17 : 100, 18 : 100, 
-        19 : 150, 20 : 150, 21 : 150, 22 :  50, 23 :  50, 24 :   0
-        }
+timeToDelay = {
+    '01': 0, '09':  50, '17': 100,
+    '02': 0, '10':  50, '18': 100, 
+    '03': 0, '11':  50, '19': 150,
+    '04': 0, '12': 100, '20': 150,
+    '05': 0, '13': 100, '21': 150,
+    '06': 0, '14': 100, '22':  50,
+    '07': 0, '15':  50, '23':  50,
+    '08': 0, '16':  50, '00':   0
+    }
 
 #全局可读写数据
 class g: pass
@@ -427,7 +431,7 @@ def getgaeip(nowgaelist, needgwscnt, needcomcnt):
     g.testedok = 0
     g.testedcnt = 0
     g.testok = max(needgwscnt * 8, g.needcomcnt * 16)
-    g.maxhandletimeout = g_maxhandletimeout + timeToDelay[int(strftime('%H'))]
+    g.maxhandletimeout = g_maxhandletimeout + timeToDelay[strftime('%H')]
     PRINT('==================== 开始查找 GAE IP ====================')
     PRINT('需要查找 IP 数：%d/%d，待检测 IP 数：%d', needcomcnt, max(needgwscnt, needcomcnt), len(g.goodlist)+len(g.ipexlist)+len(g.iplist)+len(g.weaklist))
     #多线程搜索
