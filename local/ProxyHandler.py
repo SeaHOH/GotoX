@@ -734,7 +734,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         r.append('</ul>\n<hr>\n</body>\n</html>\n')
         content = '\n'.join(r).encode(enc, 'surrogateescape')
         l = len(content)
-        self.write('HTTP/1.1 200\r\n'
+        self.write('HTTP/1.1 200 Ok\r\n'
                    'Connection: close\r\n'
                    'Content-Length: %s\r\n'
                    'Content-Type: text/html; charset=%s\r\n\r\n'
@@ -776,7 +776,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     data = fp.read(1048576) # 1M
                     logging.info('%s "%s %s HTTP/1.1" 200 %d',
                         self.address_string(), self.command, self.url, filesize)
-                    self.write('HTTP/1.1 200\r\n'
+                    self.write('HTTP/1.1 200 Ok\r\n'
                                'Connection: close\r\n'
                                'Content-Length: %s\r\n'
                                'Content-Type: %s\r\n\r\n'
@@ -787,7 +787,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             except Exception as e:
                 logging.warning('%s "%s %s HTTP/1.1" 403 -，无法打开本地文件：%r',
                     self.address_string(), self.command, self.url, filename)
-                self.write('HTTP/1.1 403\r\n'
+                self.write('HTTP/1.1 403 Forbidden\r\n'
                            'Content-Type: text/html\r\n'
                            'Connection: close\r\n\r\n'
                            '<title>403 拒绝</title>\n'
@@ -798,7 +798,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             logging.warning('%s "%s %s HTTP/1.1" 404 -，无法找到本地文件：%r',
                 self.address_string(), self.command, self.url, filename)
-            self.write('HTTP/1.1 404\r\n'
+            self.write('HTTP/1.1 404 Not Found\r\n'
                        'Content-Type: text/html\r\n'
                        'Connection: close\r\n\r\n'
                        '<title>404 无法找到</title>\n'
@@ -808,7 +808,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_BLOCK(self):
         '''Return a space content with 200'''
-        content = (b'HTTP/1.1 200\r\n'
+        content = (b'HTTP/1.1 200 Ok\r\n'
                    b'Cache-Control: max-age=86400\r\n'
                    b'Expires:Oct, 01 Aug 2100 00:00:00 GMT\r\n'
                    b'Connection: close\r\n')
@@ -925,7 +925,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         with open(ca_certfile, 'rb') as fp:
             data = fp.read()
         logging.info('"%s HTTP/1.1 200"，发送 CA 证书到 %r', self.url, self.address_string())
-        self.write(b'HTTP/1.1 200\r\n'
+        self.write(b'HTTP/1.1 200 Ok\r\n'
                    b'Content-Type: application/x-x509-ca-cert\r\n')
         if self.path.lower() == self.CAPath[1]:
             self.write(b'Content-Disposition: attachment; filename="GotoXCA.crt"\r\n')
