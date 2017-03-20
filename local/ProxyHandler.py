@@ -80,6 +80,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     #可修改
     ssl_context_cache = LRUCache(32)
+    proxy_connection_time = LRUCache(32)
     badhost = LRUCache(16, 120)
     badappids = LRUCache(len(GC.GAE_APPIDS))
     maxsize = int(GC.GAE_MAXSIZE or 1024*1024*4)
@@ -604,6 +605,16 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         '''Forward to proxy server'''
         proxytype, proxyuser, proxypass, proxyaddress = parse_proxy(self.target)
         proxyhost, _, proxyport = proxyaddress.rpartition(':')
+        ips = dns_resolve(proxyhost)
+        if ips:
+            ipcnt = len(ips) 
+        else:
+            logging.error('代理地址无法解析：%s', self.target)
+            return
+        if ipcnt > 1:
+            #优先使用未使用 IP，之后按链接速度排序
+            ips.sort(key=lambda ip: self.proxy_connection_time.get(ip, 0))
+        proxyhost = ips[0]
         proxyport = int(proxyport)
         if proxytype:
             proxytype = proxytype.upper()
@@ -611,8 +622,19 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             proxytype = 'HTTP'
         proxy = socks.socksocket()
         proxy.set_proxy(socks.PROXY_TYPES[proxytype], proxyhost, proxyport, True, proxyuser, proxypass)
-        proxy.connect((self.host, self.port))
-        logging.info('%s:%d 转发 "%s %s" 到 [%s] 代理', proxyhost, proxyport, self.command, self.url or self.path, proxytype)
+        if ipcnt > 1:
+            start_time = time()
+        try:
+           proxy.connect((self.host, self.port))
+        except:
+            if ipcnt > 1:
+                self.proxy_connection_time[proxyhost] = self.fwd_timeout + 1 + random.random()
+            logging.error('%s:%d 转发 "%s %s" 到 [%s] 代理失败：%s', proxyhost, proxyport, self.command, self.url or self.path, proxytype, self.target)
+            return
+        else:
+            if ipcnt > 1:
+                self.proxy_connection_time[proxyhost] = time() - start_time
+        logging.info('%s:%d 转发 "%s %s" 到 [%s] 代理：%s', proxyhost, proxyport, self.command, self.url or self.path, proxytype, self.target)
         self.forward_socket(proxy)
 
     def do_REDIRECT(self):
