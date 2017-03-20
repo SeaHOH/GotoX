@@ -90,7 +90,7 @@ class BaseHTTPUtil:
             self.get_ssl_socket = self.get_openssl_socket
             self.get_peercert = self.get_openssl_peercert
             if GC.LINK_VERIFYG2PK:
-                self.google_verify = self.google_verify_openssl
+                self.google_verify = self.google_verify_g2
         self.set_ssl_option()
 
     def set_ssl_option(self):
@@ -139,7 +139,7 @@ class BaseHTTPUtil:
             raise ssl.SSLError('%s 证书的公司名称（%s）不是 "Google Inc"' % (address[0], subject.O))
         return cert
 
-    def google_verify_openssl(self, sock):
+    def google_verify_g2(self, sock):
         certs = sock.get_peer_cert_chain()
         if len(certs) < 3:
             raise ssl.SSLError('谷歌域名没有获取到正确的证书链：缺少中级 CA。')
