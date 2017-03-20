@@ -25,6 +25,18 @@ from .common import cert_dir, NetWorkIOError, isip
 from .common.dns import dns, dns_resolve, dnshostalias
 from .common.proxy import parse_proxy
 
+GoogleG2PKP = (
+b'-----BEGIN PUBLIC KEY-----\n'
+b'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnCoEd1zYUJE6BqOC4NhQ\n'
+b'SLyJP/EZcBqIRn7gj8Xxic4h7lr+YQ23MkSJoHQLU09VpM6CYpXu61lfxuEFgBLE\n'
+b'XpQ/vFtIOPRT9yTm+5HpFcTP9FMN9Er8n1Tefb6ga2+HwNBQHygwA0DaCHNRbH//\n'
+b'OjynNwaOvUsRBOt9JN7m+fwxcfuU1WDzLkqvQtLL6sRqGrLMU90VS4sfyBlhH82d\n'
+b'qD5jK4Q1aWWEyBnFRiL4U5W+44BKEMYq7LqXIBHHOZkQBKDwYXqVJYxOUnXitu0I\n'
+b'yhT8ziJqs07PRgOXlwN+wLHee69FM8+6PnG33vQlJcINNYmdnfsOEXmJHjfFr45y\n'
+b'aQIDAQAB\n'
+b'-----END PUBLIC KEY-----\n'
+)
+
 class BaseHTTPUtil:
     '''Basic HTTP Request Class'''
 
@@ -77,6 +89,8 @@ class BaseHTTPUtil:
             self.set_ssl_option = self.set_openssl_option
             self.get_ssl_socket = self.get_openssl_socket
             self.get_peercert = self.get_openssl_peercert
+            if GC.LINK_VERIFYG2PK:
+                self.google_verify = self.google_verify_openssl
         self.set_ssl_option()
 
     def set_ssl_option(self):
@@ -115,6 +129,23 @@ class BaseHTTPUtil:
 
     def get_openssl_peercert(self, sock):
         return sock.get_peer_certificate()
+
+    def google_verify(self, sock):
+        cert = self.get_peercert(sock)
+        if not cert:
+            raise ssl.SSLError('没有获取到证书')
+        subject = cert.get_subject()
+        if subject.O != 'Google Inc':
+            raise ssl.SSLError('%s 证书的公司名称（%s）不是 "Google Inc"' % (address[0], subject.O))
+        return cert
+
+    def google_verify_openssl(self, sock):
+        certs = sock.get_peer_cert_chain()
+        if len(certs) < 3:
+            raise ssl.SSLError('谷歌域名没有获取到正确的证书链：缺少中级 CA。')
+        if GoogleG2PKP != OpenSSL.crypto.dump_publickey(OpenSSL.crypto.FILETYPE_PEM, certs[1].get_pubkey()):
+            raise ssl.SSLError('谷歌域名没有获取到正确的证书链：中级 CA 公钥不匹配。')
+        return certs[0]
 
 linkkeeptime = GC.LINK_KEEPTIME
 gaekeeptime = GC.GAE_KEEPTIME
@@ -388,12 +419,7 @@ class HTTPUtil(BaseHTTPUtil):
                         raise socket.timeout('%d 超时' % int(ssl_sock.ssl_time*1000))
                 # verify SSL certificate.
                 if cache_key.startswith('google'):
-                    cert = self.get_peercert(ssl_sock)
-                    if not cert:
-                        raise ssl.SSLError('没有获取到证书')
-                    subject = cert.get_subject()
-                    if subject.O != 'Google Inc':
-                        raise ssl.SSLError('%s 证书的公司名称（%s）不是 "Google Inc"' % (address[0], subject.O))
+                    self.google_verify(ssl_sock)
                 # sometimes, we want to use raw tcp socket directly(select/epoll), so setattr it to ssl socket.
                 ssl_sock.sock = sock
                 ssl_sock.xip = ipaddr

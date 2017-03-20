@@ -77,6 +77,7 @@ class GC:
     LINK_WINDOW = min(CONFIG.getint('link', 'window'), 2)
     LINK_OPTIONS = CONFIG.get('link', 'options')
     LINK_OPENSSL = CONFIG.getboolean('link', 'openssl')
+    LINK_VERIFYG2PK = CONFIG.getboolean('link', 'verifyg2pk')
     LINK_LOCALSSLTXT = CONFIG.get('link', 'localssl') or 'SSLv23'
     LINK_REMOTESSLTXT = CONFIG.get('link', 'remotessl') or 'TLSv1.2'
     LINK_LOCALSSL = _SSLv[LINK_LOCALSSLTXT]

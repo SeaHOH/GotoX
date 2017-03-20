@@ -244,9 +244,7 @@ class GAE_Finder:
             ssl_sock.settimeout(g_timeout)
             if handshaked_time > g_handshaketimeout:
                 raise socket.error('handshake cost %dms timed out' % int(handshaked_time*1000))
-            cert = http_gws.get_peercert(ssl_sock)
-            if not cert:
-                raise ssl.SSLError('无法从 %s 获取证书。', ip)
+            cert = http_gws.google_verify(ssl_sock)
             domain = cert.get_subject().CN
             if not domain:
                 raise ssl.SSLError('%s 无法获取 commonName：%s ' % (ip, cert))
