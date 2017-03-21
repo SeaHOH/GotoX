@@ -39,7 +39,7 @@ _read = ConfigParser.read
 ConfigParser.read = lambda s, f, encoding='utf8': _read(s, f, encoding)
 
 def get_listen_addr():
-    CONFIG = ConfigParser()
+    CONFIG = ConfigParser(inline_comment_prefixes=('#', ';'))
     CONFIG._optcre = re.compile(r'(?P<option>[^=\s]+)\s*(?P<vi>=?)\s*(?P<value>.*)')
     CONFIG.read([CONFIG_FILENAME, CONFIG_USER_FILENAME])
     LISTEN_IP = CONFIG.get('listen', 'ip')
