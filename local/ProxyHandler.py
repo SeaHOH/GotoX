@@ -884,7 +884,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.write(b'HTTP/1.0 404\r\nContent-Type: text/html\r\n\r\n')
         self.write(message_html('404 无法访问', '不能 "%s %s"' % (self.command, self.url), '无论是通过 GAE 还是 DIRECT 都无法访问成功'))
 
-    def forward_socket(self, remote, timeout=30, tick=4, maxping=None, maxpong=None):
+    def forward_socket(self, remote, timeout=120, tick=4, maxping=None, maxpong=None):
         '''Forward local and remote connection'''
         if self.command == 'CONNECT':
             self.connection.sendall(b'HTTP/1.1 200 Connection Established\r\n\r\n')
@@ -901,8 +901,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         timecount = timeout
         try:
             while allins and timecount > 0:
-                timecount -= tick
+                start_time = time()
                 ins, _, err = select(allins, [], allins, tick)
+                timecount -= int(start_time - time())
                 if err:
                     logging.warning(err)
                     raise socket.error(err)
