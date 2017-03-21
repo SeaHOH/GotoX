@@ -264,11 +264,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             response_headers['Transfer-Encoding'] = 'chunked'
         elif length:
             response_headers['Content-Length'] = length
-        #无内容且发生错误时关闭链接
-        elif response.status in (400, 403, 405, 413, 414, 415) or response.status >= 500:
-            self.close_connection = True
-        else:
-            response_headers['Content-Length'] = 0
         cookies = response.headers.get_all('Set-Cookie')
         if cookies:
             if self.action == 'do_GAE' and len(cookies) == 1:
@@ -279,10 +274,12 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             response_headers['Content-Disposition'] = normattachment(response_headers['Content-Disposition'])
         headers_data = 'HTTP/1.1 %s %s\r\n%s\r\n' % (response.status, response.reason, ''.join('%s: %s\r\n' % x for x in response_headers.items()))
         self.write(headers_data)
-        if response.status in (300, 301, 302, 303, 305, 307) and 'Location' in response_headers:
-            logging.info('%r 返回包含重定向 %r', self.url, response_headers['Location'])
-            self.close_connection = True
         logging.debug('headers_data=%s', headers_data)
+        #重定向和发生错误时关闭链接
+        if response.status >= 300 and response.status != 304:
+            if 'Location' in response_headers:
+                logging.info('%r 返回包含重定向 %r', self.url, response_headers['Location'])
+            self.close_connection = True
         if response.status == 304:
             logging.test('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), self.action[3:], self.command, self.url, response.status, length or '-')
         else:
@@ -310,6 +307,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 else:
                     logging.warn('do_DIRECT "%s %s" 失败，尝试使用 "GAE" 规则。', self.command, self.url)
                     return self.go_GAE()
+            #发生错误时关闭链接
+            if response.status >= 400:
+                noerror = False
             #拒绝服务、非直连 IP
             if response.status == 403 and not isdirect(host):
                 logging.warn('do_DIRECT "%s %s" 链接被拒绝，尝试使用 "GAE" 规则。', self.command, self.url)
