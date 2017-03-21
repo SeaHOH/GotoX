@@ -50,8 +50,6 @@ class GC:
     LISTEN_AUTO_PORT = CONFIG.getint('listen', 'auto_port')
     LISTEN_VISIBLE = CONFIG.getboolean('listen', 'visible')
     LISTEN_AUTH = min(CONFIG.getint('listen', 'auth'), 2)
-    if LISTEN_IP == '127.0.0.1':
-        LISTEN_AUTH = 0
     LISTEN_AUTHWHITELIST = CONFIG.get('listen', 'authwhitelist')
     LISTEN_AUTHWHITELIST = tuple(LISTEN_AUTHWHITELIST.split('|')) if LISTEN_AUTHWHITELIST else ()
     LISTEN_AUTHUSER = CONFIG.get('listen', 'authuser')

@@ -226,7 +226,7 @@ elif GC.LISTEN_AUTH == 1:
                 b'Proxy-Authenticate: Basic realm=GotoX\r\n'
                 b'Content-Length: 0\r\n'
                 b'Proxy-Connection: keep-alive\r\n\r\n')
-        auth_white_list = GC.LISTEN_AUTHWHITELIST
+        auth_white_list = set(GC.LISTEN_AUTHWHITELIST)
         auth_black_list = LRUCache(32, 3600*6)
         users = GC.LISTEN_AUTHUSER
         every_try_times = 2
