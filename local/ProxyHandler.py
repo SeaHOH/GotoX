@@ -24,7 +24,7 @@ from .common import (
     message_html,
     isip
     )
-from .common.dns import set_DNS, dns_resolve
+from .common.dns import set_dns, dns_resolve
 from .common.proxy import parse_proxy
 from .common.region import isdirect
 from .GlobalConfig import GC
@@ -98,7 +98,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_action(self):
         '''Record gws connections active time'''
         if self.action in ('do_DIRECT', 'do_FORWARD'):
-            self.hostname = hostname = set_DNS(self.host, self.target)
+            self.hostname = hostname = set_dns(self.host, self.target)
             if hostname is None:
                 logging.error('无法解析主机：%r，路径：%r，请检查是否输入正确！', self.host, self.path)
                 #加密请求就不返回提示页面了，搞起来太麻烦
@@ -359,7 +359,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if self.command not in ('GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'PATCH'):
             logging.warn('GAE 不支持 "%s %s"，转用 DIRECT', self.command, self.url)
             self.action = 'do_DIRECT'
-            self.target = dns_resolve(self.host)
+            self.target = None
             return self.do_action()
         request_headers, payload = self.handle_request_headers()
         request_range = request_headers.get('Range', '')
@@ -575,7 +575,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             connection_cache_key = '%s:%d' % (hostname, port)
             for i in range(2):
                 try:
-                    remote = http_util.create_connection((host, port), connection_cache_key, self.fwd_timeout, self.ssl)
+                    remote = http_util.create_connection((host, port), hostname, connection_cache_key, self.fwd_timeout, self.ssl)
                     break
                 except NetWorkIOError as e:
                     logging.warning('%s 转发到 %r 失败：%r', e.xip[0], self.url or host, e)

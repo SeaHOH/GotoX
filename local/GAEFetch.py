@@ -23,6 +23,7 @@ def make_errinfo(response, htmltxt):
 class gae_params:
     port = 443
     ssl = True
+    hostname = 'google_gws'
     path = GC.GAE_PATH
     command = 'POST'
     fetchhost = '%s.appspot.com'
@@ -73,10 +74,9 @@ def gae_urlfetch(method, url, headers, payload, appid, timeout=None, rangefetch=
     request_headers = {'User-Agent': 'a', 'Content-Length': str(len(payload))}
     # post data
     request_params = gae_params(appid)
-    connection_cache_key = 'google_gws:443'
     realurl = 'GAE-' + url
     qGAE.get() # get start from Queue
-    response = http_gws.request(request_params, payload, request_headers, connection_cache_key=connection_cache_key, timeout=timeout, rangefetch=rangefetch, realurl=realurl)
+    response = http_gws.request(request_params, payload, request_headers, connection_cache_key='google_gws:443', timeout=timeout, rangefetch=rangefetch, realurl=realurl)
     if response is None:
         return None
     response.app_status = response.status

@@ -7,7 +7,7 @@ from functools import partial
 from time import sleep
 from . import clogging as logging
 from .compat import thread, ConfigParser
-from .common import config_dir, isipv4, isipv6, classlist
+from .common import config_dir, isip, isipv4, isipv6, classlist
 from .GlobalConfig import GC
 
 BLOCK     = 1
@@ -51,6 +51,7 @@ actToNum = {
 }
 
 isfiltername = re.compile(r'(?P<order>\d+)-(?P<action>\w+)').match
+isempty = re.compile(r'^\s*$').match
 if GC.LINK_PROFILE == 'ipv4':
     pickip = re.compile(r'(?<=\s|\|)(?:\d+\.){3}\d+(?=$|\s|\|)').findall
     ipnotuse = isipv6
@@ -105,11 +106,13 @@ class actionfilterlist(list):
                     host = re.compile(host[1:]).search
                 if path.find('@') == 0:
                     path = re.compile(path[1:]).search
-                if v and filters.action in (FORWARD, DIRECT):
-                    if '|' in v:
-                        v = pickip(' '+v.lower()) or ''
-                    elif ipnotuse(v):
-                        v = ''
+                if filters.action in (FORWARD, DIRECT):
+                    if isempty(v):
+                        v = None
+                    elif '|' in v:
+                        v = pickip(' '+v.lower()) or None
+                    elif ipnotuse(v) or not (v in GC.IPLIST_MAP or isip(v)):
+                        v = None
                 elif filters.action in (REDIRECT, IREDIRECT) and '>>' in v:
                     patterns, _, replaces = v.partition('>>')
                     patterns = patterns.rstrip(' \t')

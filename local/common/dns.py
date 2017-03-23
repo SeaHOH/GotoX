@@ -9,6 +9,7 @@ except ImportError:
     sys.exit(-1)
 
 import socket
+import threading
 from select import select
 from time import time, sleep
 from json.decoder import JSONDecoder
@@ -18,25 +19,52 @@ from local.GlobalConfig import GC
 
 jsondecoder = JSONDecoder()
 dns = LRUCache(GC.DNS_CACHE_ENTRIES, GC.DNS_CACHE_EXPIRATION)
+#需要特别指定 host IP 列表的数量不会太多，不作数量限制
+hostnames = {'hostname': 0}
+alock = threading.Lock()
 
-def set_DNS(host, iporname):
-    iporname = iporname or ()
-    if host in dns and dns[host]:
-        if isinstance(iporname, str) and iporname in GC.IPLIST_MAP:
-            return iporname
-        else:
+def reset_dns():
+    dns.clear()
+    #保持链接 GAE 列表不过期
+    dns.set('google_gws', GC.IPLIST_MAP['google_gws'], noexpire=True)
+
+reset_dns()
+
+def set_dns(host, iporname):
+    #先处理正常解析
+    if iporname is None:
+        if dns_resolve(host):
             return host
-    if isinstance(iporname, list):
-        dns[host] = iporname
-    elif iporname in GC.IPLIST_MAP:
-        dns[host] = GC.IPLIST_MAP[iporname]
-        return host if iporname.startswith('sni') else iporname
-    elif isinstance(iporname, str) and isip(iporname):
-        dns[host] = iporname,
-    else:
-        if not dns_resolve(host):
+        else:
             return
-    return host
+    key = host, str(iporname) if isinstance(iporname, list) else iporname
+    with alock:
+        hasname = None
+        if key in hostnames:
+            hostname = hostnames[key]
+            if hostname in dns:
+                return hostname
+            hasname = True
+        #重复利用别名
+        if hasname is None:
+            #增序数字作为 host 别名
+            hostnames['hostname'] += 1
+            hostname = str(hostnames['hostname'])
+        if isinstance(iporname, str):
+            #建立规则时已经剔除了不合格字串
+            if isip(iporname):
+                dns[hostname] = iporname,
+            elif iporname in GC.IPLIST_MAP:
+                if hasname is None:
+                    #保持列表名称为前缀
+                    hostname = iporname + hostname
+                dns[hostname] = GC.IPLIST_MAP[iporname]
+        elif isinstance(iporname, list):
+            dns[hostname] = iporname
+        else:
+            raise TypeError('set_DNS 第二参数类型错误：' + type(iporname))
+        hostnames[key] = hostname
+        return hostname
 
 def dns_resolve(host):
     if isip(host):
@@ -51,10 +79,6 @@ def dns_resolve(host):
     else:
         dns[host] = None
         iplist = None
-        if host.endswith('.appspot.com'):
-            #已经在查找 IP 时过滤 IP 版本
-            dns[host] = iplist = GC.IPLIST_MAP['google_gws']
-            return iplist
         iplist = dns_resolve1(host)
         if not iplist:
             iplist = dns_resolve2(host)
@@ -81,12 +105,12 @@ def address_string(item):
 class dns_params:
     ssl = True
     host = 'dns.google.com'
+    hostname = dnshostalias
     port = 443
     command = 'GET'
     headers = {'Host': host, 'User-Agent': 'GotoX Agent'}
     DNSServerPath = '/resolve?name=%s&type=%s&random_padding=%s'
     Url = 'https://%s/resolve?name=%%s&type=%%s' % host
-    host = dnshostalias
 
     __slots__ = 'path', 'url'
 

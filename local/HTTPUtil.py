@@ -22,7 +22,7 @@ from .compat import (
     urlparse
     )
 from .common import cert_dir, NetWorkIOError, isip
-from .common.dns import dns, dns_resolve, dnshostalias
+from .common.dns import dns, dns_resolve
 from .common.proxy import parse_proxy
 
 GoogleG2PKP = (
@@ -278,7 +278,7 @@ class HTTPUtil(BaseHTTPUtil):
     def get_ssl_connection_time(self, addr):
         return self.ssl_connection_time.get(addr, self.max_timeout)
 
-    def create_connection(self, address, cache_key, timeout=None, ssl=None, source_address=None, **kwargs):
+    def create_connection(self, address, hostname, cache_key, timeout=None, ssl=None, source_address=None, **kwargs):
         def _create_connection(ipaddr, timeout, queobj):
             sock = None
             ip = ipaddr[0]
@@ -325,7 +325,7 @@ class HTTPUtil(BaseHTTPUtil):
             for i in range(count):
                 sock = queobj.get()
                 if isinstance(sock, socket.socket):
-                    if False and sock.tcp_time < tcp_time_threshold:
+                    if sock.tcp_time < tcp_time_threshold:
                         cache.append((now, sock))
                     else:
                         sock.close()
@@ -347,7 +347,7 @@ class HTTPUtil(BaseHTTPUtil):
             pass
         result = None
         host, port = address
-        addresses = [(x, port) for x in dns_resolve(host)]
+        addresses = [(x, port) for x in dns[hostname]]
         if ssl:
             get_connection_time = self.get_tcp_ssl_connection_time
         else:
@@ -381,7 +381,7 @@ class HTTPUtil(BaseHTTPUtil):
                     return result
         raise result
 
-    def create_ssl_connection(self, address, cache_key, timeout=None, test=None, source_address=None, rangefetch=None, **kwargs):
+    def create_ssl_connection(self, address, hostname, cache_key, timeout=None, test=None, source_address=None, rangefetch=None, **kwargs):
         def _create_ssl_connection(ipaddr, timeout, queobj, retry=None):
             sock = None
             ssl_sock = None
@@ -401,8 +401,6 @@ class HTTPUtil(BaseHTTPUtil):
                 # pick up the sock socket
                 if cache_key == 'google_gws:443':
                     server_hostname = b'www.google.com'
-                elif host == dnshostalias:
-                    server_hostname = b'dns.google.com'
                 else:
                     server_hostname = None if isip(host) else host.encode()
                 ssl_sock = self.get_ssl_socket(sock, server_hostname)
@@ -486,7 +484,7 @@ class HTTPUtil(BaseHTTPUtil):
         except IndexError:
             pass
         result = None
-        addresses = [(x, port) for x in dns_resolve(host)]
+        addresses = [(x, port) for x in dns[hostname]]
         for i in range(self.max_retry):
             addresseslen = len(addresses)
             if rangefetch and GC.GAE_USEGWSIPLIST:
@@ -594,6 +592,7 @@ class HTTPUtil(BaseHTTPUtil):
     def request(self, request_params, payload=b'', headers={}, bufsize=8192, connection_cache_key=None, timeout=None, rangefetch=None, realurl=None):
         ssl = request_params.ssl
         address = request_params.host, request_params.port
+        hostname = request_params.hostname
         method = request_params.command
         url = request_params.url
 
@@ -611,9 +610,9 @@ class HTTPUtil(BaseHTTPUtil):
             ip = ''
             try:
                 if ssl:
-                    ssl_sock = self.create_ssl_connection(address, connection_cache_key, timeout or self.max_timeout, rangefetch=rangefetch)
+                    ssl_sock = self.create_ssl_connection(address, hostname, connection_cache_key, timeout or self.max_timeout, rangefetch=rangefetch)
                 else:
-                    sock = self.create_connection(address, connection_cache_key, timeout or self.max_timeout)
+                    sock = self.create_connection(address, hostname, connection_cache_key, timeout or self.max_timeout)
                 if ssl_sock or sock:
                     response =  self._request(ssl_sock or sock, method, request_params.path, self.protocol_version, headers, payload, bufsize=bufsize)
                     return response
