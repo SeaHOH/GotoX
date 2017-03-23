@@ -41,46 +41,9 @@ class BaseHTTPUtil:
     '''Basic HTTP Request Class'''
 
     use_openssl = 0
-    ssl_ciphers = ':'.join([
-                            'ECDHE-ECDSA-AES256-SHA',
-                            'ECDHE-RSA-AES256-SHA',
-                            'DHE-RSA-CAMELLIA256-SHA',
-                            'DHE-DSS-CAMELLIA256-SHA',
-                            'DHE-RSA-AES256-SHA',
-                            'DHE-DSS-AES256-SHA',
-                            'ECDH-RSA-AES256-SHA',
-                            'ECDH-ECDSA-AES256-SHA',
-                            'CAMELLIA256-SHA',
-                            'AES256-SHA',
-                            #'ECDHE-ECDSA-RC4-SHA',
-                            #'ECDHE-ECDSA-AES128-SHA',
-                            #'ECDHE-RSA-RC4-SHA',
-                            #'ECDHE-RSA-AES128-SHA',
-                            #'DHE-RSA-CAMELLIA128-SHA',
-                            #'DHE-DSS-CAMELLIA128-SHA',
-                            #'DHE-RSA-AES128-SHA',
-                            #'DHE-DSS-AES128-SHA',
-                            #'ECDH-RSA-RC4-SHA',
-                            #'ECDH-RSA-AES128-SHA',
-                            #'ECDH-ECDSA-RC4-SHA',
-                            #'ECDH-ECDSA-AES128-SHA',
-                            #'SEED-SHA',
-                            #'CAMELLIA128-SHA',
-                            #'RC4-SHA',
-                            #'RC4-MD5',
-                            #'AES128-SHA',
-                            #'ECDHE-ECDSA-DES-CBC3-SHA',
-                            #'ECDHE-RSA-DES-CBC3-SHA',
-                            #'EDH-RSA-DES-CBC3-SHA',
-                            #'EDH-DSS-DES-CBC3-SHA',
-                            #'ECDH-RSA-DES-CBC3-SHA',
-                            #'ECDH-ECDSA-DES-CBC3-SHA',
-                            #'DES-CBC3-SHA',
-                            'TLS_EMPTY_RENEGOTIATION_INFO_SCSV'])
+    ssl_ciphers = ssl._RESTRICTED_SERVER_CIPHERS
 
     def __init__(self, use_openssl=None, cacert=None, ssl_ciphers=None):
-        # http://docs.python.org/dev/library/ssl.html
-        # http://www.openssl.org/docs/apps/ciphers.html
         self.cacert = cacert
         if ssl_ciphers:
             self.ssl_ciphers = ssl_ciphers
@@ -641,32 +604,22 @@ class HTTPUtil(BaseHTTPUtil):
 #不安全 cipher
 # AES128-SHA
 # ECDHE-RSA-AES128-SHA
-gws_ciphers = ':'.join([
-                        #defaultTLS
-                        ##'AES128-SHA',
-                        #'AES256-SHA',
-                        ##'AES128-GCM-SHA256',
-                        'AES256-GCM-SHA384',
-                        #'ECDHE-ECDSA-AES128-SHA',
-                        'ECDHE-ECDSA-AES256-SHA',
-                        ##'ECDHE-RSA-AES128-SHA',
-                        'ECDHE-RSA-AES256-SHA',
-                        ##'ECDHE-RSA-AES128-GCM-SHA256',
-                        'ECDHE-RSA-AES256-GCM-SHA384',
-                        'ECDHE-ECDSA-AES128-GCM-SHA256',
-                        'ECDHE-ECDSA-AES256-GCM-SHA384',
-                        #defaultTLS ex
-                        'AES128-SHA256',
-                        'ECDHE-RSA-AES128-SHA256',
-                        #mixinCiphers
-                        ##'RC4-SHA',
-                        #'DES-CBC3-SHA',
-                        ##'ECDHE-RSA-RC4-SHA',
-                        #'ECDHE-RSA-DES-CBC3-SHA',
-                        #'ECDHE-ECDSA-RC4-SHA',
-                        #mixinCiphers ex
-                        'AES256-SHA256',
-                        'TLS_EMPTY_RENEGOTIATION_INFO_SCSV'])
+# http://docs.python.org/dev/library/ssl.html
+# https://www.openssl.org/docs/manmaster/man1/ciphers.html
+gws_ciphers = (
+    'ECDHE+AES256+AESGCM:'
+    'RSA+AES256+AESGCM:'
+    'ECDHE+AESGCM:'
+    'RSA+AESGCM:'
+    'ECDHE+SHA384+TLSv1.2:'
+    'RSA+SHA384+TLSv1.2:'
+    'ECDHE+SHA256+TLSv1.2:'
+    'RSA+SHA256+TLSv1.2:'
+    '!ECDHE-RSA-AES128-GCM-SHA256:'
+    '!AES128-GCM-SHA256:'
+    '!aNULL:!eNULL:!MD5:!DSS:!RC4:!3DES'
+    )
+
 def_ciphers = ssl._DEFAULT_CIPHERS
 res_ciphers = ssl._RESTRICTED_SERVER_CIPHERS
 
