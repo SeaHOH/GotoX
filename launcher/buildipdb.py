@@ -17,7 +17,7 @@ def int2bytes4(n):
     '''将整数转换为大端序字节'''
     return bytes(map(lambda b: (n >> b & 255), (24, 16, 8, 0)))
 
-Url_APNIC = 'http://ftp.apnic.net/apnic/stats/apnic/delegated-apnic-latest'
+Url_APNIC = 'https://ftp.apnic.net/apnic/stats/apnic/delegated-apnic-latest'
 Url_17MON = 'https://raw.githubusercontent.com/17mon/china_ip_list/master/china_ip_list.txt'
 mask_dict = dict((str(2**i), i) for i in range(8, 25))
 keeprange = (    '0.0.0.0/8',  #本地网络
@@ -127,9 +127,27 @@ def save_iplist_as_db(iplist, ipdb):
     log('包含 IP 范围条目数：%d' % (index_n // 2))
     log('保存地址：%s' % ipdb)
 
+__file__ = os.path.abspath(__file__)
+if os.path.islink(__file__):
+    __file__ = getattr(os, 'readlink', lambda x: x)(__file__)
+file_dir = os.path.dirname(__file__)
+root_dir = os.path.dirname(file_dir)
+# GotoX CA
+ca1 = os.path.join(root_dir, 'cert', 'CA.crt')
+# APNIC 和 GitHub 使用的 CA
+ca2 = os.path.join(root_dir, 'cert', 'cacert-get-iprange.pem')
+
+#显式加载 CA，确保正常使用
+import ssl
+context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+context.verify_mode = ssl.CERT_REQUIRED
+context.set_ciphers(ssl._RESTRICTED_SERVER_CIPHERS)
+context.load_verify_locations(ca1)
+context.load_verify_locations(ca2)
+
 def download_apnic_cniplist(ipdb):
     global update
-    fd = urllib.request.urlopen(Url_APNIC, timeout=5)
+    fd = urllib.request.urlopen(Url_APNIC, timeout=5, context=context)
     iplist = g_iplist_apnic
     for line in fd:
         if update is None and line.startswith(b'2|apnic'):
@@ -147,7 +165,7 @@ def download_17mon_cniplist(ipdb):
     import time
     #设定为当月第一天
     update = '17mon ' + time.strftime('%Y%m01', time.localtime(time.time()))
-    fd = urllib.request.urlopen(Url_17MON, timeout=5)
+    fd = urllib.request.urlopen(Url_17MON, timeout=5, context=context)
     iplist = g_iplist_17mon
     for line in fd:
         ip, mask = line.decode().strip('\r\n').split('/')
@@ -216,11 +234,6 @@ if __name__ == '__main__':
     if not addr and not set_proxy:
         print('\n跳过代理设置')
 
-    __file__ = os.path.abspath(__file__)
-    if os.path.islink(__file__):
-        __file__ = getattr(os, 'readlink', lambda x: x)(__file__)
-    file_dir = os.path.dirname(__file__)
-    root_dir = os.path.dirname(file_dir)
     ipdb1 = os.path.join(root_dir, 'data', 'directip.db')
     ipdb2 = os.path.join(file_dir, 'directip.db')
     Tips = '''
