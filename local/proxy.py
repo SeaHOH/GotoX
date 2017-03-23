@@ -157,13 +157,13 @@ def main():
                 else:
                     resolved_iplist = list(set(resolved_iplist))
                 if len(resolved_iplist) == 0:
-                    logging.warning('自定义 host 列表 %r 解析结果为空，请检查你的配置 %r。', name, GC.CONFIG_FILENAME)
+                    logging.warning('自定义 IP 列表 %r 解析结果为空，请检查你的配置 %r。', name, GC.CONFIG_FILENAME)
                     sys.exit(-1)
                 if GC.LINK_PROFILE == 'ipv4':
                     resolved_iplist = [ip for ip in resolved_iplist if isipv4(ip)]
                 elif GC.LINK_PROFILE == 'ipv6':
                     resolved_iplist = [ip for ip in resolved_iplist if isipv6(ip)]
-                logging.info('host 列表 %r 解析结果：iplist=%r', name, resolved_iplist)
+                logging.info('IP 列表 %r 解析结果：iplist=%r', name, resolved_iplist)
                 GC.IPLIST_MAP[name] = resolved_iplist
 
         network_test(True)

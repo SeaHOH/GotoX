@@ -148,12 +148,12 @@ def build_menu(systray):
     disable_item_state = proxy_state == '无' and fixed_fState or 0
     auto_item_state = proxy_state == LISTEN_AUTO and fixed_fState or 0
     gae_item_state = proxy_state == LISTEN_GAE and fixed_fState or 0
-    sub_menu3 = (('当前代理：', 'pass', MFS_DISABLED),
-                 (proxy_state, 'pass', MFS_DISABLED),
-                 (None, '-'),
-                 ('禁用代理', on_disable_proxy, disable_item_state, MFT_RADIOCHECK),
+    sub_menu3 = (('禁用代理', on_disable_proxy, disable_item_state, MFT_RADIOCHECK),
                  ('自动代理', on_enable_auto_proxy, auto_item_state, MFT_RADIOCHECK),
-                 ('GAE 代理', on_enable_gae_proxy, gae_item_state, MFT_RADIOCHECK))
+                 ('GAE 代理', on_enable_gae_proxy, gae_item_state, MFT_RADIOCHECK),
+                 (None, '-'),
+                 ('当前代理：', 'pass', MFS_DISABLED),
+                 (proxy_state, 'pass', MFS_DISABLED))
     visible = ctypes.windll.user32.IsWindowVisible(hwnd)
     show_item_state = visible and fixed_fState or 0
     hide_item_state = not visible and fixed_fState or 0

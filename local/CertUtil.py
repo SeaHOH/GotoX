@@ -229,7 +229,7 @@ def check_ca():
         if os.path.exists(ca_certdir):
             if os.path.isdir(ca_certdir):
                 logging.error('CAkey.pem 不存在，清空 Certs 文件夹。')
-                any(os.remove(x) for x in glob.glob('%s/*.crt' % ca_certdir))
+                any(os.remove(x) for x in glob.glob(os.path.join(ca_certdir, '*.crt')))
             else:
                 os.remove(ca_certdir)
                 os.mkdir(ca_certdir)
@@ -265,7 +265,7 @@ def check_ca():
     else:
         sub_keystr = dump_subkey()
     #Check Certs
-    certfiles = glob.glob('%s/*.crt' % ca_certdir)
+    certfiles = glob.glob(os.path.join(ca_certdir, '*.crt'))
     if certfiles:
         filename = random.choice(certfiles)
         with open(filename, 'rb') as fp:

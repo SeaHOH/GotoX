@@ -79,7 +79,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     CAPath = '/ca', '/cadownload'
 
     #可修改
-    ssl_context_cache = LRUCache(32)
+    context_cache = LRUCache(32)
     proxy_connection_time = LRUCache(32)
     badhost = LRUCache(16, 120)
     badappids = LRUCache(len(GC.GAE_APPIDS))
@@ -689,9 +689,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         '''Deploy a fake cert to client'''
         #logging.debug('%s "AGENT %s %s:%d HTTP/1.1" - -', self.address_string(), self.command, self.host, self.port)
         self.write(b'HTTP/1.1 200 Connection Established\r\n\r\n')
-        ssl_context = self.get_ssl_context()
+        context = self.get_context()
         try:
-            ssl_sock = ssl_context.wrap_socket(self.connection, server_side=True)
+            ssl_sock = context.wrap_socket(self.connection, server_side=True)
         except Exception as e:
             if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET):
                 logging.exception('伪造加密链接失败：host=%r，%r', self.host, e)
@@ -923,8 +923,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             remote.close()
             self.close_connection = 1
 
-    def get_ssl_context(self):
-        '''Keep a ssl_context cache'''
+    def get_context(self):
+        '''Keep a context cache'''
         host = self.host
         ip = isip(host)
         if not ip:
@@ -932,15 +932,15 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             nhost = len(hostsp)
             if nhost > 3 or (nhost == 3 and len(hostsp[-2]) > 3):
                 host = '.'.join(hostsp[1:])
-        if host in self.ssl_context_cache:
-            return self.ssl_context_cache[host]
+        if host in self.context_cache:
+            return self.context_cache[host]
         else:
             logging.debug('%s-%s first', host, ip)
             certfile, keyfile = CertUtil.get_cert(host, ip)
-            self.ssl_context_cache[host] = ssl_context = ssl.SSLContext(GC.LINK_LOCALSSL)
-            ssl_context.verify_mode = ssl.CERT_NONE
-            ssl_context.load_cert_chain(certfile, keyfile)
-            return ssl_context
+            self.context_cache[host] = context = ssl.SSLContext(GC.LINK_LOCALSSL)
+            context.verify_mode = ssl.CERT_NONE
+            context.load_cert_chain(certfile, keyfile)
+            return context
 
     def send_CA(self):
         '''Return CA cert file'''

@@ -267,9 +267,9 @@ def message_html(title, banner, detail=''):
 #def onlytime():
 #    return int(time())+random.random()
 
-isip = re.compile(r'(\d+\.){3}\d+$|(([a-f\d]{1,4}:){1,6}|:)([a-f\d]{1,4})?(:[a-f\d]{1,4}){1,6}$').match
-isipv4 = re.compile(r'(\d+\.){3}\d+$').match
-isipv6 = re.compile(r'(([a-f\d]{1,4}:){1,6}|:)([a-f\d]{1,4})?(:[a-f\d]{1,4}){1,6}$').match
+isip = re.compile(r'^(\d+\.){3}\d+$|^(([a-f\d]{1,4}:){1,6}|:)([a-f\d]{1,4})?(:[a-f\d]{1,4}){1,6}$').match
+isipv4 = re.compile(r'^(\d+\.){3}\d+$').match
+isipv6 = re.compile(r'^(([a-f\d]{1,4}:){1,6}|:)([a-f\d]{1,4})?(:[a-f\d]{1,4}){1,6}$').match
 
 class classlist(list): pass
 

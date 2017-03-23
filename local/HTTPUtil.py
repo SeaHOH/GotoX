@@ -632,8 +632,6 @@ class HTTPUtil(BaseHTTPUtil):
                         self.ssl_connection_time[ip] = self.max_timeout + 1
                 if not realurl and e.args[0] == errno.ECONNRESET:
                     raise e
-            #if i == self.max_retry - 1:
-            #    logging.warning('%s request "%s %s" 失败', ip[0], method, realurl or url)
 
 # Google video ip can act as Google FrontEnd if cipher suits not include
 # RC4-SHA
