@@ -57,32 +57,46 @@ class BaseHTTPUtil:
         self.set_ssl_option()
 
     def set_ssl_option(self):
-        self.ssl_context = ssl.SSLContext(GC.LINK_REMOTESSL)
+        self.context = ssl.SSLContext(GC.LINK_REMOTESSL)
         #validate
-        self.ssl_context.verify_mode = ssl.CERT_REQUIRED
+        self.context.verify_mode = ssl.CERT_REQUIRED
         if self.cacert:
-            self.ssl_context.load_verify_locations(self.cacert)
+            self.load_cacert()
         #obfuscate
-        self.ssl_context.set_ciphers(self.ssl_ciphers)
+        self.context.set_ciphers(self.ssl_ciphers)
 
     def set_openssl_option(self):
-        self.ssl_context = OpenSSL.SSL.Context(GC.LINK_REMOTESSL)
+        self.context = OpenSSL.SSL.Context(GC.LINK_REMOTESSL)
         #cache
         import binascii
-        self.ssl_context.set_session_id(binascii.b2a_hex(os.urandom(10)))
-        self.ssl_context.set_session_cache_mode(OpenSSL.SSL.SESS_CACHE_BOTH)
+        self.context.set_session_id(binascii.b2a_hex(os.urandom(10)))
+        self.context.set_session_cache_mode(OpenSSL.SSL.SESS_CACHE_BOTH)
         #validate
         if self.cacert:
-            self.ssl_context.load_verify_locations(self.cacert)
-            self.ssl_context.set_verify(OpenSSL.SSL.VERIFY_PEER, lambda c, x, e, d, ok: ok)
+            self.load_cacert()
+            self.context.set_verify(OpenSSL.SSL.VERIFY_PEER, lambda c, x, e, d, ok: ok)
         #obfuscate
-        self.ssl_context.set_cipher_list(self.ssl_ciphers)
+        self.context.set_cipher_list(self.ssl_ciphers)
+
+    def load_cacert(self):
+        if os.path.isdir(self.cacert):
+            import glob
+            cacerts = glob.glob(os.path.join(self.cacert, '*.pem'))
+            if cacerts:
+                for cacert in cacerts:
+                    self.context.load_verify_locations(cacert)
+                return
+        elif os.path.isfile(self.cacert):
+            self.context.load_verify_locations(self.cacert)
+            return
+        logging.error('未找到可信任 CA 证书集，GotoX 即将退出！请检查：%r', self.cacert)
+        sys.exit(-1) 
 
     def get_ssl_socket(self, sock, server_hostname=None):
-        return self.ssl_context.wrap_socket(sock, do_handshake_on_connect=False, server_hostname=server_hostname)
+        return self.context.wrap_socket(sock, do_handshake_on_connect=False, server_hostname=server_hostname)
 
     def get_openssl_socket(self, sock, server_hostname=None):
-        ssl_sock = SSLConnection(self.ssl_context, sock)
+        ssl_sock = SSLConnection(self.context, sock)
         if server_hostname:
             ssl_sock.set_tlsext_host_name(server_hostname)
         return ssl_sock
@@ -134,6 +148,8 @@ def check_tcp_connection_cache():
         for cache_key in keys:
             keeptime = gaekeeptime if cache_key.startswith('google') else linkkeeptime
             cache = tcp_connection_cache[cache_key]
+            if not cache:
+                del tcp_connection_cache[cache_key]
             try:
                 while cache:
                     ctime, sock = cache.popleft()
@@ -171,6 +187,8 @@ def check_ssl_connection_cache():
         for cache_key in keys:
             keeptime = gaekeeptime if cache_key.startswith('google') else linkkeeptime
             cache = ssl_connection_cache[cache_key]
+            if not cache:
+                del ssl_connection_cache[cache_key]
             try:
                 while cache:
                     ctime, ssl_sock = cache.popleft()
@@ -230,7 +248,7 @@ class HTTPUtil(BaseHTTPUtil):
         #    dns_resolve = self.__dns_resolve_withproxy
         #    self.create_connection = self.__create_connection_withproxy
         #    self.create_ssl_connection = self.__create_ssl_connection_withproxy
-        BaseHTTPUtil.__init__(self, GC.LINK_OPENSSL, os.path.join(cert_dir, 'cacert.pem'), ssl_ciphers)
+        BaseHTTPUtil.__init__(self, GC.LINK_OPENSSL, os.path.join(cert_dir, 'cacerts'), ssl_ciphers)
 
     def get_tcp_ssl_connection_time(self, addr):
         return self.tcp_connection_time.get(addr, False) or self.ssl_connection_time.get(addr, self.max_timeout)
