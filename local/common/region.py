@@ -46,7 +46,7 @@ class DirectIPv4Database:
             if f.read(3) != b'end':
                 raise ValueError('%s 文件格式损坏！' % filename)
             #读取更新信息
-            self.update = f.read(64).decode('utf-8')
+            self.update = f.read().decode('ascii')
         #格式化并缓存索引数据
         #使用 struct.unpack 一次性分割数据效率更高
         #每 4 字节为一个索引范围 fip：BE short -> int，对应 IP 范围序数

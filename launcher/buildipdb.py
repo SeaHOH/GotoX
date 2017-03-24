@@ -89,9 +89,9 @@ def save_iplist_as_db(iplist, ipdb):
             if fip != index_fip:
                 #前一个索引结束，序数多 1
                 #避免无法搜索从当前索引结尾地址到下个索引开始地址
-                index[index_fip + 1] = int2bytes2(index_n)
+                index[index_fip + 1] = index_b = int2bytes2(index_n)
                 #当前索引开始
-                index[fip] = int2bytes2(index_n)
+                index[fip] = index_b
                 index_fip = fip
             index_n += 2
             offset += 8
@@ -103,8 +103,8 @@ def save_iplist_as_db(iplist, ipdb):
     buffer[offset_t:] = int2bytes4(lastip_e)
     fip = lastip_s[0] * 2
     if fip != index_fip:
-        index[index_fip + 1] = int2bytes2(index_n)
-        index[fip] = int2bytes2(index_n)
+        index[index_fip + 1] = index_b = int2bytes2(index_n)
+        index[fip] = index_b
     index_n += 2
     offset += 8
     #添加最后一个结束索引
@@ -116,15 +116,18 @@ def save_iplist_as_db(iplist, ipdb):
     for i in range(224 * 2):
         fd.write(index.get(i, padding))
     fd.write(buffer[:offset])
-    fd.write(b'end')
-    fd.write(update.encode('utf-8'))
+    fd.write(b'endCN IP from ')
+    fd.write(update.encode('ascii'))
+    fd.write(b', range count: ')
+    count = str(index_n // 2)
+    fd.write(count.encode('ascii'))
     fd.close()
     #清空缓存
     g_iplist_apnic.clear()
     g_iplist_17mon.clear()
     g_index.clear()
     log('更新信息：%s' % update)
-    log('包含 IP 范围条目数：%d' % (index_n // 2))
+    log('包含 IP 范围条目数：%s' % count)
     log('保存地址：%s' % ipdb)
 
 __file__ = os.path.abspath(__file__)
@@ -137,57 +140,103 @@ ca1 = os.path.join(root_dir, 'cert', 'CA.crt')
 # APNIC 和 GitHub 使用的 CA
 ca2 = os.path.join(root_dir, 'cert', 'cacert-get-iprange.pem')
 
-#显式加载 CA，确保正常使用
-import ssl
-context = ssl.SSLContext(ssl.PROTOCOL_TLS)
-context.verify_mode = ssl.CERT_REQUIRED
-context.set_ciphers(ssl._RESTRICTED_SERVER_CIPHERS)
-context.load_verify_locations(ca1)
-context.load_verify_locations(ca2)
+context = None
+
+def download(url):
+    global context
+    if context is None:
+        #显式加载 CA，确保正常使用
+        import ssl
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+        context.verify_mode = ssl.CERT_REQUIRED
+        context.set_ciphers(ssl._RESTRICTED_SERVER_CIPHERS)
+        context.load_verify_locations(ca1)
+        context.load_verify_locations(ca2)
+    l = 0
+    while l is 0:
+        fd = None
+        try:
+            fd = urllib.request.urlopen(url, timeout=3, context=context)
+            l = int(fd.headers.get('Content-Length', 0))
+        except:
+            pass
+        if l is 0:
+            if fd:
+                fd.close()
+            log('链接直连 IP 库网址失败，重试')
+    return fd, l
 
 def download_apnic_cniplist(ipdb):
+    # APNIC 文件大、网络繁忙时，下载容易失败
     global update
-    fd = urllib.request.urlopen(Url_APNIC, timeout=5, context=context)
+    update = None
+    read = 0
+    l = None
     iplist = g_iplist_apnic
-    for line in fd:
-        if update is None and line.startswith(b'2|apnic'):
-            ip = line.decode().split('|')
-            update = 'APNIC %s/%s' % (ip[2], ip[5])
-        elif line.startswith(b'apnic|CN|ipv4'):
-            ip = line.decode().split('|')
-            iplist.append((ip2int(ip[3]), mask_dict[ip[4]]))
-    fd.close()
+    while read != l:
+        fd, l = download(Url_APNIC)
+        try:
+            for line in fd:
+                read += len(line)
+                if line.startswith(b'apnic|CN|ipv4'):
+                    ip = line.decode().split('|')
+                    if len(ip) > 4:
+                        iplist.append((ip2int(ip[3]), mask_dict[ip[4]]))
+                elif update is None and line.startswith(b'2|apnic'):
+                    ip = line.decode().split('|')
+                    if len(ip) > 5:
+                        update = 'APNIC-%s/%s' % (ip[2], ip[5])
+                elif line.startswith(b'apnic|JP|ipv6'):
+                    #不需要 IPv6 数据，提前结束
+                    read = l
+                    break
+        except:
+            pass
+        fd.close()
+        #下载失败重来， urllib.request.urlopen 不支持 headers
+        if read != l:
+            read = 0
+            iplist.clear()
+            log('APNIC IP 下载失败，重试')
     log('APNIC IP 下载完毕')
     return iplist
 
 def download_17mon_cniplist(ipdb):
+    #某些时候，不使用代理可能链接质量很差
     global update
     import time
     #设定为当月第一天
-    update = '17mon ' + time.strftime('%Y%m01', time.localtime(time.time()))
-    fd = urllib.request.urlopen(Url_17MON, timeout=5, context=context)
+    update = '17mon-' + time.strftime('%Y%m01', time.localtime(time.time()))
+    read = 0
+    l = None
     iplist = g_iplist_17mon
-    for line in fd:
-        ip, mask = line.decode().strip('\r\n').split('/')
-        iplist.append((ip2int(ip), 32 - int(mask)))
-    fd.close()
+    while read != l:
+        fd, l = download(Url_17MON)
+        try:
+            for line in fd:
+                read += len(line)
+                if b'/' in line:
+                    ip, mask = line.decode().strip('\r\n').split('/')
+                    iplist.append((ip2int(ip), 32 - int(mask)))
+        except:
+            pass
+        fd.close()
+        #下载失败重来， 反正不大
+        if read != l:
+            read = 0
+            iplist.clear()
+            log('17mon IP 下载失败，重试')
     log('17mon IP 下载完毕')
     return iplist
 
 def download_apnic_cniplist_as_db(ipdb):
-    global update
     iplist = download_apnic_cniplist(ipdb)
-    update = 'CN IP from ' + update
     save_iplist_as_db(iplist, ipdb)
-    update = None
     log('APNIC IP 已保存完毕')
 
 def download_17mon_cniplist_as_db(ipdb):
-    global update
     iplist = download_17mon_cniplist(ipdb)
-    update = 'CN IP from ' + update
     save_iplist_as_db(iplist, ipdb)
-    update = None
     log('17mon IP 已保存完毕')
 
 def download_both_cniplist_as_db(ipdb):
@@ -195,16 +244,14 @@ def download_both_cniplist_as_db(ipdb):
     iplist = download_apnic_cniplist(ipdb)
     _update = update
     iplist.extend(download_17mon_cniplist(ipdb))
-    update = 'CN IP from %s and %s' % (_update, update)
+    update = '%s and %s' % (_update, update)
     save_iplist_as_db(iplist, ipdb)
-    update = None
     log('APNIC 和 17mon IP 已保存完毕')
 
 def test(ipdb):
     global update
     update = 'keep IP test'
     save_iplist_as_db([], ipdb)
-    update = None
     log('keeep IP 已保存完毕')
 
 if __name__ == '__main__':
@@ -214,13 +261,10 @@ if __name__ == '__main__':
     set_proxy = input('是否设置代理（Y/N）：')
     set_proxy = set_proxy.upper() == 'Y'
     if set_proxy:
-        print('开始设置代理')
-    else:
-        print('\n跳过代理设置')
-    addr = '127.0.0.1:8087'
+        print('\n开始设置代理')
     while set_proxy:
-        if addr is None:
-            addr = input('请输入代理地址（IP:端口）：')
+        addr = input('\n请输入代理地址（IP:端口），'
+                     '留空使用 "127.0.0.1:8087"：\n') or '127.0.0.1:8087'
         try:
             ip, port = addr.split(':')
             socket.create_connection((ip, int(port)), timeout=1).close()
@@ -228,10 +272,9 @@ if __name__ == '__main__':
             print('\n代理地址 %r 已设置成功。' % addr)
             break
         except:
-            set_proxy = input('当前地址 %r 无法链接，是否继续设置代理（Y/N）：' % addr)
+            set_proxy = input('\n当前地址 %r 无法链接，是否继续设置代理（Y/N）：' % addr)
             set_proxy = set_proxy.upper() == 'Y'
-            addr = None
-    if not addr and not set_proxy:
+    if not set_proxy:
         print('\n跳过代理设置')
 
     ipdb1 = os.path.join(root_dir, 'data', 'directip.db')
