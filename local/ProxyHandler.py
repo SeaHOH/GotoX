@@ -83,9 +83,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     proxy_connection_time = LRUCache(32)
     badhost = LRUCache(16, 120)
     badappids = LRUCache(len(GC.GAE_APPIDS))
-    rangesize = min(int(GC.GAE_MAXSIZE or 1024 * 1024 * 3),
-                    1024 * 1024 * 3,
-                    CG.AUTORANGE_MAXSIZE * 4)
+    maxsize = int(GC.GAE_MAXSIZE or 1024*1024*4)
 
     #默认值
     ssl = False
@@ -362,25 +360,20 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.target = None
             return self.do_action()
         request_headers, payload = self.handle_request_headers()
-        #排除不支持 range 的请求
         need_autorange = self.command is not 'HEAD' and 'range=' not in self.url_parts.query
         if need_autorange:
-            #匹配网址结尾
-            need_autorange = self.url_parts.path.endswith(GC.AUTORANGE_ENDSWITH)
             request_range = request_headers.get('Range', None)
             if request_range is None:
                 self.range_end = range_start = 0
+                need_autorange = self.url_parts.path.endswith(GC.AUTORANGE_ENDSWITH)
             else:
                 range_start, range_end = tuple((x and int(x) or 0) for x in getbytes(request_range).group(1, 2))
                 if range_end is 0:
                     self.range_end = range_end
-                    if not need_autorange:
-                        #排除疑似多线程下载工具链接
-                        need_autorange = range_start is 0
+                    need_autorange = True
                 else:
                     range_length = range_end + 1 - range_start
-                    #有明确范围时，根据阀值判断
-                    need_autorange = range_length > self.rangesize
+                    need_autorange = range_length > self.maxsize
             if need_autorange:
                 logging.info('发现[autorange]匹配：%r', self.url)
                 range_end = range_start + GC.AUTORANGE_FIRSTSIZE - 1
