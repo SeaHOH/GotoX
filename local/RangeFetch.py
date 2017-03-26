@@ -57,17 +57,19 @@ class RangeFetch:
     def fetch(self):
         with RangeFetch.Lock:
             RangeFetch.obj += 1
-            needtest = RangeFetch.obj == 1
+            needtest = RangeFetch.obj is 1
         response_status = self.response.status
         response_headers = dict((k.title(), v) for k, v in self.response.getheaders())
         content_range = response_headers['Content-Range']
         start, end, length = tuple(int(x) for x in getrange(content_range).group(1, 2, 3))
-        if start == 0 and self.range_end in (0, length - 1):
+        _end = length - 1
+        if start is 0 and self.range_end in (0, _end):
             response_status = 200
             response_headers['Content-Length'] = str(length)
             del response_headers['Content-Range']
+            range_end = _end
         else:
-            range_end = self.range_end or end
+            range_end = self.range_end or _end
             response_headers['Content-Range'] = 'bytes %s-%s/%s' % (start, range_end, length)
             length = range_end + 1
             response_headers['Content-Length'] = str(length - start)
@@ -78,7 +80,7 @@ class RangeFetch:
             logging.info('RangeFetch 本地链接断开：%r, %r', self.url, e)
             self.record()
             return
-        logging.info('>>>>>>>>>>>>>>> RangeFetch 开始 %r %d-%d', self.url, start, end)
+        logging.info('>>>>>>>>>>>>>>> RangeFetch 开始 %r %d-%d', self.url, start, range_end)
 
         #开始多线程时先测试一遍 IP
         sleeptime = self.sleeptime if needtest and time() - RangeFetch.lastactive > 30 and testallgaeip(True) else 0
@@ -91,16 +93,16 @@ class RangeFetch:
         #    range_queue.put((begin, min(begin+self.maxsize-1, length-1)))
         a = end + 1
         b = end
-        n = (length-a)//self.maxsize
+        n = (length - a) // self.maxsize
         for i in range(n):
             b += self.maxsize
             range_queue.put((a, b))
             a = b + 1
         if length > a:
-            range_queue.put((a, length-1))
+            range_queue.put((a, length - 1))
 
         for i in range(self.threads):
-            spawn_later(sleeptime if i else 0, self.__fetchlet, range_queue, data_queue, i+1)
+            spawn_later(sleeptime if i else 0, self.__fetchlet, range_queue, data_queue, i + 1)
         has_peek = hasattr(data_queue, 'peek')
         peek_timeout = 120
         self.expect_begin = start
