@@ -538,8 +538,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             except Exception as e:
                 noerror = False
                 errors.append(e)
-                if isinstance(e, NetWorkIOError) and len(e.args) > 1  and 'bad write' in e.args[1]:
-                    #本地链接终止
+                if (e.args[0] in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE) or
+                        isinstance(e, NetWorkIOError) and len(e.args) > 1 and 'bad write' in e.args[1]):
+                    #链接主动终止
                     logging.debug('do_GAE %r 返回 %r，终止', self.url, e)
                     return
                 elif retry < GC.GAE_FETCHMAX - 1:
