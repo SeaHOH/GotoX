@@ -321,14 +321,12 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         except NetWorkIOError as e:
             noerror = False
             #链接重置、非直连 IP
-            if e.args[0] == errno.ECONNRESET and not isdirect(host):
+            if e.args[0] is errno.ECONNRESET and not isdirect(host):
                 logging.warning('%s do_DIRECT "%s %s" 链接被重置，尝试使用 "GAE" 规则。', self.address_string(response), self.command, self.url)
                 return self.go_GAE()
             elif e.args[0] in (errno.WSAENAMETOOLONG, errno.ENAMETOOLONG):
                 logging.error('%s do_DIRECT "%s %s" 失败：%r，返回 408', self.address_string(response), self.command, self.url, e)
                 self.write('HTTP/1.1 408 %s\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n%s' % self.responses[408])
-                #logging.warn('request "%s %s" failed:%s, try addto `withgae`', self.command, self.url, e)
-                #self.go_GAE()
             elif e.args[0] not in (errno.ECONNABORTED, errno.EPIPE):
                 raise
         except Exception as e:
@@ -533,7 +531,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             except Exception as e:
                 noerror = False
                 errors.append(e)
-                if e.args[0] in (10053, ) or isinstance(e, NetWorkIOError) and e.args[-1] and 'bad write' in e.args[-1]:
+                if isinstance(e, NetWorkIOError) and len(e.args) > 1  and 'bad write' in e.args[1]:
                     #本地链接终止
                     logging.debug('do_GAE %r 返回 %r，终止', self.url, e)
                     return
@@ -918,8 +916,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     else:
                         allins.remove(sock)
         except NetWorkIOError as e:
-            #if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTCONN, errno.EPIPE):
-            if e.args[0] not in (10053, 10054):
+            if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTCONN, errno.EPIPE):
                 logging.warning('转发 %r 失败：%r', self.url, e)
         finally:
             remote.close()

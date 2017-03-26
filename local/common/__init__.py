@@ -46,7 +46,7 @@ import threading
 import collections
 from time import time, sleep, timezone, localtime, strftime, strptime, mktime
 
-NetWorkIOError = (socket.error, ssl.SSLError, OSError) if not OpenSSL else (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
+NetWorkIOError = (socket.error, ssl.SSLError, OSError, OpenSSL.SSL.Error) if OpenSSL else (socket.error, ssl.SSLError, OSError)
 
 refreshzone = timezone - 28800
 def get_refreshtime():
