@@ -47,7 +47,7 @@ g_iplist_17mon = []
 g_index = {}
 g_padding = int2bytes2(-1)
 
-def save_iplist_as_db(iplist, ipdb):
+def save_iplist_as_db(ipdb, iplist):
     #    +---------+
     #    | 4 bytes |                     <- data length
     #    +---------------+
@@ -141,117 +141,135 @@ ca1 = os.path.join(root_dir, 'cert', 'CA.crt')
 ca2 = os.path.join(root_dir, 'cert', 'cacert-get-iprange.pem')
 
 context = None
+Req_APNIC = None
+Req_17MON = None
 
-def download(url):
+def download(req):
+    #显式加载 CA，确保正常使用
     global context
     if context is None:
-        #显式加载 CA，确保正常使用
         import ssl
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+        context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
         context.verify_mode = ssl.CERT_REQUIRED
         context.set_ciphers(ssl._RESTRICTED_SERVER_CIPHERS)
         context.load_verify_locations(ca1)
         context.load_verify_locations(ca2)
+    retry_delay = 2
+    timeout = 6
     l = 0
     while l is 0:
         fd = None
         try:
-            fd = urllib.request.urlopen(url, timeout=3, context=context)
+            fd = urllib.request.urlopen(req, timeout=timeout, context=context)
             l = int(fd.headers.get('Content-Length', 0))
         except:
             pass
         if l is 0:
             if fd:
                 fd.close()
-            log('链接直连 IP 库网址失败，重试')
+            log('链接直连 IP 库网址失败，%d 秒后重试' % retry_delay)
+            from time import sleep
+            sleep(retry_delay)
     return fd, l
 
-def download_apnic_cniplist(ipdb):
-    # APNIC 文件大、网络繁忙时，下载容易失败
-    global update
-    update = None
+def download_cniplist(ipdb, parse_cniplist):
+    #支持断点续传
+    global Req_APNIC, Req_17MON, update
+    if parse_cniplist is parse_apnic_cniplist:
+        if Req_APNIC is None:
+            Req_APNIC = req = urllib.request.Request(Url_APNIC)
+        update = None
+        name = 'APNIC'
+    elif parse_cniplist is parse_17mon_cniplist:
+        if Req_17MON is None:
+            Req_17MON = req = urllib.request.Request(Url_17MON)
+        import time
+        #设定为当月第一天
+        update = '17mon-' + time.strftime('%Y%m01', time.localtime(time.time()))
+        name = '17mon'
+    req.remove_header('Range')
     read = 0
     l = None
-    iplist = g_iplist_apnic
     while read != l:
-        fd, l = download(Url_APNIC)
-        try:
-            for line in fd:
-                read += len(line)
-                if line.startswith(b'apnic|CN|ipv4'):
-                    ip = line.decode().split('|')
-                    if len(ip) > 4:
-                        iplist.append((ip2int(ip[3]), mask_dict[ip[4]]))
-                elif update is None and line.startswith(b'2|apnic'):
-                    ip = line.decode().split('|')
-                    if len(ip) > 5:
-                        update = 'APNIC-%s/%s' % (ip[2], ip[5])
-                elif line.startswith(b'apnic|JP|ipv6'):
-                    #不需要 IPv6 数据，提前结束
-                    read = l
-                    break
-        except:
-            pass
+        fd, _l = download(req)
+        if l is None:
+            l = _l
+        iplist, _read = parse_cniplist(fd)
+        if _read is None:
+            read = l
+        else:
+            read += _read
         fd.close()
-        #下载失败重来， urllib.request.urlopen 不支持 headers
+        #下载失败续传
         if read != l:
-            read = 0
-            iplist.clear()
-            log('APNIC IP 下载失败，重试')
-    log('APNIC IP 下载完毕')
+            #往回跳过可能的缺损条目
+            read = max(read - 100, 0)
+            req.remove_header('Range')
+            req.add_header('Range', 'bytes=%d-' % read)
+            log('%s IP 下载中断，续传：%d/%d' % (name, read, l))
+    log(name + ' IP 下载完毕')
     return iplist
 
-def download_17mon_cniplist(ipdb):
-    #某些时候，不使用代理可能链接质量很差
+def parse_apnic_cniplist(fd):
     global update
-    import time
-    #设定为当月第一天
-    update = '17mon-' + time.strftime('%Y%m01', time.localtime(time.time()))
+    _update = update
+    iplist = g_iplist_apnic
     read = 0
-    l = None
+    try:
+        for line in fd:
+            read += len(line)
+            if line.startswith(b'apnic|CN|ipv4'):
+                ip = line.decode().split('|')
+                if len(ip) > 4:
+                    iplist.append((ip2int(ip[3]), mask_dict[ip[4]]))
+            elif _update is None and line.startswith(b'2|apnic'):
+                ip = line.decode().split('|')
+                if len(ip) > 5:
+                    update = _update = 'APNIC-%s/%s' % (ip[2], ip[5])
+            elif line.startswith(b'apnic|JP|ipv6'):
+                #不需要 IPv6 数据，提前结束
+                return iplist, None
+    except:
+        pass
+    return iplist, read
+
+def parse_17mon_cniplist(fd):
     iplist = g_iplist_17mon
-    while read != l:
-        fd, l = download(Url_17MON)
-        try:
-            for line in fd:
-                read += len(line)
-                if b'/' in line:
-                    ip, mask = line.decode().strip('\r\n').split('/')
-                    iplist.append((ip2int(ip), 32 - int(mask)))
-        except:
-            pass
-        fd.close()
-        #下载失败重来， 反正不大
-        if read != l:
-            read = 0
-            iplist.clear()
-            log('17mon IP 下载失败，重试')
-    log('17mon IP 下载完毕')
-    return iplist
+    read = 0
+    try:
+        for line in fd:
+            read += len(line)
+            if b'/' in line:
+                ip, mask = line.decode().strip('\r\n').split('/')
+                iplist.append((ip2int(ip), 32 - int(mask)))
+    except:
+        pass
+    return iplist, read
 
 def download_apnic_cniplist_as_db(ipdb):
-    iplist = download_apnic_cniplist(ipdb)
-    save_iplist_as_db(iplist, ipdb)
+    iplist = download_cniplist(ipdb, parse_apnic_cniplist)
+    save_iplist_as_db(ipdb, iplist)
     log('APNIC IP 已保存完毕')
 
 def download_17mon_cniplist_as_db(ipdb):
-    iplist = download_17mon_cniplist(ipdb)
-    save_iplist_as_db(iplist, ipdb)
+    iplist = download_cniplist(ipdb, parse_17mon_cniplist)
+    save_iplist_as_db(ipdb, iplist)
     log('17mon IP 已保存完毕')
 
 def download_both_cniplist_as_db(ipdb):
     global update
-    iplist = download_apnic_cniplist(ipdb)
+    _iplist = download_cniplist(ipdb, parse_apnic_cniplist)
     _update = update
-    iplist.extend(download_17mon_cniplist(ipdb))
+    iplist = download_cniplist(ipdb, parse_17mon_cniplist)
+    iplist.extend(_iplist)
     update = '%s and %s' % (_update, update)
-    save_iplist_as_db(iplist, ipdb)
+    save_iplist_as_db(ipdb, iplist)
     log('APNIC 和 17mon IP 已保存完毕')
 
 def test(ipdb):
     global update
     update = 'keep IP test'
-    save_iplist_as_db([], ipdb)
+    save_iplist_as_db(ipdb, [])
     log('keeep IP 已保存完毕')
 
 if __name__ == '__main__':
