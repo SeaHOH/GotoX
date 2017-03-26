@@ -60,6 +60,7 @@ class GC:
     GAE_APPIDS = re.findall(r'[\w\-\.]+', CONFIG.get('gae', 'appid').replace('.appspot.com', ''))
     GAE_PASSWORD = CONFIG.get('gae', 'password').strip()
     GAE_PATH = CONFIG.get('gae', 'path')
+    GAE_TIMEOUT = max(CONFIG.getint('gae', 'timeout'), 3)
     GAE_KEEPALIVE = CONFIG.getboolean('gae', 'keepalive')
     GAE_KEEPTIME = CONFIG.getint('gae', 'keeptime')
     GAE_MAXREQUESTS = min(CONFIG.getint('gae', 'maxrequsts'), 5)
@@ -81,7 +82,7 @@ class GC:
     LINK_LOCALSSL = _SSLv[LINK_LOCALSSLTXT]
     LINK_REMOTESSL = max(_SSLv[LINK_REMOTESSLTXT]+1, 4) if LINK_OPENSSL else max(_SSLv[LINK_REMOTESSLTXT], 3)
     LINK_TIMEOUT = max(CONFIG.getint('link', 'timeout'), 3)
-    LINK_FWDTIMEOUT = max(CONFIG.getint('link', 'fwd_timeout'), 2)
+    LINK_FWDTIMEOUT = max(CONFIG.getint('link', 'fwdtimeout'), 2)
     LINK_KEEPTIME = CONFIG.getint('link', 'keeptime')
 
     IPLIST_MAP = dict((k.lower(), [x for x in v.split('|') if x]) for k, v in CONFIG.items('iplist'))

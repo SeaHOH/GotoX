@@ -297,7 +297,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         request_headers, payload = self.handle_request_headers()
         try:
             connection_cache_key = '%s:%d' % (hostname, self.port)
-            response = http_util.request(self, payload, request_headers, connection_cache_key=connection_cache_key, timeout=self.fwd_timeout)
+            response = http_util.request(self, payload, request_headers, connection_cache_key=connection_cache_key)
             if not response:
                 if self.target is not None or self.url_parts.path.endswith('ico') or isdirect(host):
                     #非默认规则、网站图标、直连 IP
@@ -575,7 +575,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             connection_cache_key = '%s:%d' % (hostname, port)
             for i in range(2):
                 try:
-                    remote = http_util.create_connection((host, port), hostname, connection_cache_key, self.fwd_timeout, self.ssl)
+                    remote = http_util.create_connection((host, port), hostname, connection_cache_key, self.fwd_timeout, self.ssl, True)
                     break
                 except NetWorkIOError as e:
                     logging.warning('%s 转发到 %r 失败：%r', e.xip[0], self.url or host, e)
@@ -584,7 +584,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 remote.settimeout(None)
         else:
             hostip = random.choice(dns_resolve(host))
-            remote = http_util.create_connection((hostip, int(port)), self.fwd_timeout, self.ssl)
+            remote = http_util.create_connection((hostip, int(port)), self.fwd_timeout, self.ssl, True)
         if remote is None:
             if not isdirect(host):
                 if self.command == 'CONNECT':

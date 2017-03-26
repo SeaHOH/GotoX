@@ -35,7 +35,7 @@ class gae_params:
         self.host = self.fetchhost % appid
         self.url = self.fetchserver % appid
 
-def gae_urlfetch(method, url, headers, payload, appid, timeout=None, rangefetch=None, **kwargs):
+def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
     if GC.GAE_PASSWORD:
         kwargs['Password'] = GC.GAE_PASSWORD
     if GC.GAE_SSLVERIFY:
@@ -76,7 +76,7 @@ def gae_urlfetch(method, url, headers, payload, appid, timeout=None, rangefetch=
     request_params = gae_params(appid)
     realurl = 'GAE-' + url
     qGAE.get() # get start from Queue
-    response = http_gws.request(request_params, payload, request_headers, connection_cache_key='google_gws:443', timeout=timeout, rangefetch=rangefetch, realurl=realurl)
+    response = http_gws.request(request_params, payload, request_headers, connection_cache_key='google_gws:443', getfast=getfast, realurl=realurl)
     if response is None:
         return None
     response.app_status = response.status

@@ -24,7 +24,7 @@ class RangeFetch:
     threads = GC.AUTORANGE_THREADS or 2
     minip = max(threads-2, 3)
     lowspeed = GC.AUTORANGE_LOWSPEED or 1024*32
-    timeout = GC.FINDER_MAXTIMEOUT/1000
+    timeout = max(GC.FINDER_MAXTIMEOUT/1000, 0.8)
     sleeptime = GC.FINDER_MAXTIMEOUT/500.0
     delable = GC.GAE_USEGWSIPLIST
     delay_size = max(min(maxsize, 1024*1024), 1024*128)
@@ -177,7 +177,7 @@ class RangeFetch:
                         response = self.response
                         self.response = None
                     else:
-                        response = gae_urlfetch(self.command, self.url, headers, self.payload, appid, timeout=self.timeout, rangefetch=True)
+                        response = gae_urlfetch(self.command, self.url, headers, self.payload, appid, getfast=self.timeout)
                     if response:
                         if response.xip[0] in self.iplist:
                             self._last_app_status[appid] = response.app_status
