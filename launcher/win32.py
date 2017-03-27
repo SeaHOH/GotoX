@@ -179,18 +179,24 @@ systray_GotoX.start()
 start_GotoX()
 #LISTEN_GAE, LISTEN_AUTO = get_listen_addr()
 sleep(1)
-systray_GotoX.show_balloon('\nGotoX 已经启动。        \n\n'
-                           '左键单击：打开菜单\n\n'
-                           '左键双击：打开配置\n\n'
-                           '右键单击：隐藏窗口\n\n'
-                           '当前系统代理设置为：\n'
-                           '    %s' % proxy_state,
-                           'GotoX 通知', 4 | 32, 15)
+systray_GotoX.update(
+    hover_text='GotoX\n当前系统（IE）代理：\n' + proxy_state,
+    balloons=('\nGotoX 已经启动。        \n\n'
+              '左键单击：打开菜单\n\n'
+              '左键双击：打开配置\n\n'
+              '右键单击：隐藏窗口\n\n'
+              '当前系统代理设置为：\n'
+              '    %s' % proxy_state,
+              'GotoX 通知', 4 | 32, 15)
+    )
 
 while True:
     now_proxy_state = get_proxy_state()
     if proxy_state != now_proxy_state:
         text = '设置由：\n      %s\n变更为：\n      %s' % (proxy_state, now_proxy_state)
         proxy_state = now_proxy_state
-        systray_GotoX.show_balloon(text, '系统代理改变', 2 | 32, 15)
+        systray_GotoX.update(
+            hover_text='GotoX\n当前系统（IE）代理：\n' + proxy_state,
+            balloons=(text, '系统代理改变', 2 | 32, 15)
+            )
     sleep(5)
