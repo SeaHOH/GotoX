@@ -57,7 +57,7 @@ skip_request_headers = (
     'Proxy-Connection',
     'Upgrade',
     'X-Chrome-Variations',
-    'Connection',
+    #'Connection',
     #'Cache-Control'
     )
 
@@ -92,6 +92,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     fakecert = False
     url = None
     url_parts = None
+    _close_connection = False
 
     def setup(self):
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
@@ -238,9 +239,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def handle_request_headers(self):
         request_headers = dict((k.title(), v) for k, v in self.headers.items() if k.title() not in skip_request_headers)
-        connection = self.headers.get('Connection') or self.headers.get('Proxy-Connection')
+        connection = request_headers.get('Connection', None) or self.headers.get('Proxy-Connection')
         if connection:
-            request_headers['Connection'] = connection
+            if connection.lower() is not 'close':
+                request_headers['Connection'] = 'keep-alive'
+            if self.protocol_version < 'HTTP/1.1' and connection.lower() is not 'keep-alive':
+                #记录肯定会关闭的本地链接
+                self._close_connection = True
         payload = b''
         if 'Content-Length' in request_headers:
             try:
@@ -251,8 +256,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return request_headers, payload
 
     def handle_response_headers(self, response):
-        response_headers = dict((k.title(), v) for k, v in response.getheaders() if k.title() not in skip_response_headers)
-        length = response.getheader('Content-Length')
+        response_headers = dict((k.title(), v) for k, v in response.headers.items() if k.title() not in skip_response_headers)
+        self.close_connection = self._close_connection
+        if not self.close_connection:
+            self.close_connection = response_headers.get('Connection', None) is 'close'
+        length = response.headers.get('Content-Length')
         if hasattr(response, 'data'):
             # goproxy 服务端错误信息处理预读数据
             data = response.data
@@ -263,9 +271,17 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             data = response.read(8192)
         need_chunked = data and not length # response 中的数据已经正确解码
         if need_chunked:
-            response_headers['Transfer-Encoding'] = 'chunked'
+            if self.protocol_version >= 'HTTP/1.1':
+                response_headers['Transfer-Encoding'] = 'chunked'
+            else:
+                # HTTP/1.1 以下不支持 chunked
+                need_chunked = False
+                self.close_connection = True
         elif length:
             response_headers['Content-Length'] = length
+        else:
+            #明确设置为 0
+            response_headers['Content-Length'] = 0
         cookies = response.headers.get_all('Set-Cookie')
         if cookies:
             if self.action == 'do_GAE' and len(cookies) == 1:
@@ -295,7 +311,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         host = self.host
         response = None
         noerror = True
-        self.close_connection = 2
         request_headers, payload = self.handle_request_headers()
         try:
             connection_cache_key = '%s:%d' % (hostname, self.port)
@@ -339,10 +354,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if response:
                 response.close()
                 if noerror:
-                    if self.close_connection is 2:
-                        connection = response.getheader('Connection')
-                        if connection:
-                            self.close_connection = connection.lower() == 'close'
                     #放入套接字缓存
                     if self.ssl:
                         if GC.GAE_KEEPALIVE or not connection_cache_key.startswith('google'):
@@ -353,6 +364,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             response.sock.close()
                     else:
                         tcp_connection_cache[connection_cache_key].append((time(), response.sock))
+                else:
+                    self.close_connection = True
+            else:
+                self.close_connection = True
 
     def do_GAE(self):
         '''GAE http urlfetch'''
@@ -510,9 +525,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if headers_sent and headers_sent != response.status:
                     continue
                 #发生异常时的判断条件，放在 read 操作之前
-                self.close_connection = 2
-                content_range = response.getheader('Content-Range')
-                accept_ranges = response.getheader('Accept-Ranges')
+                content_range = response.headers.get('Content-Range')
+                accept_ranges = response.headers.get('Accept-Ranges')
                 if content_range:
                     start = int(getstart(content_range).group(1)[0])
                 # 服务器不支持 Range 且错误返回成功状态
@@ -560,17 +574,16 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if response:
                     response.close()
                     if noerror:
-                        if self.close_connection is 2:
-                            #connection = self.headers.get('Connection') or self.headers.get('Proxy-Connection')
-                            connection = response.getheader('Connection')
-                            if connection:
-                                self.close_connection = connection.lower() == 'close'
                         if GC.GAE_KEEPALIVE:
                             #放入套接字缓存
                             ssl_connection_cache['google_gws:443'].append((time(), response.sock))
                         else:
                             #干扰严重时考虑不复用
                             response.sock.close()
+                    else:
+                        self.close_connection = True
+                else:
+                    self.close_connection = True
 
     def do_FORWARD(self):
         '''Forward socket'''
