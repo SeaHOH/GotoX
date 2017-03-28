@@ -378,10 +378,10 @@ class HTTPUtil(BaseHTTPUtil):
             # disable negal algorithm to send http request quickly.
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
             # pick up the sock socket
-            if cache_key is 'google_gws:443':
+            if cache_key == 'google_gws:443':
                 server_hostname = b'www.google.com'
             else:
-                server_hostname = None if host and isip(host) else host.encode()
+                server_hostname = None if isip(host) else host.encode()
             ssl_sock = self.get_ssl_socket(sock, server_hostname)
             # set a short timeout to trigger timeout retry more quickly.
             ssl_sock.settimeout(1)
