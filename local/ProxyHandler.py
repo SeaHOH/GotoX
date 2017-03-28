@@ -243,7 +243,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if connection:
             if connection.lower() is not 'close':
                 request_headers['Connection'] = 'keep-alive'
-            if self.protocol_version < 'HTTP/1.1' and connection.lower() is not 'keep-alive':
+            if self.protocol_version < 'HTTP/1.1' and connection.lower() != 'keep-alive':
                 #记录肯定会关闭的本地链接
                 self._close_connection = True
         payload = b''
@@ -338,7 +338,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         except NetWorkIOError as e:
             noerror = False
             #链接重置、非直连 IP
-            if e.args[0] is errno.ECONNRESET and not isdirect(host):
+            if e.args[0] == errno.ECONNRESET and not isdirect(host):
                 logging.warning('%s do_DIRECT "%s %s" 链接被重置，尝试使用 "GAE" 规则。', self.address_string(response), self.command, self.url)
                 return self.go_GAE()
             elif e.args[0] in (errno.WSAENAMETOOLONG, errno.ENAMETOOLONG):
