@@ -400,6 +400,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 logging.info('发现[autorange]匹配：%r', self.url)
                 range_end = range_start + GC.AUTORANGE_FIRSTSIZE - 1
                 request_headers['Range'] = 'bytes=%d-%d' % (range_start, range_end)
+        else:
+            range_start = 0
         errors = []
         headers_sent = False
         #为 GAE 代理请求网址加上端口

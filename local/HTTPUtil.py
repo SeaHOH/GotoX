@@ -381,7 +381,7 @@ class HTTPUtil(BaseHTTPUtil):
             if cache_key is 'google_gws:443':
                 server_hostname = b'www.google.com'
             else:
-                server_hostname = None if isip(host) else host.encode()
+                server_hostname = None if host and isip(host) else host.encode()
             ssl_sock = self.get_ssl_socket(sock, server_hostname)
             # set a short timeout to trigger timeout retry more quickly.
             ssl_sock.settimeout(1)
