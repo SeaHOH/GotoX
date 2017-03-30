@@ -20,8 +20,7 @@ class SSLConnection:
             self._sock = None
 
     def __getattr__(self, attr):
-        if attr not in ('_context', '_sock', '_connection', '_io_refs'):
-            return getattr(self._connection, attr)
+        return getattr(self._connection, attr)
 
     def __iowait(self, io_func, *args, **kwargs):
         timeout = self._sock.gettimeout()
