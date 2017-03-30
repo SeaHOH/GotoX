@@ -241,7 +241,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         request_headers = dict((k.title(), v) for k, v in self.headers.items() if k.title() not in skip_request_headers)
         connection = request_headers.get('Connection', None) or self.headers.get('Proxy-Connection')
         if connection:
-            if connection.lower() is not 'close':
+            if connection.lower() != 'close':
                 request_headers['Connection'] = 'keep-alive'
             if self.protocol_version < 'HTTP/1.1' and connection.lower() != 'keep-alive':
                 #记录肯定会关闭的本地链接
@@ -259,7 +259,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         response_headers = dict((k.title(), v) for k, v in response.headers.items() if k.title() not in skip_response_headers)
         self.close_connection = self._close_connection
         if not self.close_connection:
-            self.close_connection = response_headers.get('Connection', None) is 'close'
+            self.close_connection = response_headers.get('Connection', None) == 'close'
         length = response.headers.get('Content-Length')
         if hasattr(response, 'data'):
             # goproxy 服务端错误信息处理预读数据
@@ -378,7 +378,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return self.do_action()
         request_headers, payload = self.handle_request_headers()
         #排除不支持 range 的请求
-        need_autorange = self.command is not 'HEAD' and 'range=' not in self.url_parts.query
+        need_autorange = self.command != 'HEAD' and 'range=' not in self.url_parts.query
         if need_autorange:
             #匹配网址结尾
             need_autorange = self.url_parts.path.endswith(GC.AUTORANGE_ENDSWITH)
@@ -560,7 +560,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     logging.debug('do_GAE %r 返回 %r，终止', self.url, e)
                     return
                 elif retry < GC.GAE_FETCHMAX - 1:
-                    if accept_ranges is 'bytes':
+                    if accept_ranges == 'bytes':
                         #重试支持 Range 的失败请求
                         request_headers['Range'] = 'bytes=%d-%s' % (start, self.range_end or '')
                     elif start > 0:
