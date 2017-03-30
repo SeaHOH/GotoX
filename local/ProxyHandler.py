@@ -196,9 +196,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 return self.send_CA()
             return self.do_LOCAL()
         self.action, self.target = get_action(self.url_parts.scheme, host, path[1:], self.url)
-        #根据伪造证书与否自动将转发转换为直连
-        if self.fakecert and self.action == 'do_FORWARD':
-            self.action = 'do_DIRECT'
         self.do_action()
 
     do_GET = do_METHOD
@@ -622,7 +619,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     logging.warning('%s do_FORWARD 链接远程主机 (%r, %r) 失败，尝试使用 "GAE" 规则。', hostip or self.address_string(), host, port)
                     self.go_GAE()
             return
-        logging.info('%s "FWD %s %s:%d HTTP/1.1" - -', remote.xip[0], self.command, host, port)
+        if self.fakecert:
+            remote = http_nor.get_ssl_socket(remote, self.host.encode())
+            remote.connect(remote.xip)
+            remote.do_handshake()
+            logging.info('%s "FWD %s %s HTTP/1.1" - -', remote.xip[0], self.command, self.url)
+        else:
+            logging.info('%s "FWD %s %s:%d HTTP/1.1" - -', remote.xip[0], self.command, host, port)
         self.forward_socket(remote)
 
     def do_PROXY(self):
@@ -649,7 +652,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if ipcnt > 1:
             start_time = time()
         try:
-           proxy.connect((self.host, self.port))
+            if self.fakecert:
+                proxy = http_nor.get_ssl_socket(proxy, self.host.encode())
+            proxy.connect((self.host, self.port))
+            if self.fakecert:
+                proxy.do_handshake()
         except:
             if ipcnt > 1:
                 self.proxy_connection_time[proxyhost] = self.fwd_timeout + 1 + random.random()
@@ -702,11 +709,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.path = target[target.find('/', target.find('//')+3):]
             #重设 action
             self.action, self.target = get_action(self.url_parts.scheme, self.host, self.path[1:], target)
-            #从非加密链接内部重定向到加密链接，结果匹配转发规则
-            if not origssl and self.ssl and self.action == 'do_FORWARD':
-                logging.error('规则冲突，请把当前第一个匹配以下网址的内部重定向规则改为一般重定向规则（推荐）：\n%s', origurl)
-                logging.error('或者，把当前第一个匹配以下网址的转发规则改为直连规则（不建议）：\n%s', target)
-                return
+            #内部重定向到加密链接，结果匹配其它代理或转发规则
+            if self.ssl and self.action in ('do_PROXY', 'do_FORWARD'):
+                self.fakecert = True
             self.do_action()
 
     def do_FAKECERT(self):
@@ -915,9 +920,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             http_headers = ''.join('%s: %s\r\n' % (k.title(), v) for k, v in self.headers.items() if k.title() not in skip_request_headers)
             rebuilt_request = '%s\r\n%s\r\n' % (self.requestline, http_headers)
-            if not isinstance(rebuilt_request, bytes):
-                rebuilt_request = rebuilt_request.encode()
-            remote.sendall(rebuilt_request)
+            remote.sendall(rebuilt_request.encode())
         local = self.connection
         buf = memoryview(bytearray(32768)) # 32K
         maxpong = maxpong or timeout
