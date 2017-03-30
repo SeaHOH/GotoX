@@ -409,6 +409,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         url = '%s:%s%s' % (self.url[:n], self.port, self.path)
         need_chunked = False
         start = range_start
+        accept_ranges = None
         for retry in range(GC.GAE_FETCHMAX):
             if retry > 0 and payload:
                 logging.warning('do_GAE 由于有上传数据 "%s %s" 终止重试', self.command, self.url)
@@ -918,7 +919,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 rebuilt_request = rebuilt_request.encode()
             remote.sendall(rebuilt_request)
         local = self.connection
-        buf = bytearray(32768) # 32K
+        buf = memoryview(bytearray(32768)) # 32K
         maxpong = maxpong or timeout
         allins = [local, remote]
         timecount = timeout
