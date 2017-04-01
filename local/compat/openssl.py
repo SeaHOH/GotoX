@@ -52,8 +52,6 @@ class SSLConnection:
                         raise socket.timeout('The socket operation timed out')
                 else:
                     raise e
-            except Exception as e:
-                raise e
 
     def accept(self):
         sock, addr = self._sock.accept()
@@ -68,14 +66,10 @@ class SSLConnection:
         self.__iowait(self._connection.connect, addr)
 
     def send(self, data, flags=0):
-        try:
+        if data:
             return self.__iowait(self._connection.send, data)
-        except SSL.SysCallError as e:
-            if e.args[0] == -1 and not data:
-                return 0
-            raise socket.error(str(e))
-        except Exception as e:
-            raise socket.error(str(e))
+        else:
+            return 0
 
     def sendall(self, data, flags=0):
         total_sent = 0
@@ -96,11 +90,11 @@ class SSLConnection:
                 return b''
             raise e
         except SSL.SysCallError as e:
-            if e.args[0] == -1 and 'Unexpected EOF' in e.args[1]:
+            if e.args[0] == -1 and 'Unexpected EOF' == e.args[1]:
                 return b''
             elif e.args[0] in (10053, 10054, 10038):
                 return b''
-            raise socket.error(str(e))
+            raise e
     read = recv
 
     def recv_into(self, buffer, nbytes=None, flags=None):
@@ -111,11 +105,11 @@ class SSLConnection:
                 return 0
             raise e
         except SSL.SysCallError as e:
-            if e.args[0] == -1 and 'Unexpected EOF' in e.args[1]:
+            if e.args[0] == -1 and 'Unexpected EOF' == e.args[1]:
                 return 0
             elif e.args[0] in (10053, 10054, 10038):
                 return 0
-            raise socket.error(str(e))
+            raise e
 
     def close(self):
         if self._io_refs < 1:
