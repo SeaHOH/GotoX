@@ -110,8 +110,6 @@ def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
         if raw_response_length == 3:
             _, status, reason = raw_response_list
             response.status = int(status)
-            if reason[0].isdigit():
-                _, reason = reason.split(None, 1)
             response.reason = reason.strip()
         elif raw_response_length == 2:
             _, status = raw_response_list
