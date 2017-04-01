@@ -40,6 +40,7 @@ except ImportError:
 from local.compat import thread
 import re
 import ssl
+import errno
 import socket
 import string
 import threading
@@ -47,6 +48,9 @@ import collections
 from time import time, sleep, timezone, localtime, strftime, strptime, mktime
 
 NetWorkIOError = (socket.error, ssl.SSLError, OSError, OpenSSL.SSL.Error) if OpenSSL else (socket.error, ssl.SSLError, OSError)
+reset_errno = errno.ECONNRESET, errno.WSAENAMETOOLONG, errno.ENAMETOOLONG
+closed_errno = errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE
+pass_errno = -1, errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE
 
 refreshzone = timezone - 28800
 def get_refreshtime():

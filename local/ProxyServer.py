@@ -2,12 +2,11 @@
 
 import sys
 import socket
-import errno
 import random
 from time import sleep
 from . import clogging as logging
 from .compat import thread, SocketServer
-from .common import NetWorkIOError
+from .common import NetWorkIOError, pass_errno
 from .common.dns import reset_dns
 from .common.proxy import get_listen_ip
 from .GlobalConfig import GC
@@ -88,7 +87,7 @@ class LocalProxyServer(SocketServer.ThreadingTCPServer):
         try:
             self.RequestHandlerClass(request, client_address, self)
         except NetWorkIOError as e:
-            if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
+            if e.args[0] not in pass_errno:
                 raise
 
     def handle_error(self, *args):

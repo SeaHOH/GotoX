@@ -3,7 +3,6 @@
 
 import sys
 import os
-import errno
 import re
 import socket
 import ssl
@@ -21,7 +20,7 @@ from .compat import (
     httplib,
     urlparse
     )
-from .common import cert_dir, NetWorkIOError, isip
+from .common import cert_dir, NetWorkIOError, closed_errno, isip
 from .common.dns import dns, dns_resolve
 from .common.proxy import parse_proxy
 
@@ -611,7 +610,7 @@ class HTTPUtil(BaseHTTPUtil):
                     logging.warning('%s _request "%s %s" 失败：%r', ip[0], method, realurl or url, e)
                     if realurl:
                         self.ssl_connection_time[ip] = self.timeout + 1
-                if not realurl and e.args[0] in (errno.ECONNRESET, errno.ECONNABORTED, errno.EPIPE):
+                if not realurl and e.args[0] in closed_errno:
                     raise e
 
 # Google video ip can act as Google FrontEnd if cipher suits not include
