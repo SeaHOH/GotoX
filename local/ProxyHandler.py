@@ -341,9 +341,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if e.args[0] in reset_errno and not isdirect(host):
                 logging.warning('%s do_DIRECT "%s %s" 链接被重置，尝试使用 "GAE" 规则。', self.address_string(response), self.command, self.url)
                 return self.go_GAE()
-            elif e.args[0] in (errno.WSAENAMETOOLONG, errno.ENAMETOOLONG):
-                logging.error('%s do_DIRECT "%s %s" 失败：%r，返回 408', self.address_string(response), self.command, self.url, e)
-                self.write('HTTP/1.1 408 %s\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n%s' % self.responses[408])
+            #elif e.args[0] in (10063, errno.ENAMETOOLONG):
+            #    logging.error('%s do_DIRECT "%s %s" 失败：%r，返回 408', self.address_string(response), self.command, self.url, e)
+            #    self.write('HTTP/1.1 408 %s\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n%s' % self.responses[408])
             elif e.args[0] not in pass_errno:
                 raise
         except Exception as e:

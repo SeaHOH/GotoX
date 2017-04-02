@@ -48,7 +48,8 @@ import collections
 from time import time, sleep, timezone, localtime, strftime, strptime, mktime
 
 NetWorkIOError = (socket.error, ssl.SSLError, OSError, OpenSSL.SSL.Error) if OpenSSL else (socket.error, ssl.SSLError, OSError)
-reset_errno = errno.ECONNRESET, errno.WSAENAMETOOLONG, errno.ENAMETOOLONG
+# Windows: errno.WSAENAMETOOLONG = 10063
+reset_errno = errno.ECONNRESET, 10063, errno.ENAMETOOLONG
 closed_errno = errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE
 pass_errno = -1, errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE
 
