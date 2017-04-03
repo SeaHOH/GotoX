@@ -2,8 +2,11 @@
 '''OpenSSL Connection Wrapper'''
 
 import socket
+import errno
 from OpenSSL import SSL
 from select import select
+
+zero_errno = errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTSOCK
 
 class SSLConnection:
     '''API-compatibility wrapper for Python OpenSSL's Connection-class.'''
@@ -43,13 +46,15 @@ class SSLConnection:
                 if not wd:
                     raise socket.timeout('The write operation timed out')
             except SSL.SysCallError as e:
-                if e.args[0] == 10035 and 'WSAEWOULDBLOCK' in e.args[1]:
+                if e.args[0] == errno.EWOULDBLOCK:
                     #exc_clear()
                     rd, wd, ed = select([fd], [fd], [fd], timeout)
                     if ed:
                         raise socket.error(ed)
                     if not rd and not wd:
                         raise socket.timeout('The socket operation timed out')
+                elif e.args[0] == errno.EAGAIN:
+                    continue
                 else:
                     raise e
 
@@ -70,14 +75,16 @@ class SSLConnection:
             return self.__iowait(self._connection.send, data)
         else:
             return 0
+    write = send
 
     def sendall(self, data, flags=0):
         total_sent = 0
         total_to_send = len(data)
+        if not hasattr(data, 'tobytes'):
+            data = memoryview(data)
         while total_sent < total_to_send:
             sent = self.send(data[total_sent:total_sent + 32768]) # 32K
             total_sent += sent
-    write = sendall
 
     def recv(self, bufsiz, flags=None):
         pending = self._connection.pending()
@@ -92,12 +99,15 @@ class SSLConnection:
         except SSL.SysCallError as e:
             if e.args[0] == -1 and 'Unexpected EOF' == e.args[1]:
                 return b''
-            elif e.args[0] in (10053, 10054, 10038):
+            elif e.args[0] in zero_errno:
                 return b''
             raise e
     read = recv
 
     def recv_into(self, buffer, nbytes=None, flags=None):
+        pending = self._connection.pending()
+        if pending:
+            return self._connection.recv_into(buffer)
         try:
             return self.__iowait(self._connection.recv_into, buffer, nbytes, flags)
         except SSL.ZeroReturnError as e:
@@ -107,7 +117,7 @@ class SSLConnection:
         except SSL.SysCallError as e:
             if e.args[0] == -1 and 'Unexpected EOF' == e.args[1]:
                 return 0
-            elif e.args[0] in (10053, 10054, 10038):
+            elif e.args[0] in zero_errno:
                 return 0
             raise e
 
