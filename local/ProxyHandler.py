@@ -987,12 +987,27 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             host, _, port = host.partition(':')
         return host.lower(), port
 
-    def address_string(self, response=None):
-        '''Return the connected ip or the client's ip and port'''
-        if hasattr(response, 'xip'):
-            return response.xip[0]
-        else:
-            return '%s:%s' % self.client_address[:2]
+    if GC.LISTEN_IP == '127.0.0.1':
+        def address_string(self, response=None):
+            #返回请求和响应的地址
+            if hasattr(response, 'xip'):
+                if response.xip[1] in (80, 443):
+                    return 'l:%s->%s' % (self.client_address[1], response.xip[0])
+                else:
+                    return 'l:%s->%s:%s' % (self.client_address[1], *response.xip)
+            else:
+                return 'l:%s->' % self.client_address[1]
+    else:
+        def address_string(self, response=None):
+            #返回请求和响应的地址
+            client_ip = 'l' if self.client_address[0] == '127.0.0.1' else self.client_address[0]
+            if hasattr(response, 'xip'):
+                if response.xip[1] in (80, 443):
+                    return '%s:%s->%s' % (client_ip, self.client_address[1], response.xip[0])
+                else:
+                    return '%s:%s->%s:%s' % (client_ip, self.client_address[1], *response.xip)
+            else:
+                return '%s:%s->' % (client_ip, self.client_address[1])
 
 class GAEProxyHandler(AutoProxyHandler):
 
