@@ -74,6 +74,7 @@ skip_response_headers = (
 
 class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
+    protocol_version = 'HTTP/1.1'
     nLock = threading.Lock()
     nappid = 0
 
@@ -95,7 +96,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     fakecert = False
     url = None
     url_parts = None
-    _close_connection = False
 
     def setup(self):
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
@@ -116,6 +116,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 testip.lastactive = time()
         elif self.action == 'do_GAE':
             testip.lastactive = time()
+        self.close_connection = True
         getattr(self, self.action)()
 
     def _do_CONNECT(self):
@@ -239,13 +240,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def handle_request_headers(self):
         request_headers = dict((k.title(), v) for k, v in self.headers.items() if k.title() not in skip_request_headers)
-        connection = request_headers.get('Connection', None) or self.headers.get('Proxy-Connection')
-        if connection:
-            if connection.lower() != 'close':
-                request_headers['Connection'] = 'keep-alive'
-            if self.protocol_version < 'HTTP/1.1' and connection.lower() != 'keep-alive':
-                #记录肯定会关闭的本地链接
-                self._close_connection = True
+        pconnection = self.headers.get('Proxy-Connection')
+        if pconnection and self.request_version < 'HTTP/1.1' and pconnection.lower() != 'keep-alive':
+            self.close_connection = True
+        else:
+            self.close_connection = False
         payload = b''
         if 'Content-Length' in request_headers:
             try:
@@ -257,26 +256,23 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def handle_response_headers(self, response):
         response_headers = dict((k.title(), v) for k, v in response.headers.items() if k.title() not in skip_response_headers)
-        self.close_connection = self._close_connection
-        if not self.close_connection:
-            self.close_connection = response_headers.get('Connection', None) == 'close'
         length = response.headers.get('Content-Length')
         if hasattr(response, 'data'):
             # goproxy 服务端错误信息处理预读数据
             data = response.data
             length = str(len(data))
             response_headers['Content-Type'] = 'text/html; charset=UTF-8'
-            self.close_connection = True
         else:
             data = response.read(8192)
         need_chunked = data and not length # response 中的数据已经正确解码
         if need_chunked:
-            if self.protocol_version >= 'HTTP/1.1':
+            if self.request_version == 'HTTP/1.1':
                 response_headers['Transfer-Encoding'] = 'chunked'
             else:
-                # HTTP/1.1 以下不支持 chunked
+                # HTTP/1.1 以下不支持 chunked，关闭链接
                 need_chunked = False
                 self.close_connection = True
+                response_headers['Proxy-Connection'] = 'close'
         elif length:
             response_headers['Content-Length'] = length
         else:
@@ -290,14 +286,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 response_headers['Set-Cookie'] = '\r\nSet-Cookie: '.join(cookies)
         if 'Content-Disposition' in response_headers:
             response_headers['Content-Disposition'] = normattachment(response_headers['Content-Disposition'])
+        if not self.close_connection:
+            response_headers['Proxy-Connection'] = 'keep-alive'
         headers_data = 'HTTP/1.1 %s %s\r\n%s\r\n' % (response.status, response.reason, ''.join('%s: %s\r\n' % x for x in response_headers.items()))
         self.write(headers_data)
         logging.debug('headers_data=%s', headers_data)
-        #重定向和发生错误时关闭链接
-        if response.status >= 300 and response.status != 304:
-            if 'Location' in response_headers:
-                logging.info('%r 返回包含重定向 %r', self.url, response_headers['Location'])
-            self.close_connection = True
+        if 300 <= response.status < 400 and response.status != 304 and 'Location' in response_headers:
+            logging.info('%r 返回包含重定向 %r', self.url, response_headers['Location'])
         if response.status == 304:
             logging.test('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), self.action[3:], self.command, self.url, response.status, length or '-')
         else:
@@ -364,10 +359,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             response.sock.close()
                     else:
                         tcp_connection_cache[connection_cache_key].append((time(), response.sock))
-                else:
-                    self.close_connection = True
-            else:
-                self.close_connection = True
 
     def do_GAE(self):
         '''GAE http urlfetch'''
@@ -519,7 +510,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         continue
                 #输出服务端返回的错误信息
                 if response.app_status != 200:
-                    self.close_connection = True
                     if not headers_sent:
                         data, need_chunked = self.handle_response_headers(response)
                         self.write_response_content(data, response, need_chunked)
@@ -582,10 +572,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         else:
                             #干扰严重时考虑不复用
                             response.sock.close()
-                    else:
-                        self.close_connection = True
-                else:
-                    self.close_connection = True
 
     def do_FORWARD(self):
         '''Forward socket'''
@@ -672,6 +658,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_REDIRECT(self):
         '''Redirect http'''
+        self.close_connection = False
         target = self.target
         if not target:
             return
@@ -680,6 +667,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_IREDIRECT(self):
         '''Redirect http without 30X'''
+        self.close_connection = False
         target = self.target
         if not target:
             return
@@ -806,6 +794,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_LOCAL(self, filename=None):
         '''返回一个本地文件或目录'''
+        self.close_connection = False
         path = urlparse.unquote(self.path)
         if filename:
             filename = urlparse.unquote(filename)
@@ -861,6 +850,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_BLOCK(self):
         '''Return a space content with 200'''
+        self.close_connection = False
         content = (b'HTTP/1.1 200 Ok\r\n'
                    b'Cache-Control: max-age=86400\r\n'
                    b'Expires:Oct, 01 Aug 2100 00:00:00 GMT\r\n'
@@ -911,6 +901,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.do_FAKECERT()
 
     def go_BAD(self):
+        self.close_connection = False
         logging.warn('request "%s %s" 失败, 返回 404', self.command, self.url)
         self.write(b'HTTP/1.0 404\r\nContent-Type: text/html\r\n\r\n')
         self.write(message_html('404 无法访问', '不能 "%s %s"' % (self.command, self.url), '无论是通过 GAE 还是 DIRECT 都无法访问成功'))
@@ -950,7 +941,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 raise
         finally:
             remote.close()
-            self.close_connection = 1
 
     def get_context(self):
         '''Keep a context cache'''
@@ -973,6 +963,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def send_CA(self):
         '''Return CA cert file'''
+        self.close_connection = False
         from .CertUtil import ca_certfile
         with open(ca_certfile, 'rb') as fp:
             data = fp.read()
