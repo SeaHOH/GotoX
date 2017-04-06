@@ -362,7 +362,8 @@ class HTTPUtil(BaseHTTPUtil):
                 else:
                     thread.start_new_thread(self._close_connection, (cache, addrslen-i-1, queobj, result.tcp_time))
                     return result
-        raise result
+        if result:
+            raise result
 
     def _create_ssl_connection(self, ipaddr, hostname, cache_key, timeout, host, queobj, test=None, retry=None):
         ip = ipaddr[0]
@@ -499,7 +500,8 @@ class HTTPUtil(BaseHTTPUtil):
                 else:
                     thread.start_new_thread(self._close_ssl_connection, (cache, addrslen-i-1, queobj, result.ssl_time))
                     return result
-        raise result
+        if result:
+            raise result
 
     def __create_connection_withproxy(self, address, timeout=None, source_address=None, **kwargs):
         host, port = address
