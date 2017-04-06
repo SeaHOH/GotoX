@@ -22,6 +22,7 @@ _LOGLv = {
 _SSLv = {
     'SSLv3'   : 1,
     'SSLv23'  : 2,
+    'TLS'     : 2,
     'TLSv1'   : 3,
     'TLSv1.1' : 4,
     'TLSv1.2' : 5
@@ -77,10 +78,10 @@ class GC:
     LINK_OPTIONS = CONFIG.get('link', 'options')
     LINK_OPENSSL = CONFIG.getboolean('link', 'openssl')
     LINK_VERIFYG2PK = CONFIG.getboolean('link', 'verifyg2pk')
-    LINK_LOCALSSLTXT = CONFIG.get('link', 'localssl') or 'SSLv23'
+    LINK_LOCALSSLTXT = CONFIG.get('link', 'localssl') or 'TLS'
     LINK_REMOTESSLTXT = CONFIG.get('link', 'remotessl') or 'TLSv1.2'
     LINK_LOCALSSL = _SSLv[LINK_LOCALSSLTXT]
-    LINK_REMOTESSL = max(_SSLv[LINK_REMOTESSLTXT]+1, 4) if LINK_OPENSSL else max(_SSLv[LINK_REMOTESSLTXT], 3)
+    LINK_REMOTESSL = max(_SSLv[LINK_REMOTESSLTXT], _SSLv['TLS']) + (1 if LINK_OPENSSL else 0)
     LINK_TIMEOUT = max(CONFIG.getint('link', 'timeout'), 3)
     LINK_FWDTIMEOUT = max(CONFIG.getint('link', 'fwdtimeout'), 2)
     LINK_KEEPTIME = CONFIG.getint('link', 'keeptime')
