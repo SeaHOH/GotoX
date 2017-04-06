@@ -56,7 +56,8 @@ class BaseHTTPUtil:
         self.set_ssl_option()
 
     def set_ssl_option(self):
-        self.context = ssl.SSLContext(GC.LINK_REMOTESSL)
+        #强制 GWS 使用 TLSv1.2
+        self.context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2 if self.ssl_ciphers is gws_ciphers else GC.LINK_REMOTESSL)
         #validate
         self.context.verify_mode = ssl.CERT_REQUIRED
         if self.cacert:
@@ -65,7 +66,8 @@ class BaseHTTPUtil:
         self.context.set_ciphers(self.ssl_ciphers)
 
     def set_openssl_option(self):
-        self.context = OpenSSL.SSL.Context(GC.LINK_REMOTESSL)
+        #强制 GWS 使用 TLSv1.2
+        self.context = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_2_METHOD if self.ssl_ciphers is gws_ciphers else GC.LINK_REMOTESSL)
         #cache
         import binascii
         self.context.set_session_id(binascii.b2a_hex(os.urandom(10)))
