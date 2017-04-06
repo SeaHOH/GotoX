@@ -276,7 +276,7 @@ def main():
         logging.warning('正在使用固定的 GAE IP 列表 [%s]，将不会进行 IP 检查。', GC.GAE_IPLIST)
         from time import sleep
         while True:
-            sleep(60)
+            sleep(10)
             #使用固定 IP 列表时在此处进行网络状态检查
             network_test()
 

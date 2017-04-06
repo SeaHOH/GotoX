@@ -102,7 +102,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.write = lambda d: self.wfile.write(d if isinstance(d, bytes) else d.encode())
 
     def do_action(self):
-        '''Record gws connections active time'''
+        #记录 gws 链接活动时间
+        #获取 hostname 别名
         if self.action in ('do_DIRECT', 'do_FORWARD'):
             self.hostname = hostname = set_dns(self.host, self.target)
             if hostname is None:
@@ -143,7 +144,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.ssl = self.port != 80
 
     def do_CONNECT(self):
-        '''handle CONNECT cmmand, do a filtered action'''
+        #处理 CONNECT 请求，根据规则过滤执行目标动作
+        if self.is_not_online():
+            return
         self._do_CONNECT()
         self.action, self.target = get_connect_action(self.ssl, self.host)
         #本地地址
@@ -189,7 +192,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.path = path = self.url[self.url.find('/', self.url.find('//')+3):]
 
     def do_METHOD(self):
-        '''handle others cmmand, do a filtered action'''
+        #处理其它请求，根据规则过滤执行目标动作
+        if self.is_not_online():
+            return
         self._do_METHOD()
         host = self.host
         path = self.path
@@ -211,6 +216,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     do_PATCH = do_METHOD
 
     def write_response_content(self, data, response, need_chunked):
+        #写入响应内容
         if hasattr(response, 'data'):
             # goproxy 服务端错误信息处理预读数据
             if data:
@@ -239,6 +245,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return wrote, err
 
     def handle_request_headers(self):
+        #处理请求
         request_headers = dict((k.title(), v) for k, v in self.headers.items() if k.title() not in skip_request_headers)
         pconnection = self.headers.get('Proxy-Connection')
         if pconnection and self.request_version < 'HTTP/1.1' and pconnection.lower() != 'keep-alive':
@@ -255,6 +262,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return request_headers, payload
 
     def handle_response_headers(self, response):
+        #处理响应
         response_headers = dict((k.title(), v) for k, v in response.headers.items() if k.title() not in skip_response_headers)
         length = response.headers.get('Content-Length')
         if hasattr(response, 'data'):
@@ -300,7 +308,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return data, need_chunked
 
     def do_DIRECT(self):
-        '''Direct http relay'''
+        #直接请求目标地址
         hostname = self.hostname
         http_util = http_gws if hostname.startswith('google') else http_nor
         host = self.host
@@ -361,7 +369,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         tcp_connection_cache[connection_cache_key].append((time(), response.sock))
 
     def do_GAE(self):
-        '''GAE http urlfetch'''
+        #发送请求到 GAE 代理
         if self.command not in ('GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'PATCH'):
             logging.warn('GAE 不支持 "%s %s"，转用 DIRECT', self.command, self.url)
             self.action = 'do_DIRECT'
@@ -574,7 +582,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             response.sock.close()
 
     def do_FORWARD(self):
-        '''Forward socket'''
+        #转发到请求地址
         hostname = self.hostname
         http_util = http_gws if hostname.startswith('google') else http_nor
         host, port = self.host, self.port
@@ -617,7 +625,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.forward_socket(remote)
 
     def do_PROXY(self):
-        '''Forward to proxy server'''
+        #转发到其它代理
         proxytype, proxyuser, proxypass, proxyaddress = parse_proxy(self.target)
         proxyhost, _, proxyport = proxyaddress.rpartition(':')
         ips = dns_resolve(proxyhost)
@@ -657,7 +665,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.forward_socket(proxy)
 
     def do_REDIRECT(self):
-        '''Redirect http'''
+        #重定向到目标地址
         self.close_connection = False
         target = self.target
         if not target:
@@ -666,7 +674,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.write('HTTP/1.1 301 Moved Permanently\r\nLocation: %s\r\n\r\n' % target)
 
     def do_IREDIRECT(self):
-        '''Redirect http without 30X'''
+        #直接返回重定向地址的内容
         self.close_connection = False
         target = self.target
         if not target:
@@ -705,7 +713,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.do_action()
 
     def do_FAKECERT(self):
-        '''Deploy a fake cert to client'''
+        #为当前客户链接配置一个伪造证书
         #logging.debug('%s "AGENT %s %s:%d HTTP/1.1" - -', self.address_string(), self.command, self.host, self.port)
         self.write(b'HTTP/1.1 200 Connection Established\r\n\r\n')
         context = self.get_context()
@@ -729,7 +737,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             ssl_sock.close()
 
     def list_dir(self, path, displaypath):
-        '''列表目录后将内容写入 html'''
+        #列表目录后将内容写入 html
         #改自 http.server.SimpleHTTPRequestHandler.list_directory
         try:
             namelist = os.listdir(path)
@@ -793,7 +801,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         })
 
     def do_LOCAL(self, filename=None):
-        '''返回一个本地文件或目录'''
+        #返回一个本地文件或目录
         self.close_connection = False
         path = urlparse.unquote(self.path)
         if filename:
@@ -849,7 +857,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                        % filename)
 
     def do_BLOCK(self):
-        '''Return a space content with 200'''
+        #返回空白内容
         self.close_connection = False
         content = (b'HTTP/1.1 200 Ok\r\n'
                    b'Cache-Control: max-age=86400\r\n'
@@ -907,7 +915,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.write(message_html('404 无法访问', '不能 "%s %s"' % (self.command, self.url), '无论是通过 GAE 还是 DIRECT 都无法访问成功'))
 
     def forward_socket(self, remote, timeout=120, tick=4, maxping=None, maxpong=None):
-        '''Forward local and remote connection'''
+        #在本地与远程链接间进行数据转发
         if self.command == 'CONNECT':
             self.connection.sendall(b'HTTP/1.1 200 Connection Established\r\n\r\n')
         else:
@@ -943,7 +951,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             remote.close()
 
     def get_context(self):
-        '''Keep a context cache'''
+        #维护一个 ssl context 缓存'''
         host = self.host
         ip = isip(host)
         if not ip:
@@ -962,7 +970,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return context
 
     def send_CA(self):
-        '''Return CA cert file'''
+        #返回 CA 证书
         self.close_connection = False
         from .CertUtil import ca_certfile
         with open(ca_certfile, 'rb') as fp:
@@ -974,6 +982,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.write(b'Content-Disposition: attachment; filename="GotoXCA.crt"\r\n')
         self.write('Content-Length: %s\r\n\r\n' % len(data))
         self.write(data)
+
+    def is_not_online(self):
+        #检查代理服务是否运行并释放无效链接
+        if self.server.is_not_online:
+            self.close_connection = True
+            self.connection.close()
+            return True
 
     def parse_netloc(self, netloc):
         host, has_br, port = netloc.partition(']')
@@ -1012,13 +1027,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 class GAEProxyHandler(AutoProxyHandler):
 
     def do_CONNECT(self):
-        '''handle CONNECT cmmand, do a filtered action'''
+        #处理 CONNECT 请求，使用伪造证书进行链接
         self._do_CONNECT()
         self.action = 'do_FAKECERT'
         self.do_action()
 
     def do_METHOD(self):
-        '''handle others cmmand, do a filtered action'''
+        #处理其它请求，转发到 GAE 代理
         self._do_METHOD()
         #本地地址
         if self.host.startswith(self.localhosts):

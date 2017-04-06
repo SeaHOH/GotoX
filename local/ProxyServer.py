@@ -37,7 +37,7 @@ def network_test(first=None):
                 logging.error('网络现在不可用，将每 10 秒检测一次……')
             sleep(10)
     if haserr:
-        logging.test('网络已经可以使用，%s', '初始化继续……' if first else '重新开始代理……')
+        logging.warning('网络已经可以使用，%s', '初始化继续……' if first else '重新开始代理……')
     if haserr or first:
         get_localhosts()
     #重新开始代理线程
@@ -46,6 +46,8 @@ def network_test(first=None):
 
 def start_proxyserver():
     try:
+        AutoProxy.bind_and_activate()
+        GAEProxy.bind_and_activate()
         thread.start_new_thread(AutoProxy.serve_forever, ())
         thread.start_new_thread(GAEProxy.serve_forever, ())
     except SystemError as e:
@@ -54,8 +56,8 @@ def start_proxyserver():
             sys.exit(-1)
 
 def stop_proxyserver():
-    AutoProxy.__shutdown_request = True
-    GAEProxy.__shutdown_request = True
+    AutoProxy.server_close()
+    GAEProxy.server_close()
     reset_dns()
 
 def get_localhosts():
@@ -74,8 +76,24 @@ def get_localhosts():
 
 class LocalProxyServer(SocketServer.ThreadingTCPServer):
     '''Local Proxy Server'''
-    allow_reuse_address = True
     request_queue_size = 48
+    is_not_online = True
+
+    def bind_and_activate(self):
+        self.socket = socket.socket(self.address_family, self.socket_type)
+        try:
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.socket.bind(self.server_address)
+            self.socket.listen(self.request_queue_size)
+        except:
+            self.socket.close()
+            raise
+        self.is_not_online = False
+
+    def server_close(self):
+        self.is_not_online = True
+        self.shutdown()
+        self.socket.close()
 
     def close_request(self, request):
         try:
@@ -104,8 +122,8 @@ from .ProxyHandler import AutoProxyHandler, GAEProxyHandler
 
 if GC.LISTEN_AUTH > 0:
     from .ProxyAuthHandler import AutoProxyAuthHandler, GAEProxyAuthHandler
-    AutoProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_AUTO_PORT), AutoProxyAuthHandler)
-    GAEProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_GAE_PORT), GAEProxyAuthHandler)
+    AutoProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_AUTO_PORT), AutoProxyAuthHandler, False)
+    GAEProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_GAE_PORT), GAEProxyAuthHandler, False)
 else:
-    AutoProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_AUTO_PORT), AutoProxyHandler)
-    GAEProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_GAE_PORT), GAEProxyHandler)
+    AutoProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_AUTO_PORT), AutoProxyHandler, False)
+    GAEProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_GAE_PORT), GAEProxyHandler, False)
