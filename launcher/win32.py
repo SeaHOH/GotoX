@@ -237,6 +237,8 @@ def enable_proxy(ProxyServer):
         winreg.DeleteValue(SETTINGS, 'AutoConfigURL')    
     if not proxy_state.type & 2:
         winreg.SetValueEx(SETTINGS, 'ProxyEnable', 0,  winreg.REG_DWORD, 1)
+    if proxy_state.type == 0:
+        proxy_state.type = 2
     proxy_state.http = ProxyServer.http
     proxy_state.https = ProxyServer.https
     winreg.SetValueEx(SETTINGS, 'ProxyServer', 0,  winreg.REG_SZ, proxy_state.str)
