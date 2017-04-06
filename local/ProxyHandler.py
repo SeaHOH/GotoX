@@ -110,8 +110,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 logging.error('无法解析主机：%r，路径：%r，请检查是否输入正确！', self.host, self.path)
                 #加密请求就不返回提示页面了，搞起来太麻烦
                 if not self.ssl:
-                    self.write(b'HTTP/1.1 504 Resolve Failed\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n')
-                    self.write(message_html('504 解析失败', '504 解析失败<p>主机名 %r 无法解析，请检查是否输入正确！' % self.host))
+                    c = message_html('504 解析失败', '504 解析失败<p>主机名 %r 无法解析，请检查是否输入正确！' % self.host).encode()
+                    self.write(b'HTTP/1.1 504 Resolve Failed\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
+                    self.write(c)
                 return 
             elif hostname.startswith('google'):
                 testip.lastactive = time()
@@ -322,7 +323,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if self.target is not None or self.url_parts.path.endswith('ico') or isdirect(host):
                     #非默认规则、网站图标、直连 IP
                     logging.warn('do_DIRECT "%s %s" 失败，返回 404', self.command, self.url)
-                    self.write('HTTP/1.1 404 %s\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n%s' % self.responses[404])
+                    c = '404 无法找到给定的网址'.encode()
+                    self.write('HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n' % len(c))
+                    self.write(c)
                     return
                 else:
                     logging.warn('do_DIRECT "%s %s" 失败，尝试使用 "GAE" 规则。', self.command, self.url)
@@ -434,8 +437,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 response = gae_urlfetch(self.command, url, request_headers, payload, appid)
                 if response is None:
                     if retry == GC.GAE_FETCHMAX - 1:
-                        self.write(b'HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n')
-                        self.write(message_html('502 资源获取失败', '本地从 GAE 获取 %r 失败' % self.url, str(errors)))
+                        c = message_html('502 资源获取失败', '本地从 GAE 获取 %r 失败' % self.url, str(errors)).encode()
+                        self.write(b'HTTP/1.0 502\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
+                        self.write(c)
                         return
                     else:
                         logging.warning('do_GAE 超时，url=%r，重试', self.url)
@@ -509,8 +513,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             self.do_GAE()
                         else:
                             logging.error('APPID %r 不存在，请将你的 APPID 填入 Config.ini 中', appid)
-                            self.write(b'HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n')
-                            self.write(message_html('404 Appid 不存在', 'Appid %r 不存在' % appid, '请编辑 Config.ini 文件，将你的 APPID 填入其中。'))
+                            c = message_html('404 Appid 不存在', 'Appid %r 不存在' % appid, '请编辑 Config.ini 文件，将你的 APPID 填入其中。').encode()
+                            self.write(b'HTTP/1.0 502\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
+                            self.write(c)
                         return
                     else:
                         #只是 IP 错误，继续
@@ -671,11 +676,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if not target:
             return
         logging.info('%s 重定向 %r 到 %r', self.address_string(), self.url, target)
-        self.write('HTTP/1.1 301 Moved Permanently\r\nLocation: %s\r\n\r\n' % target)
+        self.write('HTTP/1.1 301 Moved Permanently\r\nLocation: %s\r\nContent-Length: 0\r\n\r\n' % target)
 
     def do_IREDIRECT(self):
         #直接返回重定向地址的内容
-        self.close_connection = False
         target = self.target
         if not target:
             return
@@ -784,7 +788,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         content = '\n'.join(r).encode(enc, 'surrogateescape')
         l = len(content)
         self.write('HTTP/1.1 200 Ok\r\n'
-                   'Connection: close\r\n'
                    'Content-Length: %s\r\n'
                    'Content-Type: text/html; charset=%s\r\n\r\n'
                    % (l, enc))
@@ -827,7 +830,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     logging.info('%s "%s %s HTTP/1.1" 200 %d',
                         self.address_string(), self.command, self.url, filesize)
                     self.write('HTTP/1.1 200 Ok\r\n'
-                               'Connection: close\r\n'
                                'Content-Length: %s\r\n'
                                'Content-Type: %s\r\n\r\n'
                                % (filesize, content_type))
@@ -837,43 +839,42 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             except Exception as e:
                 logging.warning('%s "%s %s HTTP/1.1" 403 -，无法打开本地文件：%r',
                     self.address_string(), self.command, self.url, filename)
-                self.write('HTTP/1.1 403 Forbidden\r\n'
-                           'Content-Type: text/html\r\n'
-                           'Connection: close\r\n\r\n'
-                           '<title>403 拒绝</title>\n'
-                           '<h1>403 无法打开本地文件：</h1><hr>\n'
-                           '<h2><li>%s</li></h2>\n'
-                           '<h2><li>%s</li></h2>\n'
-                           % (filename, e))
+                c = ('<title>403 拒绝</title>\n'
+                     '<h1>403 无法打开本地文件：</h1><hr>\n'
+                     '<h2><li>%s</li></h2>\n'
+                     '<h2><li>%s</li></h2>\n'
+                     % (filename, e)).encode()
+                self.write(b'HTTP/1.1 403 Forbidden\r\n'
+                           b'Content-Type: text/html\r\n'
+                           b'Content-Length: %d\r\n\r\n' % len(c))
         else:
             logging.warning('%s "%s %s HTTP/1.1" 404 -，无法找到本地文件：%r',
                 self.address_string(), self.command, self.url, filename)
-            self.write('HTTP/1.1 404 Not Found\r\n'
-                       'Content-Type: text/html\r\n'
-                       'Connection: close\r\n\r\n'
-                       '<title>404 无法找到</title>\n'
-                       '<h1>404 无法找到本地文件：</h1><hr>\n'
-                       '<h2><li>%s</li></h2>\n'
-                       % filename)
+            c = ('<title>404 无法找到</title>\n'
+                 '<h1>404 无法找到本地文件：</h1><hr>\n'
+                 '<h2><li>%s</li></h2>\n' % filename).encode()
+            self.write(b'HTTP/1.1 404 Not Found\r\n'
+                       b'Content-Type: text/html\r\n'
+                       b'Content-Length: %d\r\n\r\n' % len(c))
 
     def do_BLOCK(self):
         #返回空白内容
         self.close_connection = False
-        content = (b'HTTP/1.1 200 Ok\r\n'
+        self.write(b'HTTP/1.1 200 Ok\r\n'
                    b'Cache-Control: max-age=86400\r\n'
-                   b'Expires:Oct, 01 Aug 2100 00:00:00 GMT\r\n'
-                   b'Connection: close\r\n')
+                   b'Expires:Oct, 01 Aug 2100 00:00:00 GMT\r\n')
         if self.url_parts and self.url_parts.path.endswith(('.jpg', '.gif', '.jpeg', '.png', '.bmp')):
-            content += (b'Content-Type: image/gif\r\n\r\n'
-                        b'GIF89a\x01\x00\x01\x00\x80\xff\x00\xc0\xc0\xc0'
-                        b'\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00'
-                        b'\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;')
+            content = (b'GIF89a\x01\x00\x01\x00\x80\xff\x00\xc0\xc0\xc0'
+                       b'\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00'
+                       b'\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;')
+            self.write(b'Content-Type: image/gif\r\n'
+                       b'Content-Length: %d\r\n\r\n' % len(content))
+            self.write(content)
         else:
-            content += b'\r\n'
+            self.write(b'Content-Length: 0\r\n\r\n')
         logging.warning('%s "%s%s %s" 已经被拦截',
             self.address_string(), 'CONNECT BLOCK ' if self.ssl else '',
             self.command, self.url or self.host)
-        self.write(content)
 
     def go_GAE(self):
         if self.command not in ('GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'PATCH'):
@@ -911,8 +912,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def go_BAD(self):
         self.close_connection = False
         logging.warn('request "%s %s" 失败, 返回 404', self.command, self.url)
-        self.write(b'HTTP/1.0 404\r\nContent-Type: text/html\r\n\r\n')
-        self.write(message_html('404 无法访问', '不能 "%s %s"' % (self.command, self.url), '无论是通过 GAE 还是 DIRECT 都无法访问成功'))
+        c = message_html('404 无法访问', '不能 "%s %s"' % (self.command, self.url), '无论是通过 GAE 还是 DIRECT 都无法访问成功').encode()
+        self.write(b'HTTP/1.0 404\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
+        self.write(c)
 
     def forward_socket(self, remote, timeout=120, tick=4, maxping=None, maxpong=None):
         #在本地与远程链接间进行数据转发
