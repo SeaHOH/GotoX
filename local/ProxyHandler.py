@@ -312,6 +312,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             logging.test('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), self.action[3:], self.command, self.url, response.status, length or '-')
         else:
             logging.info('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), self.action[3:], self.command, self.url, response.status, length or '-')
+        #某些播放器需要关闭 206 Partial Content 响应链接，不然不会继续请求
+        if response.status == 206 and self.headers.get('User-Agent', '').startswith('mpv'):
+            self.close_connection = True
         return data, need_chunked
 
     def do_DIRECT(self):
