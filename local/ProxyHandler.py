@@ -539,7 +539,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 content_range = response.headers.get('Content-Range')
                 accept_ranges = response.headers.get('Accept-Ranges')
                 if content_range:
-                    start = int(getstart(content_range).group(1)[0])
+                    start = int(getstart(content_range).group(1))
                 # 服务器不支持 Range 且错误返回成功状态，直接放弃并断开链接
                 if range_start > 0 and response.status != 206 and response.status < 300:
                     self.close_connection = True
