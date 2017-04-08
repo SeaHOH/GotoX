@@ -107,12 +107,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if self.action in ('do_DIRECT', 'do_FORWARD'):
             self.hostname = hostname = set_dns(self.host, self.target)
             if hostname is None:
-                logging.error('无法解析主机：%r，路径：%r，请检查是否输入正确！', self.host, self.path)
-                #加密请求就不返回提示页面了，搞起来太麻烦
-                if not self.ssl:
-                    c = message_html('504 解析失败', '504 解析失败<p>主机名 %r 无法解析，请检查是否输入正确！' % self.host).encode()
-                    self.write(b'HTTP/1.1 504 Resolve Failed\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
-                    self.write(c)
+                logging.error('%s 无法解析主机：%r，路径：%r，请检查是否输入正确！', self.address_string(), self.host, self.path)
+                #返回错误代码和提示页面了，但加密请求不会显示
+                c = message_html('504 解析失败', '504 解析失败<p>主机名 %r 无法解析，请检查是否输入正确！' % self.host).encode()
+                self.write(b'HTTP/1.1 504 Resolve Failed\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
+                self.write(c)
                 return 
             elif hostname.startswith('google'):
                 testip.lastactive = time()
@@ -347,9 +346,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if e.args[0] in reset_errno and not isdirect(host):
                 logging.warning('%s do_DIRECT "%s %s" 链接被重置，尝试使用 "GAE" 规则。', self.address_string(response), self.command, self.url)
                 return self.go_GAE()
-            #elif e.args[0] in (10063, errno.ENAMETOOLONG):
-            #    logging.error('%s do_DIRECT "%s %s" 失败：%r，返回 408', self.address_string(response), self.command, self.url, e)
-            #    self.write('HTTP/1.1 408 %s\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n%s' % self.responses[408])
             elif e.args[0] not in pass_errno:
                 raise
         except Exception as e:
@@ -415,6 +411,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         for retry in range(GC.GAE_FETCHMAX):
             if retry > 0 and payload:
                 logging.warning('do_GAE 由于有上传数据 "%s %s" 终止重试', self.command, self.url)
+                self.close_connection = True
                 return
             with self.nLock:
                 nappid = self.__class__.nappid
@@ -438,7 +435,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if response is None:
                     if retry == GC.GAE_FETCHMAX - 1:
                         c = message_html('502 资源获取失败', '本地从 GAE 获取 %r 失败' % self.url, str(errors)).encode()
-                        self.write(b'HTTP/1.0 502\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
+                        self.write(b'HTTP/1.1 502 Service Unavailable\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
                         self.write(c)
                         return
                     else:
@@ -514,7 +511,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         else:
                             logging.error('APPID %r 不存在，请将你的 APPID 填入 Config.ini 中', appid)
                             c = message_html('404 Appid 不存在', 'Appid %r 不存在' % appid, '请编辑 Config.ini 文件，将你的 APPID 填入其中。').encode()
-                            self.write(b'HTTP/1.0 502\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
+                            self.write(b'HTTP/1.1 502 Service Unavailable\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
                             self.write(c)
                         return
                     else:
@@ -526,6 +523,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if not headers_sent:
                         data, need_chunked = self.handle_response_headers(response)
                         self.write_response_content(data, response, need_chunked)
+                    self.close_connection = True
                     return
                 #与已经写入的头部状态不同
                 if headers_sent and headers_sent != response.status:
@@ -535,9 +533,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 accept_ranges = response.headers.get('Accept-Ranges')
                 if content_range:
                     start = int(getstart(content_range).group(1)[0])
-                # 服务器不支持 Range 且错误返回成功状态
+                # 服务器不支持 Range 且错误返回成功状态，直接放弃并断开链接
                 if range_start > 0 and response.status != 206 and response.status < 300:
-                    response.status = 416
+                    self.close_connection = True
+                    return
                 #第一个响应，不用重复写入头部
                 if not headers_sent:
                     #开始自动多线程（Partial Content）
@@ -547,9 +546,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         return rangefetch.fetch()
                     data, need_chunked = self.handle_response_headers(response)
                     headers_sent = response.status
-                # Range 范围错误，直接放弃（Requested Range Not Satisfiable）
-                if response.status == 416:
-                    return
                 wrote, err = self.write_response_content(data, response, need_chunked)
                 start += wrote
                 if err:
@@ -569,11 +565,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     elif start > 0:
                         #终止不支持 Range 的且中途失败的请求
                         logging.error('%s do_GAE "%s %s" 失败：%r', self.address_string(response), self.command, self.url, e)
+                        self.close_connection = True
                         return
                     logging.warning('%s do_GAE "%s %s" 返回：%r，重试', self.address_string(response), self.command, self.url, e)
                 else:
                     #请求失败
                     logging.exception('%s do_GAE "%s %s" 失败：%r', self.address_string(response), self.command, self.url, e)
+                    self.close_connection = True
             finally:
                 qGAE.put(True)
                 if response:
