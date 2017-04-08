@@ -206,17 +206,19 @@ def on_disable_proxy(systray):
         winreg.DeleteValue(SETTINGS, 'AutoConfigURL')
     if proxy_state.type & 2:
         winreg.SetValueEx(SETTINGS, 'ProxyEnable', 0,  winreg.REG_DWORD, 0)
-    if proxy_state.type > 0:
-        refresh_proxy_state()
+    refresh_proxy_state()
 
 def disable_x_proxy(type):
     proxy_state = proxy_state_menu
     proxy_state.__delattr__(type)
-    #保持代理类型为 Server
+    #忽略 AutoConfigURL 保持原样，如有则优先
+    #设置代理类型为 Server
     proxy_state.type = 2
-    if proxy_state.str == '':
-        return on_disable_proxy(None)
-    winreg.SetValueEx(SETTINGS, 'ProxyServer', 0,  winreg.REG_SZ, proxy_state.str)
+    ProxyServer = proxy_state.str
+    if ProxyServer == '':
+        winreg.SetValueEx(SETTINGS, 'ProxyEnable', 0,  winreg.REG_DWORD, 0)
+    else:
+        winreg.SetValueEx(SETTINGS, 'ProxyServer', 0,  winreg.REG_SZ, ProxyServer)
     refresh_proxy_state()
 
 def on_disable_http_proxy(systray):
@@ -233,12 +235,12 @@ def on_disable_socks_proxy(systray):
 
 def enable_proxy(ProxyServer):
     proxy_state = proxy_state_menu
+    #删除 AutoConfigURL 确保使用 ProxyServer
     if proxy_state.pac:
         winreg.DeleteValue(SETTINGS, 'AutoConfigURL')    
     if not proxy_state.type & 2:
         winreg.SetValueEx(SETTINGS, 'ProxyEnable', 0,  winreg.REG_DWORD, 1)
-    if proxy_state.type == 0:
-        proxy_state.type = 2
+    proxy_state.type = 2
     proxy_state.http = ProxyServer.http
     proxy_state.https = ProxyServer.https
     winreg.SetValueEx(SETTINGS, 'ProxyServer', 0,  winreg.REG_SZ, proxy_state.str)
