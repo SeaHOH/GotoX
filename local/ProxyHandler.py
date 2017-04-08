@@ -216,6 +216,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     do_PATCH = do_METHOD
 
     def write_response_content(self, data, response, need_chunked):
+        length = int(response.headers.get('Content-Length', 0))
+        #无内容返回
+        if not need_chunked and not length:
+            return 0, None
         #写入响应内容
         if hasattr(response, 'data'):
             # goproxy 服务端错误信息处理预读数据
@@ -229,13 +233,16 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 data = response.read(8192)
             while data:
                 if need_chunked:
-                    self.write(hex(len(data))[2:].encode())
+                    self.write(hex(len(data))[2:])
                     self.write(b'\r\n')
                     self.write(data)
                     self.write(b'\r\n')
+                    wrote += len(data)
                 else:
                     self.write(data)
-                wrote += len(data)
+                    wrote += len(data)
+                    if wrote >= length:
+                        break
                 data = response.read(8192)
         except Exception as e:
             err = e
