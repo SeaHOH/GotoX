@@ -325,6 +325,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         response = None
         noerror = True
         request_headers, payload = self.handle_request_headers()
+        #限制 bilibili 视频请求，以防断流 5MB
+        if self.path.startswith('/ws.acgvideo.com'):
+            request_range = request_headers.get('Range', None)
+            range_start = int(getbytes(request_range).group(1)) if request_range else 0
+            request_headers['Range'] = 'bytes=%d-%d' % (range_start, range_start + 5242879)
         try:
             connection_cache_key = '%s:%d' % (hostname, self.port)
             response = http_util.request(self, payload, request_headers, connection_cache_key=connection_cache_key)
