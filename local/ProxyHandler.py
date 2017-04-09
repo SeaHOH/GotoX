@@ -301,6 +301,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 response_headers['Set-Cookie'] = '\r\nSet-Cookie: '.join(cookies)
         if 'Content-Disposition' in response_headers:
             response_headers['Content-Disposition'] = normattachment(response_headers['Content-Disposition'])
+        #某些播放器需要关闭 206 Partial Content 响应链接，不然不会继续请求
+        if response.status == 206 and self.headers.get('User-Agent', '').startswith('mpv'):
+            self.close_connection = True
         if not self.close_connection:
             response_headers['Proxy-Connection'] = 'keep-alive'
         headers_data = 'HTTP/1.1 %s %s\r\n%s\r\n' % (response.status, response.reason, ''.join('%s: %s\r\n' % x for x in response_headers.items()))
@@ -312,9 +315,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             logging.test('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), self.action[3:], self.command, self.url, response.status, length or '-')
         else:
             logging.info('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), self.action[3:], self.command, self.url, response.status, length or '-')
-        #某些播放器需要关闭 206 Partial Content 响应链接，不然不会继续请求
-        if response.status == 206 and self.headers.get('User-Agent', '').startswith('mpv'):
-            self.close_connection = True
         return data, need_chunked
 
     def do_DIRECT(self):
