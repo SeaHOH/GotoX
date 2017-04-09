@@ -96,6 +96,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     fakecert = False
     url = None
     url_parts = None
+    reread_req = False
 
     def setup(self):
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
@@ -252,6 +253,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return wrote, err
 
     def handle_request_headers(self):
+        #无法重复读取套接字，使用属性保存
+        if self.reread_req:
+            self.reread_req = False
+            return self.request_headers.copy(), self.payload
         #处理请求
         request_headers = dict((k.title(), v) for k, v in self.headers.items() if k.title() not in skip_request_headers)
         pconnection = self.headers.get('Proxy-Connection')
@@ -266,7 +271,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             except NetWorkIOError as e:
                 logging.error('%s "%s %s" 附加请求内容读取失败：%r', self.address_string(), self.command, self.url, e)
                 raise
-        return request_headers, payload
+        self.request_headers = request_headers
+        self.payload = payload
+        return request_headers.copy(), payload
 
     def handle_response_headers(self, response):
         #处理响应
@@ -902,6 +909,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.badhost[host] = False
         else:
             self.badhost[host] = True
+        self.reread_req = True
         self.action = 'do_GAE'
         self.do_GAE()
 
