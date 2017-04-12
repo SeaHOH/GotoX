@@ -278,6 +278,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def handle_response_headers(self, response):
         #处理响应
         response_headers = dict((k.title(), v) for k, v in response.headers.items() if k.title() not in skip_response_headers)
+        #明确设置 Accept-Ranges
+        if response_headers.get('Accept-Ranges', '') != 'bytes':
+            response_headers['Accept-Ranges'] = 'none'
         length = response.headers.get('Content-Length')
         if hasattr(response, 'data'):
             # goproxy 服务端错误信息处理预读数据
