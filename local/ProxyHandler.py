@@ -308,9 +308,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 response_headers['Set-Cookie'] = '\r\nSet-Cookie: '.join(cookies)
         if 'Content-Disposition' in response_headers:
             response_headers['Content-Disposition'] = normattachment(response_headers['Content-Disposition'])
-        #某些播放器需要关闭 206 Partial Content 响应链接，不然不会继续请求
-        if response.status == 206 and self.headers.get('User-Agent', '').startswith('mpv'):
-            self.close_connection = True
         if not self.close_connection:
             response_headers['Proxy-Connection'] = 'keep-alive'
         headers_data = 'HTTP/1.1 %s %s\r\n%s\r\n' % (response.status, response.reason, ''.join('%s: %s\r\n' % x for x in response_headers.items()))
@@ -323,6 +320,14 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             logging.info('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), self.action[3:], self.command, self.url, response.status, length or '-')
         return data, need_chunked
+
+    def check_useragent(self):
+        #修复某些软件无法正确处理 206 Partial Content 响应的持久链接
+        user_agent = self.headers.get('User-Agent', '')
+        if (user_agent.startswith('mpv')         # mpv
+            or user_agent.endswith('(Chrome)')): # youtube-dl 有时会传递给其它支持的播放器，导致无法辨识，统一关闭
+                                                 # 其它自定义的就没法，此处无法辨识，感觉关闭所有 206 有点划不来
+            self.close_connection = True
 
     def do_DIRECT(self):
         #直接请求目标地址
@@ -358,6 +363,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if response.status == 403 and not isdirect(host):
                 logging.warn('do_DIRECT "%s %s" 链接被拒绝，尝试使用 "GAE" 规则。', self.command, self.url)
                 return self.go_GAE()
+            #修复某些软件无法正确处理 206 Partial Content 响应的持久链接
+            if response.status == 206:
+                self.check_useragent()
             data, need_chunked = self.handle_response_headers(response)
             _, err = self.write_response_content(data, response, need_chunked)
             if err:
@@ -381,7 +389,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     #放入套接字缓存
                     if self.ssl:
                         if GC.GAE_KEEPALIVE or not connection_cache_key.startswith('google'):
-                            #放入套接字缓存
                             ssl_connection_cache[connection_cache_key].append((time(), response.sock))
                         else:
                             #干扰严重时考虑不复用 google 链接
@@ -559,6 +566,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if range_start > 0 and response.status != 206 and response.status < 300:
                     self.close_connection = True
                     return
+                #修复某些软件无法正确处理 206 Partial Content 响应的持久链接
+                if response.status == 206:
+                    self.check_useragent()
                 #第一个响应，不用重复写入头部
                 if not headers_sent:
                     #开始自动多线程（Partial Content）
