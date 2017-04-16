@@ -132,7 +132,7 @@ div, input {font-size: 12pt; font-family: arial,sans-serif}
             auth_black_list = self.auth_black_list
             if client_ip in auth_black_list and auth_black_list[client_ip] > self.max_try_times:
                 auth_black_list[client_ip] = times = auth_black_list[client_ip] + 1
-                logging.error('%r 黑名单 IP 第 %s 次请求代理！"%s %s"',
+                logging.error('%s 黑名单 IP 第 %s 次请求代理！"%s %s"',
                         self.address_string(), times, self.command, self.url or self.path)
             elif self.command == 'CONNECT':
                 self._do_CONNECT()
@@ -208,7 +208,7 @@ div, input {font-size: 12pt; font-family: arial,sans-serif}
             else:
                 return ''
 
-    ProxyAuthHandler =ProxyIPAuthHandler
+    ProxyAuthHandler = ProxyIPAuthHandler
 
 elif GC.LISTEN_AUTH == 1:
     from base64 import b64decode
@@ -248,7 +248,7 @@ elif GC.LISTEN_AUTH == 1:
             auth_black_list = self.auth_black_list
             if client_ip in auth_black_list and auth_black_list[client_ip] > self.max_try_times:
                 auth_black_list[client_ip] = times = auth_black_list[client_ip] + 1
-                logging.error('%r 黑名单 IP 第 %s 次请求代理！"%s %s"',
+                logging.error('%s 黑名单 IP 第 %s 次请求代理！"%s %s"',
                         self.address_string(), times, self.command, self.url or self.path)
                 return
             auth_data = self.headers.get('Proxy-Authorization')
@@ -276,7 +276,7 @@ elif GC.LISTEN_AUTH == 1:
                     auth_black_list[client_ip] += self.every_try_times
                 else:
                     auth_black_list[client_ip] = self.every_try_times
-                logging.error('%r 请求代理，但密码错误！"%s %s"',
+                logging.error('%s 请求代理，但密码错误！"%s %s"',
                         self.address_string(), self.command, self.url or self.path)
 
     ProxyAuthHandler = ProxyBasicAuthHandler

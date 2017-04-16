@@ -77,10 +77,10 @@ class RangeFetch:
         try:
             self.write(('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k, v) for k, v in response_headers.items()))))
         except Exception as e:
-            logging.info('RangeFetch 本地链接断开：%r, %r', self.url, e)
+            logging.info('%s RangeFetch 本地链接断开：%r, %r', self.address_string(self.response), self.url, e)
             self.record()
             return
-        logging.info('>>>>>>>>>>>>>>> RangeFetch 开始 %r %d-%d', self.url, start, range_end)
+        logging.info('%s >>>>>>>>>>>>>>> RangeFetch 开始 %r %d-%d', self.address_string(self.response), self.url, start, range_end)
 
         #开始多线程时先测试一遍 IP
         sleeptime = self.sleeptime if needtest and time() - RangeFetch.lastactive > 30 and testallgaeip(True) else 0
@@ -116,7 +116,7 @@ class RangeFetch:
                         sleep(0.1)
                         continue
                     else:
-                        logging.error('RangeFetch Error: begin(%r) < expect_begin(%r), quit.', begin, self.expect_begin)
+                        logging.error('%s RangeFetch 错误：begin(%r) < expect_begin(%r)，退出', self.address_string(), begin, self.expect_begin)
                         break
                 else:
                     begin, data = data_queue.get(timeout=peek_timeout)
@@ -127,19 +127,19 @@ class RangeFetch:
                         sleep(0.1)
                         continue
                     else:
-                        logging.error('RangeFetch Error: begin(%r) < expect_begin(%r), quit.', begin, self.expect_begin)
+                        logging.error('%s RangeFetch 错误：begin(%r) < expect_begin(%r)，退出', self.address_string(), begin, self.expect_begin)
                         break
             except Queue.Empty:
-                logging.error('data_queue peek timeout, break')
+                logging.error('%s data_queue peek 超时，break', self.address_string())
                 break
             try:
                 self.write(data)
                 self.expect_begin += len(data)
             except Exception as e:
-                logging.info('RangeFetch 本地链接断开：%r, %r', self.url, e)
+                logging.info('%s RangeFetch 本地链接断开：%r, %r', self.address_string(), self.url, e)
                 break
         else:
-            logging.info('RangeFetch 成功完成 %r', self.url)
+            logging.info('%s RangeFetch 成功完成 %r', self.address_string(), self.url)
         self._stopped = True
         self.record()
 
@@ -191,15 +191,15 @@ class RangeFetch:
                 except Queue.Empty:
                     return
                 except Exception as e:
-                    logging.warning("Response %r in __fetchlet", e)
+                    logging.warning('%s Response %r in __fetchlet', self.address_string(), e)
                     range_queue.put((start, end))
                     continue
                 if self._stopped: return
                 if not response:
-                    logging.warning('RangeFetch %s return %r', headers['Range'], response)
+                    logging.warning('%s RangeFetch %s %d-%d 没有响应，重试', self.address_string(), headers['Range'], start, end)
                     range_queue.put((start, end))
                 elif response.app_status != 200:
-                    logging.warning('%s Range Fetch "%s %s" %s return %s', self.address_string(response), self.command, self.url, headers['Range'], response.app_status)
+                    logging.warning('%s Range Fetch "%s %s" %s 返回 %s', self.address_string(response), self.command, self.url, headers['Range'], response.app_status)
                     range_queue.put((start, end))
                 elif response.getheader('Location'):
                     self.url = urlparse.urljoin(self.url, response.getheader('Location'))
@@ -208,7 +208,7 @@ class RangeFetch:
                 elif 200 <= response.status < 300:
                     content_range = response.getheader('Content-Range')
                     if not content_range:
-                        logging.warning('%s RangeFetch "%s %s" return Content-Range=%r: response headers=%r', self.address_string(response), self.command, self.url, content_range, response.getheaders())
+                        logging.warning('%s RangeFetch "%s %s" 返回 Content-Range=%r: response headers=%r', self.address_string(response), self.command, self.url, content_range, response.getheaders())
                         range_queue.put((start, end))
                         continue
                     content_length = int(response.getheader('Content-Length', 0))
@@ -226,7 +226,7 @@ class RangeFetch:
                         with self.tLock:
                             if self.delable and response.xip[0] in self.iplist and len(self.iplist) > self.minip:
                                 self.iplist.remove(response.xip[0])
-                                logging.warning('RangeFetch 移除故障 ip %s', response.xip[0])
+                                logging.warning('%s RangeFetch 移除故障 ip %s', self.address_string(response), response.xip[0])
                         logging.warning('%s RangeFetch "%s %s" %s 失败：%r', self.address_string(response), self.command, self.url, headers['Range'], e)
                     if self._stopped: return
                     if start < end + 1:
@@ -239,7 +239,7 @@ class RangeFetch:
                     range_queue.put((start, end))
                     appid = None
             except Exception as e:
-                logging.exception('RangeFetch._fetchlet 错误：%r', e)
+                logging.exception('%s RangeFetch._fetchlet 错误：%r', self.address_string(), e)
                 raise
             finally:
                 if appid:
@@ -255,4 +255,4 @@ class RangeFetch:
                             with self.tLock:
                                 if self.delable and response.xip[0] in self.iplist and starttime and len(self.iplist) > self.minip and (start-realstart)/(time()-starttime) < self.lowspeed:
                                     self.iplist.remove(response.xip[0])
-                                    logging.warning('RangeFetch 移除慢速 ip %s', response.xip[0])
+                                    logging.warning('%s RangeFetch 移除慢速 ip %s', self.address_string(), response.xip[0])
