@@ -341,7 +341,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         noerror = True
         request_headers, payload = self.handle_request_headers()
         #限制 bilibili 视频请求，以防断流 5MB
-        if self.path.startswith('/ws.acgvideo.com'):
+        if host.endswith('.acgvideo.com') or self.path.startswith('/ws.acgvideo.com'):
             request_range = request_headers.get('Range', None)
             range_start = int(getbytes(request_range).group(1)) if request_range else 0
             request_headers['Range'] = 'bytes=%d-%d' % (range_start, range_start + 5242879)
