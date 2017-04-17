@@ -629,6 +629,9 @@ class HTTPUtil(BaseHTTPUtil):
                         self.ssl_connection_time[ip] = self.timeout + 1
                 if not realurl and e.args[0] in closed_errno:
                     raise e
+                #确保不重复上传数据
+                if sock or ssl_sock and has_content:
+                    return
 
 # Google video ip can act as Google FrontEnd if cipher suits not include
 # RC4-SHA
