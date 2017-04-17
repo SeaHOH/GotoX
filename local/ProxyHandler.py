@@ -454,7 +454,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     appid = GC.GAE_APPIDS[nappid]
                     contains, expired = self.badappids.getstate(appid)
                     if contains and expired:
-                        for i in range(GC.GAE_MAXREQUESTS):
+                        for _ in range(GC.GAE_MAXREQUESTS):
                             qGAE.put(True)
                     if not contains or expired:
                         break
@@ -489,7 +489,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         elif 'ver quota' in data:
                             logging.warning('GAE：%r urlfetch %r 返回 over quota，重试', appid, self.url)
                             self.badappids.set(appid, True, 60)
-                            for i in range(GC.GAE_MAXREQUESTS):
+                            for _ in range(GC.GAE_MAXREQUESTS):
                                 qGAE.get()
                             continue
                         elif 'urlfetch: CLOSED' in data:
@@ -520,7 +520,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     else:
                         logging.info('当前 appid[%s] 流量使用完毕，切换下一个…', appid)
                     self.badappids.set(appid, True, get_refreshtime())
-                    for i in range(GC.GAE_MAXREQUESTS):
+                    for _ in range(GC.GAE_MAXREQUESTS):
                         qGAE.get()
                     self.do_GAE()
                     return
@@ -536,7 +536,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if testipuseable(response.xip[0]):
                         if len(GC.GAE_APPIDS) > 1:
                             GC.GAE_APPIDS.remove(appid)
-                            for i in range(GC.GAE_MAXREQUESTS):
+                            for _ in range(GC.GAE_MAXREQUESTS):
                                 qGAE.get()
                             logging.warning('APPID %r 不存在，将被移除', appid)
                             self.do_GAE()
@@ -628,7 +628,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         remote = None
         if not GC.PROXY_ENABLE:
             connection_cache_key = '%s:%d' % (hostname, port)
-            for i in range(2):
+            for _ in range(2):
                 try:
                     remote = http_util.create_connection((host, port), hostname, connection_cache_key, self.fwd_timeout, self.ssl, True)
                     break

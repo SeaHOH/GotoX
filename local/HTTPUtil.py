@@ -303,7 +303,7 @@ class HTTPUtil(BaseHTTPUtil):
     def _close_connection(self, cache, count, queobj, first_tcp_time):
         now = time()
         tcp_time_threshold = max(min(1.5, 1.5 * first_tcp_time), 0.5)
-        for i in range(count):
+        for _ in range(count):
             sock = queobj.get()
             if isinstance(sock, socket.socket):
                 if sock.tcp_time < tcp_time_threshold:
@@ -439,7 +439,7 @@ class HTTPUtil(BaseHTTPUtil):
     def _close_ssl_connection(self, cache, count, queobj, first_ssl_time):
         now = time()
         ssl_time_threshold = max(min(1.5, 1.5 * first_ssl_time), 1.0)
-        for i in range(count):
+        for _ in range(count):
             ssl_sock = queobj.get()
             if isinstance(ssl_sock, (SSLConnection, ssl.SSLSocket)):
                 if ssl_sock.ssl_time < ssl_time_threshold:
@@ -594,7 +594,7 @@ class HTTPUtil(BaseHTTPUtil):
             if 'Content-Length' not in headers:
                 headers['Content-Length'] = str(len(payload))
 
-        for i in range(self.max_retry):
+        for _ in range(self.max_retry):
             sock = None
             ssl_sock = None
             ip = ''

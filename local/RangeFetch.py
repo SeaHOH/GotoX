@@ -94,7 +94,7 @@ class RangeFetch:
         a = end + 1
         b = end
         n = (length - a) // self.maxsize
-        for i in range(n):
+        for _ in range(n):
             b += self.maxsize
             range_queue.put((a, b))
             a = b + 1

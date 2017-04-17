@@ -8,7 +8,7 @@ from .GlobalConfig import GC
 from .HTTPUtil import http_gws
 
 qGAE = Queue.LifoQueue()
-for i in range(GC.GAE_MAXREQUESTS * len(GC.GAE_APPIDS)):
+for _ in range(GC.GAE_MAXREQUESTS * len(GC.GAE_APPIDS)):
     qGAE.put(True)
 
 def make_errinfo(response, htmltxt):
