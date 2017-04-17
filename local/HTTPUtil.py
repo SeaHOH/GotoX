@@ -579,12 +579,15 @@ class HTTPUtil(BaseHTTPUtil):
         response.sock = sock
         return response
 
-    def request(self, request_params, payload=b'', headers={}, bufsize=8192, connection_cache_key=None, getfast=None, realurl=None):
+    def request(self, request_params, payload=b'', headers={}, bufsize=8192, connection_cache_key=None, getfast=None, realmethod=None, realurl=None):
         ssl = request_params.ssl
         address = request_params.host, request_params.port
         hostname = request_params.hostname
         method = request_params.command
+        realmethod = realmethod or method
         url = request_params.url
+        timeout = getfast or self.timeout
+        has_content = realmethod in ('POST', 'PUT', 'PATCH')
 
         if 'Host' not in headers:
             headers['Host'] = request_params.host
@@ -600,11 +603,15 @@ class HTTPUtil(BaseHTTPUtil):
             ip = ''
             try:
                 if ssl:
-                    ssl_sock = self.create_ssl_connection(address, hostname, connection_cache_key, getfast or self.timeout, getfast=getfast)
+                    ssl_sock = self.create_ssl_connection(address, hostname, connection_cache_key, timeout, getfast=getfast)
                 else:
-                    sock = self.create_connection(address, hostname, connection_cache_key, self.timeout)
-                if ssl_sock or sock:
-                    response =  self._request(ssl_sock or sock, method, request_params.path, self.protocol_version, headers, payload, bufsize=bufsize)
+                    sock = self.create_connection(address, hostname, connection_cache_key, timeout)
+                result = ssl_sock or sock
+                if result:
+                    #保证上传数据时超时时间不会过短
+                    if has_content:
+                        result.settimeout(min(timeout, 8))
+                    response =  self._request(result, method, request_params.path, self.protocol_version, headers, payload, bufsize=bufsize)
                     return response
             except Exception as e:
                 if ssl_sock:
@@ -617,7 +624,7 @@ class HTTPUtil(BaseHTTPUtil):
                     ip = e.xip
                     logging.warning('%s create_%sconnection %r 失败：%r', ip[0], 'ssl_' if ssl else '', realurl or url, e)
                 else:
-                    logging.warning('%s _request "%s %s" 失败：%r', ip[0], method, realurl or url, e)
+                    logging.warning('%s _request "%s %s" 失败：%r', ip[0], realmethod, realurl or url, e)
                     if realurl:
                         self.ssl_connection_time[ip] = self.timeout + 1
                 if not realurl and e.args[0] in closed_errno:

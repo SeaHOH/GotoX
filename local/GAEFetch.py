@@ -76,7 +76,7 @@ def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
     request_params = gae_params(appid)
     realurl = 'GAE-' + url
     qGAE.get() # get start from Queue
-    response = http_gws.request(request_params, payload, request_headers, connection_cache_key='google_gws:443', getfast=getfast, realurl=realurl)
+    response = http_gws.request(request_params, payload, request_headers, connection_cache_key='google_gws:443', getfast=getfast, realmethod=method, realurl=realurl)
     if response is None:
         return None
     response.app_status = response.status
