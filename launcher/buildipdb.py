@@ -81,9 +81,8 @@ def save_iplist_as_db(ipdb, iplist):
         #排除初始值
         if lastip_e:
             #一段范围分为包含和排除
-            offset_t = offset + 4
-            buffer[offset:offset_t] = lastip_s = int2bytes4(lastip_s)
-            buffer[offset_t:] = int2bytes4(lastip_e)
+            buffer[offset:] = lastip_s = int2bytes4(lastip_s)
+            buffer[offset + 4:] = int2bytes4(lastip_e)
             #一个索引分为开始和结束
             fip = lastip_s[0] * 2
             if fip != index_fip:
@@ -98,9 +97,8 @@ def save_iplist_as_db(ipdb, iplist):
         lastip_s = ip_s
         lastip_e = ip_e
     #添加最后一段范围
-    offset_t = offset + 4
-    buffer[offset:offset_t] = lastip_s = int2bytes4(lastip_s)
-    buffer[offset_t:] = int2bytes4(lastip_e)
+    buffer[offset:] = lastip_s = int2bytes4(lastip_s)
+    buffer[offset + 4:] = int2bytes4(lastip_e)
     fip = lastip_s[0] * 2
     if fip != index_fip:
         index[index_fip + 1] = index_b = int2bytes2(index_n)
@@ -155,7 +153,7 @@ def download(req):
         context.load_verify_locations(ca1)
         context.load_verify_locations(ca2)
     retry_delay = 2
-    timeout = 6
+    timeout = 8
     l = 0
     while l is 0:
         fd = None
@@ -247,16 +245,19 @@ def parse_17mon_cniplist(fd):
     return iplist, read
 
 def download_apnic_cniplist_as_db(ipdb):
+    log('开始下载 APNIC IP')
     iplist = download_cniplist(ipdb, parse_apnic_cniplist)
     save_iplist_as_db(ipdb, iplist)
     log('APNIC IP 已保存完毕')
 
 def download_17mon_cniplist_as_db(ipdb):
+    log('开始下载 17mon IP')
     iplist = download_cniplist(ipdb, parse_17mon_cniplist)
     save_iplist_as_db(ipdb, iplist)
     log('17mon IP 已保存完毕')
 
 def download_both_cniplist_as_db(ipdb):
+    log('开始下载 APNIC 和 17mon IP')
     global update
     _iplist = download_cniplist(ipdb, parse_apnic_cniplist)
     _update = update
