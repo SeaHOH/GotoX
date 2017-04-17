@@ -331,6 +331,9 @@ class HTTPUtil(BaseHTTPUtil):
         result = None
         host, port = address
         addresses = [(x, port) for x in dns[hostname]]
+        #单 IP 适当增加超时时间
+        if len(addresses) == 1 and timeout < 5:
+            timeout += 2
         if ssl:
             get_connection_time = self.get_tcp_ssl_connection_time
         else:
@@ -468,6 +471,9 @@ class HTTPUtil(BaseHTTPUtil):
         result = None
         host, port = address
         addresses = [(x, port) for x in dns[hostname]]
+        #单 IP 适当增加超时时间
+        if len(addresses) == 1 and timeout < 5:
+            timeout += 2
         for i in range(self.max_retry):
             addresseslen = len(addresses)
             if getfast and GC.GAE_USEGWSIPLIST:
