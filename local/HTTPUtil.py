@@ -311,10 +311,9 @@ class HTTPUtil(BaseHTTPUtil):
                 else:
                     sock.close()
 
-    def create_connection(self, address, hostname, cache_key, timeout, ssl=None, forward=None, newc=None, **kwargs):
+    def create_connection(self, address, hostname, cache_key, timeout, ssl=None, forward=None, **kwargs):
         cache = tcp_connection_cache[cache_key]
-        newc = newc or ssl
-        if not newc:
+        if not (forward and ssl):
             try:
                 keeptime = gaekeeptime if cache_key.startswith('google') else linkkeeptime
                 while cache:
@@ -447,24 +446,23 @@ class HTTPUtil(BaseHTTPUtil):
                 else:
                     ssl_sock.sock.close()
 
-    def create_ssl_connection(self, address, hostname, cache_key, timeout, newc=None, getfast=None, **kwargs):
+    def create_ssl_connection(self, address, hostname, cache_key, timeout, getfast=None, **kwargs):
         cache = ssl_connection_cache[cache_key]
-        if not newc:
-            try:
-                keeptime = gaekeeptime if cache_key.startswith('google') else linkkeeptime
-                while cache:
-                    ctime, ssl_sock = cache.pop()
-                    try:
-                        rd, _, ed = select([ssl_sock.sock], [], [ssl_sock.sock], 0.01)
-                        if rd or ed or time()-ctime > keeptime:
-                            ssl_sock.sock.close()
-                        else:
-                            ssl_sock.settimeout(timeout)
-                            return ssl_sock
-                    except OSError:
-                        pass
-            except IndexError:
-                pass
+        try:
+            keeptime = gaekeeptime if cache_key.startswith('google') else linkkeeptime
+            while cache:
+                ctime, ssl_sock = cache.pop()
+                try:
+                    rd, _, ed = select([ssl_sock.sock], [], [ssl_sock.sock], 0.01)
+                    if rd or ed or time()-ctime > keeptime:
+                        ssl_sock.sock.close()
+                    else:
+                        ssl_sock.settimeout(timeout)
+                        return ssl_sock
+                except OSError:
+                    pass
+        except IndexError:
+            pass
 
         result = None
         host, port = address
@@ -601,9 +599,9 @@ class HTTPUtil(BaseHTTPUtil):
             ip = ''
             try:
                 if ssl:
-                    ssl_sock = self.create_ssl_connection(address, hostname, connection_cache_key, timeout, newc=has_content, getfast=getfast)
+                    ssl_sock = self.create_ssl_connection(address, hostname, connection_cache_key, timeout, getfast=getfast)
                 else:
-                    sock = self.create_connection(address, hostname, connection_cache_key, timeout, newc=has_content)
+                    sock = self.create_connection(address, hostname, connection_cache_key, timeout)
                 result = ssl_sock or sock
                 if result:
                     #保证上传数据时超时时间不会过短
@@ -628,7 +626,7 @@ class HTTPUtil(BaseHTTPUtil):
                 if not realurl and e.args[0] in closed_errno:
                     raise e
                 #确保不重复上传数据
-                if sock or ssl_sock and has_content:
+                if has_content and (sock or ssl_sock):
                     return
 
 # Google video ip can act as Google FrontEnd if cipher suits not include
