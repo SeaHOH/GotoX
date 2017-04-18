@@ -1,7 +1,7 @@
 # coding:utf-8
 
 import threading
-from time import time
+from time import time, sleep
 from functools import partial
 from . import clogging as logging
 from .common import config_dir, LRUCache
@@ -22,15 +22,19 @@ filters_cache = LRUCache(64)
 ssl_filters_cache = LRUCache(32)
 
 def check_reset():
-    with gLock:
-        if gn == 0 and _ACTION_FILTERS.RESET:
-            global ACTION_FILTERS
-            _ACTION_FILTERS.RESET = False
-            ACTION_FILTERS = _ACTION_FILTERS.copy()
-            filters_cache.clear()
-            ssl_filters_cache.clear()
-            reset_dns()
-            logging.warning('%r 内容被修改，已重新加载配置。', _ACTION_FILTERS.CONFIG_FILENAME)
+    if _ACTION_FILTERS.RESET:
+        while _ACTION_FILTERS.RESET and gn > 0:
+            sleep(0.005)
+        else:
+            with gLock:
+                if gn == 0 and _ACTION_FILTERS.RESET:
+                    global ACTION_FILTERS
+                    _ACTION_FILTERS.RESET = False
+                    ACTION_FILTERS = _ACTION_FILTERS.copy()
+                    filters_cache.clear()
+                    ssl_filters_cache.clear()
+                    reset_dns()
+                    logging.warning('%r 内容被修改，已重新加载配置。', _ACTION_FILTERS.CONFIG_FILENAME)
 
 def get_redirect(target, url):
     '''Get the redirect target'''
