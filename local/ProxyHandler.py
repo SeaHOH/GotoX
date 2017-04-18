@@ -139,21 +139,23 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.host = host
         else:
             self.host = chost
-        self.port = int(port or cport or 443)
+        self.port = port = int(port or cport or 443)
         #某些 http 链接也可能会使用 CONNECT 方法
         #认为非 80 端口都是加密链接
-        self.ssl = self.port != 80
+        self.ssl = port != 80
 
     def do_CONNECT(self):
         #处理 CONNECT 请求，根据规则过滤执行目标动作
         if self.is_not_online():
             return
         self._do_CONNECT()
-        self.action, self.target = get_connect_action(self.ssl, self.host)
+        ssl = self.ssl
+        host = self.host
+        self.action, self.target = get_connect_action(ssl, host)
         #本地地址
-        if self.host.startswith(self.localhosts):
+        if host.startswith(self.localhosts):
             self.action = 'do_FAKECERT'
-        self.fakecert = self.ssl and self.action == 'do_FAKECERT'
+        self.fakecert = ssl and self.action == 'do_FAKECERT'
         self.do_action()
 
     def _do_METHOD(self):
@@ -187,10 +189,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.port = int(port or cport or self.ssl and 443 or 80)
         #确定网址、去掉可能存在的端口
         self.url_parts = url_parts = urlparse.SplitResult(scheme, host, url_parts.path, url_parts.query, '')
-        self.url = url_parts.geturl()
+        self.url = url = url_parts.geturl()
         #确定路径
         if path[0] != '/':
-            self.path = path = self.url[self.url.find('/', self.url.find('//')+3):]
+            self.path = url[url.find('/', url.find('//') + 3):]
 
     def do_METHOD(self):
         #处理其它请求，根据规则过滤执行目标动作
