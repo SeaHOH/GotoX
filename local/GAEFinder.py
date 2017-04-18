@@ -157,7 +157,6 @@ def savestatistics(statistics=None):
 def readiplist(nowgaeset):
     #g.reloadlist = False
     now = time()
-    goodset = set(g.goodlist)
     baddict = g.baddict
     blockset = set()
     weakset = set()
@@ -185,11 +184,11 @@ def readiplist(nowgaeset):
                 if not line.startswith(g_block):
                     ipset.add(line.strip('\r\n'))
     #自动屏蔽列表、正在使用的 IP
-    ipexset = ipexset - blockset - nowgaeset - goodset
-    ipset = ipset - blockset - nowgaeset - goodset - ipexset
+    otherset = blockset | nowgaeset | set(g.goodlist)
+    ipexset = ipexset - otherset
+    ipset = ipset - otherset - ipexset
     #排除非当前配置的遗留 IP
-    weakset = weakset & (ipset | ipexset)
-    ipexset = ipexset - weakset
+    weakset = weakset & ipset
     ipset = ipset - weakset
     g.halfweak = len(weakset)/2
     g.readtime = now
