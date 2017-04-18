@@ -418,7 +418,7 @@ class HTTPUtil(BaseHTTPUtil):
             ssl_sock.xip = ipaddr
             if test:
                 ssl_connection_cache[cache_key].append((time(), ssl_sock))
-                return test.put((ip, ssl_sock.ssl_time))
+                return queobj.put((ip, ssl_sock.ssl_time))
             # put ssl socket object to output queobj
             queobj.put(ssl_sock)
         except NetWorkIOError as e:
@@ -428,10 +428,8 @@ class HTTPUtil(BaseHTTPUtil):
             sock.close()
             # any socket.error, put Excpetions to output queobj.
             e.xip = ipaddr
-            if test:
-                if not retry and e.args == (-1, 'Unexpected EOF'):
-                    return self._create_ssl_connection(ipaddr, hostname, cache_key, timeout, host, test, test, True)
-                return test.put(e)
+            if test and not retry and e.args == (-1, 'Unexpected EOF'):
+                return self._create_ssl_connection(ipaddr, hostname, cache_key, timeout, host, queobj, test, True)
             queobj.put(e)
         finally:
             set_connect_finish(ip)
@@ -448,9 +446,6 @@ class HTTPUtil(BaseHTTPUtil):
                     ssl_sock.sock.close()
 
     def create_ssl_connection(self, address, hostname, cache_key, timeout, test=None, getfast=None, **kwargs):
-        if test:
-            return self._create_ssl_connection(address, hostname, cache_key, timeout, None, test, test)
-
         cache = ssl_connection_cache[cache_key]
         try:
             keeptime = gaekeeptime if cache_key.startswith('google') else linkkeeptime
