@@ -314,7 +314,8 @@ def runfinder(ip):
             g.gaelistbak.append((ip, costtime, com))
             for ipdict in statistics:
                 if ip in ipdict:
-                    ipdict[ip] = max(ipdict[ip][0]-1, 0), ipdict[ip][1]
+                    good, bad = ipdict[ip]
+                    ipdict[ip] = max(good - 1, 0), bad
     else:
         for ipdict in statistics:
             if ip in ipdict:
@@ -325,7 +326,7 @@ def runfinder(ip):
                  if s > 2 or (s > 0.6 and bad > 10):
                      ipdict[ip] = -1, 0
                  else:
-                     ipdict[ip] = max(good-1, 0), bad+1
+                     ipdict[ip] = max(good - 1, 0), bad + 1
         if ip in baddict: # badip 容忍次数 +1
             baddict[ip] = baddict[ip][0]+1, int(time())
         else: #记录检测到 badip 的时间
