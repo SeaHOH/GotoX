@@ -604,9 +604,6 @@ class HTTPUtil(BaseHTTPUtil):
                     sock = self.create_connection(address, hostname, connection_cache_key, timeout)
                 result = ssl_sock or sock
                 if result:
-                    #保证上传数据时超时时间不会过短
-                    if has_content:
-                        result.settimeout(min(timeout, 8))
                     response =  self._request(result, method, request_params.path, self.protocol_version, headers, payload, bufsize=bufsize)
                     return response
             except Exception as e:
