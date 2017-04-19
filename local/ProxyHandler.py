@@ -256,7 +256,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def handle_request_headers(self):
         #无法重复读取套接字，使用属性保存
-        if self.reread_req:
+        if self.reread_req and hasattr(self, 'request_headers'):
             self.reread_req = False
             return self.request_headers.copy(), self.payload
         #处理请求
