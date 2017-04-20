@@ -411,16 +411,15 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         request_headers, payload = self.handle_request_headers()
         #排除不支持 range 的请求
         need_autorange = self.command != 'HEAD' and 'range=' not in self.url_parts.query
+        self.range_end = range_start = 0
         if need_autorange:
             #匹配网址结尾
             need_autorange = self.url_parts.path.endswith(GC.AUTORANGE_ENDSWITH)
             request_range = request_headers.get('Range', None)
-            if request_range is None:
-                self.range_end = range_start = 0
-            else:
+            if request_range is not None:
                 range_start, range_end = tuple((x and int(x) or 0) for x in getbytes(request_range).group(1, 2))
+                self.range_end = range_end
                 if range_end is 0:
-                    self.range_end = range_end
                     if not need_autorange:
                         #排除疑似多线程下载工具链接
                         need_autorange = range_start is 0
@@ -432,8 +431,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 logging.info('发现[autorange]匹配：%r', self.url)
                 range_end = range_start + GC.AUTORANGE_FIRSTSIZE - 1
                 request_headers['Range'] = 'bytes=%d-%d' % (range_start, range_end)
-        else:
-            range_start = 0
         errors = []
         headers_sent = False
         #为 GAE 代理请求网址加上端口
