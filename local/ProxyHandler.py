@@ -772,8 +772,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             #恢复正常处理流程
             self.handle()
         finally:
-            #关闭加密套接字
-            ssl_sock.shutdown(socket.SHUT_WR)
+            #关闭加密套接字，并没有真正关闭，还有 2 个 makefile
+            #ssl_sock.shutdown(socket.SHUT_WR)
             ssl_sock.close()
 
     def list_dir(self, path, displaypath):
