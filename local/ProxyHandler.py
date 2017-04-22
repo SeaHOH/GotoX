@@ -967,7 +967,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             while allins and timecount > 0:
                 start_time = time()
                 ins, _, err = select(allins, [], allins, tick)
-                timecount -= int(start_time - time())
+                t = time() - start_time
+                timecount -= int(t)
                 if err:
                     raise socket.error(err)
                 for sock in ins:
@@ -975,9 +976,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if ndata:
                         other = local if sock is remote else remote
                         other.sendall(buf[:ndata])
-                        timecount = min(timecount*2, maxpong)
                     else:
                         allins.remove(sock)
+                if t < tick and len(allins) == 2:
+                    timecount = min(timecount*2, maxpong)
         except NetWorkIOError as e:
             if e.args[0] not in pass_errno:
                 logging.warning('转发 %r 失败：%r', self.url, e)
