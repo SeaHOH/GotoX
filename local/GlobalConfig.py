@@ -85,6 +85,7 @@ class GC:
     LINK_TIMEOUT = max(CONFIG.getint('link', 'timeout'), 3)
     LINK_FWDTIMEOUT = max(CONFIG.getint('link', 'fwdtimeout'), 2)
     LINK_KEEPTIME = CONFIG.getint('link', 'keeptime')
+    LINK_FWDKEEPTIME = CONFIG.getint('link', 'fwdkeeptime')
 
     IPLIST_MAP = dict((k.lower(), [x for x in v.split('|') if x]) for k, v in CONFIG.items('iplist'))
 

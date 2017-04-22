@@ -79,6 +79,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     nappid = 0
 
     fwd_timeout = GC.LINK_FWDTIMEOUT
+    fwd_keeptime = GC.LINK_FWDKEEPTIME
     listen_port = GC.LISTEN_GAE_PORT, GC.LISTEN_AUTO_PORT
     CAPath = '/ca', '/cadownload'
 
@@ -950,7 +951,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.write(b'HTTP/1.0 404\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
         self.write(c)
 
-    def forward_socket(self, remote, timeout=120, tick=4, maxping=None, maxpong=None):
+    def forward_socket(self, remote, tick=4, maxping=None, maxpong=None):
         #在本地与远程链接间进行数据转发
         if self.command == 'CONNECT':
             self.connection.sendall(b'HTTP/1.1 200 Connection Established\r\n\r\n')
@@ -960,9 +961,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             remote.sendall(rebuilt_request.encode())
         local = self.connection
         buf = memoryview(bytearray(32768)) # 32K
-        maxpong = maxpong or timeout
+        maxpong = maxpong or self.fwd_keeptime
         allins = [local, remote]
-        timecount = timeout
+        timecount = self.fwd_keeptime
         try:
             while allins and timecount > 0:
                 start_time = time()
