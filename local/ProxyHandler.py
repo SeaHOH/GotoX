@@ -400,6 +400,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             #干扰严重时考虑不复用 google 链接
                             response.sock.close()
                     else:
+                        response.sock.used = None
                         tcp_connection_cache[connection_cache_key].append((time(), response.sock))
 
     def do_GAE(self):

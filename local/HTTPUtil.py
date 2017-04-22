@@ -313,21 +313,28 @@ class HTTPUtil(BaseHTTPUtil):
 
     def create_connection(self, address, hostname, cache_key, timeout, ssl=None, forward=None, **kwargs):
         cache = tcp_connection_cache[cache_key]
-        if not (forward and ssl):
-            try:
-                keeptime = gaekeeptime if cache_key.startswith('google') else linkkeeptime
-                while cache:
-                    ctime, sock = cache.pop()
-                    try:
-                        rd, _, ed = select([sock], [], [sock], 0.01)
-                        if rd or ed or time()-ctime > keeptime:
-                            sock.close()
-                        else:
-                            return sock
-                    except OSError:
-                        pass
-            except IndexError:
-                pass
+        newconn = forward and ssl
+        keeptime = gaekeeptime if cache_key.startswith('google') else linkkeeptime
+        used_sock = []
+        try:
+            while cache:
+                ctime, sock = cache.pop()
+                try:
+                    rd, _, ed = select([sock], [], [sock], 0.01)
+                    if rd or ed or time()-ctime > keeptime:
+                        sock.close()
+                    elif newconn and hasattr(sock, 'used'):
+                        used_sock.append((ctime, sock))
+                    else:
+                        return sock
+                except OSError:
+                    pass
+        except IndexError:
+            pass
+        finally:
+            if newconn and used_sock:
+                used_sock.reverse()
+                cache.extend(used_sock)
 
         result = None
         host, port = address
@@ -351,20 +358,23 @@ class HTTPUtil(BaseHTTPUtil):
             for addr in addrs:
                 thread.start_new_thread(self._create_connection, (addr, timeout, forward, queobj))
             addrslen = len(addrs)
-            for i in range(addrslen):
+            for n in range(addrslen):
                 result = queobj.get()
                 if isinstance(result, Exception):
                     addr = result.xip
-                    #临时移除 badip
-                    try:
-                        addresses.remove(addr)
-                    except ValueError:
-                        pass
-                    if i == 0:
+                    if addresseslen > 1:
+                        #临时移除 badip
+                        try:
+                            addresses.remove(addr)
+                            addresseslen -= 1
+                        except ValueError:
+                            pass
+                    if i == n == 0:
                         #only output first error
                         logging.warning('%s _create_connection %r 返回 %r，重试', addr[0], host, result)
                 else:
-                    thread.start_new_thread(self._close_connection, (cache, addrslen-i-1, queobj, result.tcp_time))
+                    if addrslen - n > 1:
+                        thread.start_new_thread(self._close_connection, (cache, addrslen-n-1, queobj, result.tcp_time))
                     return result
         if result:
             raise result
@@ -448,8 +458,8 @@ class HTTPUtil(BaseHTTPUtil):
 
     def create_ssl_connection(self, address, hostname, cache_key, timeout, getfast=None, **kwargs):
         cache = ssl_connection_cache[cache_key]
+        keeptime = gaekeeptime if cache_key.startswith('google') else linkkeeptime
         try:
-            keeptime = gaekeeptime if cache_key.startswith('google') else linkkeeptime
             while cache:
                 ctime, ssl_sock = cache.pop()
                 try:
@@ -487,20 +497,23 @@ class HTTPUtil(BaseHTTPUtil):
             for addr in addrs:
                 thread.start_new_thread(self._create_ssl_connection, (addr, hostname, cache_key, timeout, host, queobj))
             addrslen = len(addrs)
-            for i in range(addrslen):
+            for n in range(addrslen):
                 result = queobj.get()
                 if isinstance(result, Exception):
                     addr = result.xip
-                    #临时移除 badip
-                    try:
-                        addresses.remove(addr)
-                    except ValueError:
-                        pass
-                    if i == 0:
+                    if addresseslen > 1:
+                        #临时移除 badip
+                        try:
+                            addresses.remove(addr)
+                            addresseslen -= 1
+                        except ValueError:
+                            pass
+                    if i == n == 0:
                         #only output first error
                         logging.warning('%s _create_ssl_connection %r 返回 %r，重试', addr[0], host, result)
                 else:
-                    thread.start_new_thread(self._close_ssl_connection, (cache, addrslen-i-1, queobj, result.ssl_time))
+                    if addrslen - n > 1:
+                        thread.start_new_thread(self._close_ssl_connection, (cache, addrslen-n-1, queobj, result.ssl_time))
                     return result
         if result:
             raise result
