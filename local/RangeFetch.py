@@ -33,7 +33,7 @@ class RangeFetch:
     lastactive = 0
     obj = 0
 
-    def __init__(self, handler, url, headers, payload, response):
+    def __init__(self, handler, headers, payload, response):
         self.tLock = threading.Lock()
         self.expect_begin = 0
         self._stopped = False
@@ -49,7 +49,7 @@ class RangeFetch:
         self.command = handler.command
         self.host = handler.host
         self.range_end = handler.range_end
-        self.url = url
+        self.url = handler.url
         self.headers = headers
         self.payload = payload
         self.response = response

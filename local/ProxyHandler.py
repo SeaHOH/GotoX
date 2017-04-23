@@ -411,6 +411,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.target = None
             return self.do_action()
         request_headers, payload = self.handle_request_headers()
+        #为使用非标准端口的网址加上端口
+        if (self.url_parts.scheme, self.port) not in (('http', 80), ('https', 443)):
+            n = self.url.find('/', self.url.find('//')+3)
+            self.url = '%s:%s%s' % (self.url[:n], self.port, self.path)
         #排除不支持 range 的请求
         need_autorange = self.command != 'HEAD' and 'range=' not in self.url_parts.query
         self.range_end = range_start = 0
@@ -435,9 +439,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 request_headers['Range'] = 'bytes=%d-%d' % (range_start, range_end)
         errors = []
         headers_sent = False
-        #为 GAE 代理请求网址加上端口
-        n = self.url.find('/', self.url.find('//')+3)
-        url = '%s:%s%s' % (self.url[:n], self.port, self.path)
         need_chunked = False
         start = range_start
         accept_ranges = None
@@ -464,7 +465,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             data = None
             response = None
             try:
-                response = gae_urlfetch(self.command, url, request_headers, payload, appid)
+                response = gae_urlfetch(self.command, self.url, request_headers, payload, appid)
                 if response is None:
                     if retry == GC.GAE_FETCHMAX - 1:
                         c = message_html('502 资源获取失败', '本地从 GAE 获取 %r 失败' % self.url, str(errors)).encode()
@@ -577,7 +578,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if not headers_sent:
                     #开始自动多线程（Partial Content）
                     if response.status == 206 and need_autorange:
-                        rangefetch = RangeFetch(self, url, request_headers, payload, response)
+                        rangefetch = RangeFetch(self, request_headers, payload, response)
                         response = None
                         return rangefetch.fetch()
                     data, need_chunked = self.handle_response_headers(response)
