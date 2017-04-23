@@ -106,6 +106,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_action(self):
         #记录 gws 链接活动时间
         #获取 hostname 别名
+        if self.action == 'do_GAE' and self.headers.get('Upgrade') == 'websocket':
+            self.action = 'do_FORWARD'
+            self.target = None
+            logging.warn('%s GAE 不支持 websocket %r，转用 FORWARD。', self.address_string(), self.url)
         if self.action in ('do_DIRECT', 'do_FORWARD'):
             self.hostname = hostname = set_dns(self.host, self.target)
             if hostname is None:
@@ -406,7 +410,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_GAE(self):
         #发送请求到 GAE 代理
         if self.command not in ('GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'PATCH'):
-            logging.warn('%s GAE 不支持 "%s %s"，转用 DIRECT', self.address_string(), self.command, self.url)
+            logging.warn('%s GAE 不支持 "%s %s"，转用 DIRECT。', self.address_string(), self.command, self.url)
             self.action = 'do_DIRECT'
             self.target = None
             return self.do_action()
@@ -645,18 +649,16 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if remote is None:
             if not isdirect(host):
                 if self.command == 'CONNECT':
-                    if self.ssl:
-                        logging.warning('%s%s do_FORWARD 链接远程主机 (%r, %r) 失败，尝试使用 "FAKECERT" 规则。', self.address_string(), hostip or '', host, port)
-                        self.go_FAKECERT()
-                    else:
-                        logging.warning('%s%s do_FORWARD 链接远程主机 (%r, %r) 失败，尝试跳过 "CONNECT" 命令。', self.address_string(), hostip or '', host, port)
-                        self.write(b'HTTP/1.1 200 Connection Established\r\n\r\n')
+                    logging.warning('%s%s do_FORWARD 链接远程主机 (%r, %r) 失败，尝试使用 "FAKECERT" 规则。', self.address_string(), hostip or '', host, port)
+                    self.go_FAKECERT()
+                elif self.headers.get('Upgrade') == 'websocket':
+                    logging.warning('%s%s do_FORWARD websocket 链接远程主机 (%r, %r) 失败。', self.address_string(), hostip or '', host, port)
                 else:
                     logging.warning('%s%s do_FORWARD 链接远程主机 (%r, %r) 失败，尝试使用 "GAE" 规则。', self.address_string(), hostip or '', host, port)
                     self.go_GAE()
             return
         if self.fakecert:
-            remote = http_nor.get_ssl_socket(remote, self.host.encode())
+            remote = http_util.get_ssl_socket(remote, self.host.encode())
             remote.connect(remote.xip)
             remote.do_handshake()
             logging.info('%s "FWD %s %s HTTP/1.1" - -', self.address_string(remote), self.command, self.url)
@@ -958,7 +960,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if self.command == 'CONNECT':
             self.connection.sendall(b'HTTP/1.1 200 Connection Established\r\n\r\n')
         else:
-            http_headers = ''.join('%s: %s\r\n' % (k.title(), v) for k, v in self.headers.items() if k.title() not in skip_request_headers)
+            http_headers = ''.join('%s: %s\r\n' % (k.title(), v) for k, v in self.headers.items() if not k.title().startswith('Proxy'))
             rebuilt_request = '%s\r\n%s\r\n' % (self.requestline, http_headers)
             remote.sendall(rebuilt_request.encode())
         local = self.connection
