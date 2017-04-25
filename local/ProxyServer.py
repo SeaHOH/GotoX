@@ -11,7 +11,7 @@ from .common.dns import reset_dns
 from .common.proxy import get_listen_ip
 from .GlobalConfig import GC
 
-localhosts = ('127.0.0.1', 'localhost', 'gotox.go')
+localhosts = ('127.0.0.1', '::1', 'localhost', 'gotox.go')
 testhosts = (
     'appleid.apple.com',
     'www.bing.com',

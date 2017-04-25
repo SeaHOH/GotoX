@@ -137,13 +137,15 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             host, port = self.parse_netloc(host)
             #排除某些程序把代理当成主机名
             if chost and port in self.listen_port and host.startswith(self.localhosts):
-                self.host = chost
+                self.host = host = chost
                 port = cport
-                self.headers.replace_header('Host', chost)
             else:
                 self.host = host
         else:
-            self.host = chost
+            self.host = host = chost
+        if ':' in host:
+            host = '[' + host + ']'
+        self.headers.replace_header('Host', host)
         self.port = port = int(port or cport or 443)
         #某些 http 链接也可能会使用 CONNECT 方法
         #认为非 80 端口都是加密链接
@@ -178,14 +180,16 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if chost and port in self.listen_port and host.startswith(self.localhosts):
                 self.host = host = chost
                 port = cport
-                self.headers.replace_header('Host', chost)
             else:
                 self.host = host
         else:
             self.host = host = chost
+        if ':' in host:
+            host = '[' + host + ']'
+        self.headers.replace_header('Host', host)
         #确定协议
-        if url_parts.scheme:
-            scheme = url_parts.scheme
+        scheme = url_parts.scheme
+        if scheme:
             #认为只有 https 协议才是加密链接
             self.ssl = scheme == 'https'
         else:
@@ -193,6 +197,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         #确定端口
         self.port = int(port or cport or self.ssl and 443 or 80)
         #确定网址、去掉可能存在的端口
+        #似乎是 urllib.parse.*.geturl 的 bug，没有检查 IPv6 主机名
         self.url_parts = url_parts = urlparse.SplitResult(scheme, host, url_parts.path, url_parts.query, '')
         self.url = url = url_parts.geturl()
         #确定路径
@@ -732,7 +737,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.url = target
             #重设主机
             self.url_parts = url_parts = urlparse.urlsplit(target)
-            self.headers['Host'] = self.host = url_parts.netloc
+            host, port = self.parse_netloc(url_parts.netloc)
+            self.host = host
+            if ':' in host:
+                host = '[' + host + ']'
+            self.headers.replace_header('Host', host)
             #重设协议
             origssl = self.ssl
             self.ssl = url_parts.scheme == 'https'
@@ -748,7 +757,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             #重设路径
             self.path = target[target.find('/', target.find('//')+3):]
             #重设 action
-            self.action, self.target = get_action(self.url_parts.scheme, self.host, self.path[1:], target)
+            self.action, self.target = get_action(url_parts.scheme, self.host, self.path[1:], target)
             #内部重定向到加密链接，结果匹配其它代理或转发规则
             if self.ssl and self.action in ('do_PROXY', 'do_FORWARD'):
                 self.fakecert = True
@@ -1034,11 +1043,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         host, has_br, port = netloc.partition(']')
         if has_br:
             # IPv6 必须使用方括号
-            self.ipv6host = True
             host = host[1:]
             port = port[1:]
         else:
-            self.ipv6host = False
             host, _, port = host.partition(':')
         return host.lower(), port
 
