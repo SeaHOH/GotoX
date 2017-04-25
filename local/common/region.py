@@ -13,6 +13,8 @@ else:
     from .dns import dns_resolve1, dns_resolve2, dns_resolve3
 
     def dns_resolve(host):
+        if isip(host):
+            return host,
         iplist = dns_resolve1(host)
         if not iplist:
             iplist = dns_resolve2(host)
@@ -87,9 +89,8 @@ def isdirect(host):
         return False
     if host in direct_cache:
         return direct_cache[host]
-    ips = (host,) if isip(host) else dns_resolve(host)
     ipv4 = None
-    for ip in ips:
+    for ip in dns_resolve(host):
         if isipv4(ip):
             ipv4 = ip
             break

@@ -95,7 +95,8 @@ def dns_resolve(host):
     return iplist
 
 dnshostalias = 'dns.over.https'
-dns_resolve_cache_key = GC.DNS_OVER_HTTPS_LIST + ':443'
+https_resolve_cache_key = GC.DNS_OVER_HTTPS_LIST + ':443'
+https_resolve_threads = max(min((GC.LINK_WINDOW - 1), 3), 1)
 
 from local.HTTPUtil import ssl_connection_cache, http_gws
 
@@ -132,7 +133,7 @@ def _https_resolve(qname, qtype, queobj):
     noerror = True
     iplist = classlist()
     try:
-        response = http_gws.request(params, headers=params.headers, connection_cache_key=dns_resolve_cache_key, getfast=timeout)
+        response = http_gws.request(params, headers=params.headers, connection_cache_key=https_resolve_cache_key, getfast=timeout)
         if response and response.status == 200:
             reply = jsondecoder.decode(response.read().decode())
             # NOERROR = 0
@@ -149,21 +150,19 @@ def _https_resolve(qname, qtype, queobj):
             response.close()
             if noerror:
                 if GC.GAE_KEEPALIVE:
-                    ssl_connection_cache[dns_resolve_cache_key].append((time(), response.sock))
+                    ssl_connection_cache[https_resolve_cache_key].append((time(), response.sock))
                 else:
                     response.sock.close()
     queobj.put(iplist)
 
 def https_resolve(qname, qtype, queobj):
-    threads = max(min((GC.LINK_WINDOW - 1), 3), 1)
-
     if dnshostalias not in dns:
         dns.set(dnshostalias, GC.IPLIST_MAP[GC.DNS_OVER_HTTPS_LIST], 24 * 3600)
 
     queobjt = Queue.Queue()
-    for _ in range(threads):
+    for _ in range(https_resolve_threads):
         thread.start_new_thread(_https_resolve, (qname, qtype, queobjt))
-    for _ in range(threads):
+    for _ in range(https_resolve_threads):
         iplist = queobjt.get()
         if iplist: break
     queobj.put(iplist)
