@@ -746,7 +746,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             origssl = self.ssl
             self.ssl = url_parts.scheme == 'https'
             #重设端口
-            if origssl != self.ssl:
+            if port:
+                self.port = port
+            elif origssl != self.ssl:
                 if self.ssl and self.port == 80:
                     self.port = 443
                 elif origssl and self.port == 443:
@@ -754,6 +756,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 else:
                     #不改变非标准端口
                     self.ssl = origssl
+                    scheme = 'https' if origssl else 'http'
+                    self.url_parts = url_parts = urlparse.SplitResult(scheme, host, url_parts.path, url_parts.query, '')
+                    self.url = url = url_parts.geturl()
+                    logging.warning('%s 由于 %r 使用了非标准端口且重定向目标未明确定义端口，重新内部重定向到 %r', self.address_string(), origurl, url)
             #重设路径
             self.path = target[target.find('/', target.find('//')+3):]
             #重设 action
