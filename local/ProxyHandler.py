@@ -417,8 +417,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         request_headers, payload = self.handle_request_headers()
         #为使用非标准端口的网址加上端口
         if (self.url_parts.scheme, self.port) not in (('http', 80), ('https', 443)):
-            n = self.url.find('/', self.url.find('//')+3)
-            self.url = '%s:%s%s' % (self.url[:n], self.port, self.path)
+            self.url = '%s://%s:%s%s' % (self.url_parts.scheme, self.host, self.port, self.path)
         #排除不支持 range 的请求
         need_autorange = self.command != 'HEAD' and 'range=' not in self.url_parts.query
         self.range_end = range_start = 0
