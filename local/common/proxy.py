@@ -11,14 +11,20 @@ def get_system_proxy():
     return proxies.get('https') or proxies.get('http') or {}
 
 def get_listen_ip():
-    listen_ip = '127.0.0.1'
+    listen_ip = []
     sock = None
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.connect(('8.8.8.8', 53))
-        listen_ip = sock.getsockname()[0]
-    except StandardError:
-        pass
+        listen_ip.append(sock.getsockname()[0])
+    finally:
+        if sock:
+            sock.close()
+    sock = None
+    try:
+        sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+        sock.connect(('2001:4860:4860::8888', 53))
+        listen_ip.append(sock.getsockname()[0].partition('%')[0])
     finally:
         if sock:
             sock.close()

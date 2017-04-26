@@ -11,7 +11,7 @@ from .common.dns import reset_dns
 from .common.proxy import get_listen_ip
 from .GlobalConfig import GC
 
-localhosts = ('127.0.0.1', '::1', 'localhost', 'gotox.go')
+localhosts = ['127.0.0.1', '::1', 'localhost', 'gotox.go']
 testhosts = (
     'appleid.apple.com',
     'www.bing.com',
@@ -61,33 +61,42 @@ def stop_proxyserver():
     reset_dns()
 
 def get_localhosts():
+    _localhosts = []
     try:
-        AutoProxyHandler.localhosts = tuple(set(sum((x if isinstance(x, list) else [x] for x in socket.gethostbyname_ex(socket.gethostname())), list(localhosts))))
+        _localhosts = sum((x if isinstance(x, list) else [x,] for x in socket.gethostbyname_ex(socket.gethostname())), _localhosts)
     except:
-        try:
-            AutoProxyHandler.localhosts = tuple(set([get_listen_ip()] + list(localhosts)))
-        except:
-            AutoProxyHandler.localhosts = localhosts
-    else:
-        try:
-            AutoProxyHandler.localhosts = tuple(set([get_listen_ip()] + list(AutoProxyHandler.localhosts)))
-        except:
-            pass
+        pass
+    AutoProxyHandler.localhosts = tuple(set(_localhosts + localhosts + get_listen_ip()))
+
+IPPROTO_IPV6 = getattr(socket, 'IPPROTO_IPV6', 41)
 
 class LocalProxyServer(SocketServer.ThreadingTCPServer):
     '''Local Proxy Server'''
     request_queue_size = 48
     is_not_online = True
 
+    def __init__(self, server_address, RequestHandlerClass):
+        SocketServer.BaseServer.__init__(self, server_address, RequestHandlerClass)
+        #保存原始地址配置以重复使用
+        self.orig_server_address = server_address
+
     def bind_and_activate(self):
-        self.socket = socket.socket(self.address_family, self.socket_type)
         try:
-            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.socket.bind(self.server_address)
-            self.socket.listen(self.request_queue_size)
+            #优先尝试 IPv6
+            sock = socket.socket(socket.AF_INET6, self.socket_type)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            # server_address 为空时同时监听 v6 和 v4 端口，'::' 也可以但不这样使用
+            if self.orig_server_address[0] == '':
+                sock.setsockopt(IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+            sock.bind(self.orig_server_address)
         except:
-            self.socket.close()
-            raise
+            sock.close()
+            sock = socket.socket(socket.AF_INET, self.socket_type)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(self.orig_server_address)
+        self.socket = sock
+        self.server_address = sock.getsockname()
+        sock.listen(self.request_queue_size)
         self.is_not_online = False
 
     def server_close(self):
@@ -122,8 +131,8 @@ from .ProxyHandler import AutoProxyHandler, GAEProxyHandler
 
 if GC.LISTEN_AUTH > 0:
     from .ProxyAuthHandler import AutoProxyAuthHandler, GAEProxyAuthHandler
-    AutoProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_AUTO_PORT), AutoProxyAuthHandler, False)
-    GAEProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_GAE_PORT), GAEProxyAuthHandler, False)
+    AutoProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_AUTO_PORT), AutoProxyAuthHandler)
+    GAEProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_GAE_PORT), GAEProxyAuthHandler)
 else:
-    AutoProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_AUTO_PORT), AutoProxyHandler, False)
-    GAEProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_GAE_PORT), GAEProxyHandler, False)
+    AutoProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_AUTO_PORT), AutoProxyHandler)
+    GAEProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_GAE_PORT), GAEProxyHandler)

@@ -1058,7 +1058,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def address_string(self, response=None):
         #返回请求和响应的地址
         if not hasattr(self, 'address_str'):
-            client_ip = 'l' if self.client_address[0] == '127.0.0.1' else self.client_address[0]
+            client_ip = self.client_address[0]
+            if client_ip.endswith('127.0.0.1'):
+                client_ip = 'L4'
+            elif client_ip == '::1':
+                client_ip = 'L6'
             self.address_str = '%s:%s->' % (client_ip, self.client_address[1])
         if hasattr(response, 'xip'):
             if response.xip[1] in (80, 443):
