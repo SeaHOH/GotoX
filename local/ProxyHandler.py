@@ -936,8 +936,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if host in self.badhost:
             if self.badhost[host]:
                 #记录临时规则的过期时间
-                filters_cache[host][-1] = '', '', 'TEMPGAE', time() + 900
-                logging.warning('将 %r 加入 "GAE" 规则 15 分钟。', host)
+                filters_cache[host][-1] = '', '', 'TEMPGAE', time() + GC.LINK_TEMPTIME
+                logging.warning('将 %r 加入 "GAE" 规则%s。', host, GC.LINK_TEMPTIME_S)
                 self.badhost[host] = False
         else:
             self.badhost[host] = True
@@ -951,8 +951,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if host in self.badhost:
             if self.badhost[host]:
                 #设置临时规则的过期时间
-                ssl_filters_cache.set(host, ('do_FAKECERT', None), 900)
-                logging.warning('将 %r 加入 "FAKECERT" 规则 15 分钟。', host)
+                ssl_filters_cache.set(host, ('do_FAKECERT', None), GC.LINK_TEMPTIME)
+                logging.warning('将 %r 加入 "FAKECERT" 规则%s。', host, GC.LINK_TEMPTIME_S)
                 self.badhost[host] = False
         else:
             self.badhost[host] = True

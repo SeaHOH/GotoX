@@ -86,6 +86,12 @@ class GC:
     LINK_FWDTIMEOUT = max(CONFIG.getint('link', 'fwdtimeout'), 2)
     LINK_KEEPTIME = CONFIG.getint('link', 'keeptime')
     LINK_FWDKEEPTIME = CONFIG.getint('link', 'fwdkeeptime')
+    LINK_TEMPTIME = CONFIG.getint('link', 'temptime')
+    LINK_TEMPTIME_S = LINK_TEMPTIME % 60
+    if LINK_TEMPTIME_S:
+        LINK_TEMPTIME_S = ' %d 分 %d 秒' % (LINK_TEMPTIME // 60, LINK_TEMPTIME_S)
+    else:
+        LINK_TEMPTIME_S = ' %d 分钟' % (LINK_TEMPTIME // 60)
 
     IPLIST_MAP = dict((k.lower(), [x for x in v.split('|') if x]) for k, v in CONFIG.items('iplist'))
 
