@@ -35,4 +35,5 @@ def get_listen_ip():
     if listen_ip:
         return listen_ip
     else:
+        import errno
         raise OSError(errno.ENETDOWN, '网络配置错误！')
