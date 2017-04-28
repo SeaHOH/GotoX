@@ -17,6 +17,8 @@ def get_listen_ip():
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.connect(('8.8.8.8', 53))
         listen_ip.append(sock.getsockname()[0])
+    except:
+        pass
     finally:
         if sock:
             sock.close()
@@ -25,7 +27,12 @@ def get_listen_ip():
         sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
         sock.connect(('2001:4860:4860::8888', 53))
         listen_ip.append(sock.getsockname()[0].partition('%')[0])
+    except:
+        pass
     finally:
         if sock:
             sock.close()
-    return listen_ip
+    if listen_ip:
+        return listen_ip
+    else:
+        raise OSError(errno.ENETDOWN, '网络配置错误！')
