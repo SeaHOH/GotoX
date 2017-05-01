@@ -145,7 +145,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.host = host = chost
         if ':' in host:
             host = '[' + host + ']'
-        self.headers.replace_header('Host', host)
+        if 'Host' in self.headers:
+            self.headers.replace_header('Host', host)
+        else:
+            self.headers['Host'] = host
         self.port = port = int(port or cport or 443)
         #某些 http 链接也可能会使用 CONNECT 方法
         #认为非 80 端口都是加密链接
@@ -186,7 +189,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.host = host = chost
         if ':' in host:
             host = '[' + host + ']'
-        self.headers.replace_header('Host', host)
+        if 'Host' in self.headers:
+            self.headers.replace_header('Host', host)
+        else:
+            self.headers['Host'] = host
         #确定协议
         scheme = url_parts.scheme
         if scheme:
@@ -741,7 +747,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.host = host
             if ':' in host:
                 host = '[' + host + ']'
-            self.headers.replace_header('Host', host)
+            if 'Host' in self.headers:
+                self.headers.replace_header('Host', host)
+            else:
+                self.headers['Host'] = host
             #重设协议
             origssl = self.ssl
             self.ssl = url_parts.scheme == 'https'
