@@ -8,7 +8,7 @@ parse_proxy = urllib2._parse_proxy
 
 def get_system_proxy():
     proxies = urllib2.getproxies()
-    return proxies.get('https') or proxies.get('http') or {}
+    return proxies.get('https') or proxies.get('http')
 
 def get_listen_ip():
     listen_ip = []
