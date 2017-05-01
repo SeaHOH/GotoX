@@ -90,10 +90,8 @@ class actionfilterlist(list):
             action = action.upper()
             if action not in actToNum:
                 continue
-            #order = int(order)
             filters = classlist()
             filters.action = actToNum[action]
-            #print('[%s]' % s, filters.action)
             for k, v in CONFIG.items(s):
                 scheme = ''
                 if k.find('://', 0, 9) > 0 :
@@ -104,6 +102,8 @@ class actionfilterlist(list):
                     host, path = k, ''
                 if host.find('@') == 0:
                     host = re.compile(host[1:]).search
+                else:
+                    host = host.lower()
                 if path.find('@') == 0:
                     path = re.compile(path[1:]).search
                 if filters.action in (FORWARD, DIRECT):
@@ -130,10 +130,6 @@ class actionfilterlist(list):
                             v = (patterns, replaces, 1), True
                         else:
                             v = (patterns, replaces, 1), False
-                #print(host, path, v)
-                #print('@'+host.__self__.pattern if isinstance(host, dir.__class__) else host,
-                #      '@'+url.__self__.pattern if isinstance(url, dir.__class__) else url,
-                #      v)
                 filters.append((scheme.lower(), host, path, v))
             self.append(filters)
 
