@@ -11,6 +11,16 @@ qGAE = Queue.LifoQueue()
 for _ in range(GC.GAE_MAXREQUESTS * len(GC.GAE_APPIDS)):
     qGAE.put(True)
 
+gae_kwargs = {}
+if GC.GAE_DEBUG:
+    gae_kwargs['Debug'] = 1
+if GC.GAE_PASSWORD:
+    gae_kwargs['Password'] = GC.GAE_PASSWORD
+if GC.GAE_SSLVERIFY:
+    gae_kwargs['SSLVerify'] = gae_kwargs['validate'] = 1
+if GC.GAE_MAXSIZE:
+    gae_kwargs['MaxSize'] = gae_kwargs['fetchmaxsize'] = GC.GAE_MAXSIZE
+
 def make_errinfo(response, htmltxt):
     del response.headers['Content-Type']
     del response.headers['Connection']
@@ -36,12 +46,7 @@ class gae_params:
         self.url = self.fetchserver % appid
 
 def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
-    if GC.GAE_PASSWORD:
-        kwargs['Password'] = GC.GAE_PASSWORD
-    if GC.GAE_SSLVERIFY:
-        kwargs['SSLVerify'] = kwargs['validate'] = 1
-    if GC.GAE_MAXSIZE:
-        kwargs['MaxSize'] = kwargs['fetchmaxsize'] = GC.GAE_MAXSIZE
+    kwargs.update(gae_kwargs)
     # GAE 代理请求不允许设置 Host 头域
     if 'Host' in headers:
         del headers['Host']
@@ -61,7 +66,7 @@ def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
     else:
         metadata = '%s %s HTTP/1.1\r\n' % (method, url)
         metadata += ''.join('%s: %s\r\n' % (k, v) for k, v in headers.items())
-        metadata += ''.join('X-Urlfetch-%s: %s\r\n' % (k, v) for k, v in kwargs.items() if v)
+        metadata += ''.join('X-UrlFetch-%s: %s\r\n' % (k, v) for k, v in kwargs.items() if v)
     if not isinstance(metadata, bytes):
         metadata = metadata.encode()
     metadata = zlib.compress(metadata)[2:-4]

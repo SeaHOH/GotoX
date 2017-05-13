@@ -59,6 +59,7 @@ class GC:
     LISTEN_CHECKPROCESS = CONFIG.getboolean('listen', 'checkprocess')
 
     GAE_APPIDS = re.findall(r'[\w\-\.]+', CONFIG.get('gae', 'appid').replace('.appspot.com', ''))
+    GAE_DEBUG = CONFIG.getboolean('gae', 'debug')
     GAE_PASSWORD = CONFIG.get('gae', 'password').strip()
     GAE_PATH = CONFIG.get('gae', 'path')
     GAE_TIMEOUT = max(CONFIG.getint('gae', 'timeout'), 3)
