@@ -49,8 +49,8 @@ from .FilterUtil import (
 
 normcookie = partial(re.compile(r',(?= [^ =]+(?:=|$))').sub, r'\r\nSet-Cookie:')
 normattachment = partial(re.compile(r'(?<=filename=)([^"\']+)').sub, r'"\1"')
-getbytes = re.compile(r'bytes=(\d+)-(\d*)').search
-getstart = re.compile(r'bytes (\d+)-.+').search
+getbytes = re.compile(r'bytes=(\d*)-(\d*)(,..)?').search
+getrange = re.compile(r'bytes (\d+)-(\d+)/(\d+|\*)').search
 
 skip_request_headers = (
     'Vary',
@@ -361,8 +361,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         #限制 bilibili 视频请求，以防断流 5MB
         if host.endswith('.acgvideo.com') or self.path.startswith('/ws.acgvideo.com'):
             request_range = request_headers.get('Range', None)
-            range_start = int(getbytes(request_range).group(1)) if request_range else 0
-            request_headers['Range'] = 'bytes=%d-%d' % (range_start, range_start + 5242879)
+            range_start = getbytes(request_range).group(1)
+            if range_start:
+                range_start = int(range_start)
+                request_headers['Range'] = 'bytes=%d-%d' % (range_start, range_start + 5242879)
         try:
             connection_cache_key = '%s:%d' % (hostname, self.port)
             response = http_util.request(self, payload, request_headers, connection_cache_key=connection_cache_key)
@@ -436,16 +438,23 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             need_autorange = self.url_parts.path.endswith(GC.AUTORANGE_ENDSWITH)
             request_range = request_headers.get('Range', None)
             if request_range is not None:
-                range_start, range_end = tuple((x and int(x) or 0) for x in getbytes(request_range).group(1, 2))
-                self.range_end = range_end
-                if range_end is 0:
-                    if not need_autorange:
-                        #排除疑似多线程下载工具链接
-                        need_autorange = range_start is 0
+                range_start, range_end, range_other = getbytes(request_range).group(1, 2, 3)
+                if not range_start or range_other:
+                    # autorange 无法处理未指定开始范围和不连续范围
+                    range_start = 0
+                    need_autorange = False
                 else:
-                    range_length = range_end + 1 - range_start
-                    #有明确范围时，根据阀值判断
-                    need_autorange = range_length > self.rangesize
+                    range_start = int(range_start)
+                    if range_end:
+                        self.range_end = range_end = int(range_end)
+                        range_length = range_end + 1 - range_start
+                        #有明确范围时，根据阀值判断
+                        need_autorange = range_length > self.rangesize
+                    else:
+                        self.range_end = range_end = 0
+                        if not need_autorange:
+                            #排除疑似多线程下载工具链接
+                            need_autorange = range_start is 0
             if need_autorange:
                 logging.info('发现[autorange]匹配：%r', self.url)
                 range_end = range_start + GC.AUTORANGE_FIRSTSIZE - 1
@@ -454,6 +463,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         headers_sent = False
         need_chunked = False
         start = range_start
+        end = ''
         accept_ranges = None
         for retry in range(GC.GAE_FETCHMAX):
             if retry > 0 and payload:
@@ -578,10 +588,15 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 #发生异常时的判断条件，放在 read 操作之前
                 content_range = response.headers.get('Content-Range')
                 accept_ranges = response.headers.get('Accept-Ranges')
-                if content_range:
-                    start = int(getstart(content_range).group(1))
-                # 服务器不支持 Range 且错误返回成功状态，直接放弃并断开链接
-                if range_start > 0 and response.status != 206 and response.status < 300:
+                #提取返回范围信息（Requested Range Not Satisfiable）
+                if response.status != 416 and content_range:
+                    start, end, length = getrange(content_range).group(1, 2, 3)
+                    start = int(start)
+                    #长度未知时无法使用 autorange
+                    if length == '*':
+                        need_autorange = False
+                #服务器不支持 Range 且错误返回成功状态，直接放弃并断开链接
+                if range_start > 0 and not content_range and response.status != 206 and response.status < 300:
                     self.close_connection = True
                     return
                 #修复某些软件无法正确处理持久链接（停用）
@@ -610,7 +625,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 elif retry < GC.GAE_FETCHMAX - 1:
                     if accept_ranges == 'bytes':
                         #重试支持 Range 的失败请求
-                        request_headers['Range'] = 'bytes=%d-%s' % (start, self.range_end or '')
+                        request_headers['Range'] = 'bytes=%d-%s' % (start, end)
                     elif start > 0:
                         #终止不支持 Range 的且中途失败的请求
                         logging.error('%s do_GAE "%s %s" 失败：%r', self.address_string(response), self.command, self.url, e)
@@ -1014,7 +1029,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             remote.close()
 
     def get_context(self):
-        #维护一个 ssl context 缓存'''
+        #维护一个 ssl context 缓存
         host = self.host
         ip = isip(host)
         if not ip:
