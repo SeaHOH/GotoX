@@ -523,8 +523,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     logging.warning('do_GAE 网关错误，url=%r，重试', self.url)
                     sleep(0.5)
                     continue
-                #无法提供 GAE 服务（Found｜Forbidden｜Method Not Allowed）
-                elif response.app_status in (302, 403, 405):
+                #无法提供 GAE 服务（Moved Permanently｜Found｜Forbidden｜Method Not Allowed）
+                elif response.app_status in (301, 302, 403, 405):
                     #检查 IP 可用性
                     if not testipuseable(response.xip[0]):
                         noerror = False
