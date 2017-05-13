@@ -384,9 +384,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if response.status == 403 and not isdirect(host):
                 logging.warn('%s do_DIRECT "%s %s" 链接被拒绝，尝试使用 "GAE" 规则。', self.address_string(), self.command, self.url)
                 return self.go_GAE()
-            #修复某些软件无法正确处理 206 Partial Content 响应的持久链接
-            if response.status == 206:
-                self.check_useragent()
+            #修复某些软件无法正确处理持久链接（停用）
+            self.check_useragent()
             data, need_chunked = self.handle_response_headers(response)
             _, err = self.write_response_content(data, response, need_chunked)
             if err:
@@ -585,9 +584,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if range_start > 0 and response.status != 206 and response.status < 300:
                     self.close_connection = True
                     return
-                #修复某些软件无法正确处理 206 Partial Content 响应的持久链接
-                if response.status == 206:
-                    self.check_useragent()
+                #修复某些软件无法正确处理持久链接（停用）
+                self.check_useragent()
                 #第一个响应，不用重复写入头部
                 if not headers_sent:
                     #开始自动多线程（Partial Content）
