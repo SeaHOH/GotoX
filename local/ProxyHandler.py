@@ -431,7 +431,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if (self.url_parts.scheme, self.port) not in (('http', 80), ('https', 443)):
             self.url = '%s://%s:%s%s' % (self.url_parts.scheme, self.host, self.port, self.path)
         #排除不支持 range 的请求
-        need_autorange = self.command != 'HEAD' and 'range=' not in self.url_parts.query
+        need_autorange = self.command != 'HEAD' and 'range=' not in self.url_parts.query and 'live=1' not in self.url_parts.query
         self.range_end = range_start = 0
         if need_autorange:
             #匹配网址结尾
