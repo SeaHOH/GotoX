@@ -7,6 +7,7 @@ from OpenSSL import SSL
 from select import select
 
 zero_errno = errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTSOCK
+zero_EOF_error = -1, 'Unexpected EOF'
 
 class SSLConnection:
     '''API-compatibility wrapper for Python OpenSSL's Connection-class.'''
@@ -97,7 +98,7 @@ class SSLConnection:
                 return b''
             raise e
         except SSL.SysCallError as e:
-            if e.args[0] == -1 and 'Unexpected EOF' == e.args[1]:
+            if e.args == zero_EOF_error:
                 return b''
             elif e.args[0] in zero_errno:
                 return b''
@@ -115,7 +116,7 @@ class SSLConnection:
                 return 0
             raise e
         except SSL.SysCallError as e:
-            if e.args[0] == -1 and 'Unexpected EOF' == e.args[1]:
+            if e.args == zero_EOF_error:
                 return 0
             elif e.args[0] in zero_errno:
                 return 0

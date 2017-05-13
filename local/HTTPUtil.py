@@ -13,7 +13,7 @@ from . import clogging as logging
 from select import select
 from time import time, sleep
 from .GlobalConfig import GC
-from .compat.openssl import SSLConnection
+from .compat.openssl import zero_EOF_error, SSLConnection
 from .compat import (
     Queue,
     thread,
@@ -439,7 +439,7 @@ class HTTPUtil(BaseHTTPUtil):
             sock.close()
             # any socket.error, put Excpetions to output queobj.
             e.xip = ipaddr
-            if test and not retry and e.args == (-1, 'Unexpected EOF'):
+            if test and not retry and e.args == zero_EOF_error:
                 return self._create_ssl_connection(ipaddr, hostname, cache_key, timeout, host, queobj, test, True)
             queobj.put(e)
         finally:
