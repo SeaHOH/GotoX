@@ -223,6 +223,17 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if path.lower() in self.CAPath:
                 return self.send_CA()
             return self.do_LOCAL()
+        request_headers = self.headers
+        if not self.reread_req:
+            #限制 bilibili 视频请求，以防断流 5MB
+            if host.endswith('.acgvideo.com') or path.startswith('/ws.acgvideo.com'):
+                request_range = request_headers.get('Range')
+                range_start = getbytes(request_range).group(1) if request_range is not None else None
+                range_start = int(range_start) if range_start else 0
+                request_headers.replace_header('Range', 'bytes=%d-%d' % (range_start, range_start + 5242879))
+            #限制 sohu 视频请求，以防拒绝访问
+            if 'Range' in request_headers and path.startswith('/sohu'):
+                del request_headers['Range']
         self.action, self.target = get_action(self.url_parts.scheme, host, path[1:], self.url)
         self.do_action()
 
@@ -358,13 +369,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         response = None
         noerror = True
         request_headers, payload = self.handle_request_headers()
-        #限制 bilibili 视频请求，以防断流 5MB
-        if host.endswith('.acgvideo.com') or self.path.startswith('/ws.acgvideo.com'):
-            request_range = request_headers.get('Range', None)
-            range_start = getbytes(request_range).group(1)
-            if range_start:
-                range_start = int(range_start)
-                request_headers['Range'] = 'bytes=%d-%d' % (range_start, range_start + 5242879)
         try:
             connection_cache_key = '%s:%d' % (hostname, self.port)
             response = http_util.request(self, payload, request_headers, connection_cache_key=connection_cache_key)
