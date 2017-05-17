@@ -1023,7 +1023,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     timecount = min(timecount*2, maxpong)
         except NetWorkIOError as e:
             if e.args[0] not in pass_errno:
-                logging.warning('转发 %r 失败：%r', self.url, e)
+                logging.warning('%s 转发 %r 失败：%r', self.address_string(remote), self.url, e)
                 raise
         finally:
             remote.close()
