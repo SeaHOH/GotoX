@@ -596,7 +596,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if length == '*':
                         need_autorange = False
                 #服务器不支持 Range 且错误返回成功状态，直接放弃并断开链接
-                if range_start > 0 and not content_range and response.status != 206 and response.status < 300:
+                if range_start > 0 and not content_range and response.status < 300:
                     self.close_connection = True
                     return
                 #修复某些软件无法正确处理持久链接（停用）
