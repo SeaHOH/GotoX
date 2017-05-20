@@ -83,12 +83,17 @@ class DirectIPv4Database:
 
 directipdb = os.path.join(data_dir, 'directip.db')
 direct_cache = LRUCache(GC.DNS_CACHE_ENTRIES//2)
+direct_top_level = 'cn', 'hk', 'mo'
+direct_endswith = *direct_top_level, *GC.LINK_TEMPWHITELIST
 
 def isdirect(host):
     if ipdb is None:
         return False
     if host in direct_cache:
         return direct_cache[host]
+    if host.endswith(direct_endswith):
+        direct_cache[host] = True
+        return True
     ipv4 = None
     for ip in dns_resolve(host):
         if isipv4(ip):

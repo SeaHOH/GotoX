@@ -93,6 +93,8 @@ class GC:
         LINK_TEMPTIME_S = ' %d 分 %d 秒' % (LINK_TEMPTIME // 60, LINK_TEMPTIME_S)
     else:
         LINK_TEMPTIME_S = ' %d 分钟' % (LINK_TEMPTIME // 60)
+    LINK_TEMPWHITELIST = CONFIG.get('link', 'tempwhitelist')
+    LINK_TEMPWHITELIST = tuple(LINK_TEMPWHITELIST.split('|')) if LINK_TEMPWHITELIST else ()
 
     IPLIST_MAP = dict((k.lower(), [x for x in v.split('|') if x]) for k, v in CONFIG.items('iplist'))
 
