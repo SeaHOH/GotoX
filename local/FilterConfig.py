@@ -80,19 +80,22 @@ class actionfilterlist(list):
         CONFIG.read(self.CONFIG_FILENAME)
 
         sections = CONFIG.sections()
-        sections.sort()
-        self.clear()
-        for s in sections:
+        order_sections = []
+        for section in sections:
             try:
-                order, action = isfiltername(s).group('order', 'action')
+                order, action = isfiltername(section).group('order', 'action')
+                order_sections.append((int(order), action, section))
             except:
                 continue
+        order_sections.sort(key=lambda x: x[0])
+        self.clear()
+        for order, action, section in order_sections:
             action = action.upper()
             if action not in actToNum:
                 continue
             filters = classlist()
             filters.action = actToNum[action]
-            for k, v in CONFIG.items(s):
+            for k, v in CONFIG.items(section):
                 scheme = ''
                 if k.find('://', 0, 9) > 0 :
                     scheme, _, k = k.partition('://')
