@@ -97,7 +97,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     fakecert = False
     url = None
     url_parts = None
-    reread_req = False
 
     def setup(self):
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
@@ -169,6 +168,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.do_action()
 
     def _do_METHOD(self):
+        self.reread_req = False
         host = self.headers.get('Host', '')
         port = None
         path = self.path
@@ -282,8 +282,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def handle_request_headers(self):
         #无法重复读取套接字，使用属性保存
-        if self.reread_req and hasattr(self, 'request_headers'):
-            self.reread_req = False
+        if self.reread_req:
             return self.request_headers.copy(), self.payload
         #处理请求
         request_headers = dict((k.title(), v) for k, v in self.headers.items() if k.title() not in skip_request_headers)
@@ -301,6 +300,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 raise
         self.request_headers = request_headers
         self.payload = payload
+        self.reread_req = True
         return request_headers.copy(), payload
 
     def handle_response_headers(self, response):
@@ -959,7 +959,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.badhost[host] = False
         else:
             self.badhost[host] = True
-        self.reread_req = True
         self.action = 'do_GAE'
         self.do_GAE()
 
