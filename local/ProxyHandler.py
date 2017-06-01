@@ -31,7 +31,7 @@ from .common.dns import set_dns, dns_resolve
 from .common.proxy import parse_proxy
 from .common.region import isdirect
 from .GlobalConfig import GC
-from .GAEUpdate import testip, testipuseable
+from .GAEUpdate import testip
 from .HTTPUtil import (
     tcp_connection_cache,
     ssl_connection_cache,
@@ -503,7 +503,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         sleep(0.5)
                         continue
                 #处理 GoProxy 错误信息
-                elif response.reason == 'debug error':
+                if response.reason == 'debug error':
                     data = response.read().decode()
                     #密码错误
                     if response.app_status == 403:
@@ -530,16 +530,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         data = ('<h2>GotoX：%r 部署的可能是 GotoX 不兼容的 GoProxy 服务端版本，如果这条错误反复出现请将之反馈给开发者。<h2>\n'
                                 '错误信息：\n%r' % (appid, data))
                     response.data = data.encode()
-                #网关错误（Gateway Timeout｜Bad Gateway）
+                #网关错误（Bad Gateway｜Gateway Timeout）
                 elif response.app_status in (502, 504):
                     logging.warning('do_GAE 网关错误，url=%r，重试', self.url)
                     sleep(0.5)
                     continue
                 #无法提供 GAE 服务（Moved Permanently｜Found｜Forbidden｜Method Not Allowed）
                 elif response.app_status in (301, 302, 403, 405):
-                    #检查 IP 可用性
-                    if not testipuseable(response.xip[0]):
-                        noerror = False
                     continue
                 #当前 appid 流量完结(Service Unavailable)
                 elif response.app_status == 503:
@@ -561,23 +558,18 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     logging.error('%r 部署的可能是 GotoX 不兼容的服务端，如果这条错误反复出现请将之反馈给开发者。', appid)
                 # appid 不存在（Not Found）
                 elif response.app_status == 404:
-                    if testipuseable(response.xip[0]):
-                        if len(GC.GAE_APPIDS) > 1:
-                            GC.GAE_APPIDS.remove(appid)
-                            for _ in range(GC.GAE_MAXREQUESTS):
-                                qGAE.get()
-                            logging.warning('APPID %r 不存在，将被移除', appid)
-                            self.do_GAE()
-                        else:
-                            logging.error('APPID %r 不存在，请将你的 APPID 填入 Config.ini 中', appid)
-                            c = message_html('404 Appid 不存在', 'Appid %r 不存在' % appid, '请编辑 Config.ini 文件，将你的 APPID 填入其中。').encode()
-                            self.write(b'HTTP/1.1 502 Service Unavailable\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
-                            self.write(c)
-                        return
+                    if len(GC.GAE_APPIDS) > 1:
+                        GC.GAE_APPIDS.remove(appid)
+                        for _ in range(GC.GAE_MAXREQUESTS):
+                            qGAE.get()
+                        logging.warning('APPID %r 不存在，将被移除', appid)
+                        self.do_GAE()
                     else:
-                        #只是 IP 错误，继续
-                        noerror = False
-                        continue
+                        logging.error('APPID %r 不存在，请将你的 APPID 填入 Config.ini 中', appid)
+                        c = message_html('404 Appid 不存在', 'Appid %r 不存在' % appid, '请编辑 Config.ini 文件，将你的 APPID 填入其中。').encode()
+                        self.write(b'HTTP/1.1 502 Service Unavailable\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
+                        self.write(c)
+                    return
                 #输出服务端返回的错误信息
                 if response.app_status != 200:
                     if not headers_sent:

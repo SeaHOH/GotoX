@@ -3,8 +3,10 @@
 import zlib
 import io
 import struct
+from . import clogging as logging
 from .compat import Queue, httplib
 from .GlobalConfig import GC
+from .GAEUpdate import testipuseable
 from .HTTPUtil import http_gws
 
 qGAE = Queue.LifoQueue()
@@ -25,7 +27,7 @@ def make_errinfo(response, htmltxt):
     del response.headers['Content-Type']
     del response.headers['Connection']
     response.headers['Content-Type'] = 'text/plain; charset=UTF-8'
-    response.headers['Connection'] = 'close'
+    response.headers['Content-Length'] = len(htmltxt)
     response.fp = io.BytesIO(htmltxt)
     response.read = response.fp.read
     return response
@@ -81,9 +83,15 @@ def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
     request_params = gae_params(appid)
     realurl = 'GAE-' + url
     qGAE.get() # get start from Queue
-    response = http_gws.request(request_params, payload, request_headers, connection_cache_key='google_gws:443', getfast=getfast, realmethod=method, realurl=realurl)
-    if response is None:
-        return None
+    while True:
+        response = http_gws.request(request_params, payload, request_headers, connection_cache_key='google_gws:443', getfast=getfast, realmethod=method, realurl=realurl)
+        if response is None:
+            return
+        app_server = response.headers.get('Server')
+        if app_server == 'Google Frontend' or testipuseable(response.xip[0]):
+            break
+        else:
+            logging.warning('发现并移除非 GAE IP：%s，Server：%s', response.xip[0], app_server)
     response.app_status = response.status
     if response.status != 200:
         return response
