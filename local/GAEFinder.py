@@ -257,20 +257,14 @@ class GAE_Finder:
             if not retry and e.args == (-1, 'Unexpected EOF'):
                 return self.getipinfo(ip, conntimeout, handshaketimeout, timeout, True)
             WARNING('%r', e)
-        code = self.getstatuscode(ssl_sock, sock, ip, timeout) if ssl_sock else ''
+        code = self.getstatuscode(ssl_sock, sock, ip) if ssl_sock else ''
         costtime = int((time()-start_time)*1000)
         return domain, costtime, code in (b'302', b'200')
 
-    def getstatuscode(self, conn, sock, ip, timeout):
+    def getstatuscode(self, conn, sock, ip):
         try:
-            begin = time()
             conn.send(self.httpreq)
-            code = conn.read(12)[-3:]
-            costime = time() - begin
-            if costime >= timeout:
-                WARNING('获取 http 响应超时(%ss)，ip：%s', costime, ip)
-                return
-            return code
+            return conn.read(12)[-3:]
         except NetWorkIOError as e:
             WARNING('从 %s 获取响应状态时发生错误：%r', ip, e)
         finally:
