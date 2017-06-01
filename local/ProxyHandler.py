@@ -52,36 +52,37 @@ normattachment = partial(re.compile(r'(?<=filename=)([^"\']+)').sub, r'"\1"')
 getbytes = re.compile(r'bytes=(\d*)-(\d*)(,..)?').search
 getrange = re.compile(r'bytes (\d+)-(\d+)/(\d+|\*)').search
 
-skip_request_headers = (
-    'Vary',
-    'Via',
-    'X-Forwarded-For',
-    'Proxy-Authorization',
-    'Proxy-Connection',
-    'Upgrade',
-    'X-Chrome-Variations',
-    #'Connection',
-    #'Cache-Control'
-    )
-
-skip_response_headers = (
-    'Content-Length',
-    'Transfer-Encoding',
-    'Content-MD5',
-    'Set-Cookie',
-    'Upgrade'
-    )
-
 class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     protocol_version = 'HTTP/1.1'
     nLock = threading.Lock()
     nappid = 0
+    CAPath = '/ca', '/cadownload'
+    gae_fetcmd = 'GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'PATCH'
+    skip_request_headers = (
+        'Vary',
+        'Via',
+        'X-Forwarded-For',
+        'Proxy-Authorization',
+        'Proxy-Connection',
+        'Upgrade',
+        'X-Chrome-Variations',
+        #'Connection',
+        #'Cache-Control'
+        )
+    skip_response_headers = (
+        'Content-Length',
+        'Transfer-Encoding',
+        'Content-MD5',
+        'Set-Cookie',
+        'Upgrade',
+        'Alt-Svc',
+        'Alternate-Protocol'
+        )
 
     fwd_timeout = GC.LINK_FWDTIMEOUT
     fwd_keeptime = GC.LINK_FWDKEEPTIME
     listen_port = GC.LISTEN_GAE_PORT, GC.LISTEN_AUTO_PORT
-    CAPath = '/ca', '/cadownload'
 
     #可修改
     context_cache = LRUCache(32)
@@ -285,7 +286,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if self.reread_req:
             return self.request_headers.copy(), self.payload
         #处理请求
-        request_headers = dict((k.title(), v) for k, v in self.headers.items() if k.title() not in skip_request_headers)
+        request_headers = dict((k.title(), v) for k, v in self.headers.items() if k.title() not in self.skip_request_headers)
         pconnection = self.headers.get('Proxy-Connection')
         if pconnection and self.request_version < 'HTTP/1.1' and pconnection.lower() != 'keep-alive':
             self.close_connection = True
@@ -305,7 +306,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def handle_response_headers(self, response):
         #处理响应
-        response_headers = dict((k.title(), v) for k, v in response.headers.items() if k.title() not in skip_response_headers)
+        response_headers = dict((k.title(), v) for k, v in response.headers.items() if k.title() not in self.skip_response_headers)
         #明确设置 Accept-Ranges
         if response_headers.get('Accept-Ranges', '') != 'bytes':
             response_headers['Accept-Ranges'] = 'none'
@@ -424,7 +425,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_GAE(self):
         #发送请求到 GAE 代理
-        if self.command not in ('GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'PATCH'):
+        if self.command not in self.gae_fetcmd:
             logging.warn('%s GAE 不支持 "%s %s"，转用 DIRECT。', self.address_string(), self.command, self.url)
             self.action = 'do_DIRECT'
             self.target = None
@@ -947,7 +948,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.command, self.url or self.host)
 
     def go_GAE(self):
-        if self.command not in ('GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'PATCH'):
+        if self.command not in self.gae_fetcmd:
             return self.go_BAD()
         host = '%s://%s' % (self.url_parts.scheme, self.host)
         #最近是否失败（缓存设置超时两分钟）
