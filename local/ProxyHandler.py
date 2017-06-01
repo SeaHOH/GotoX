@@ -577,9 +577,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         self.write_response_content(data, response, need_chunked)
                     self.close_connection = True
                     return
-                #与已经写入的头部状态不同
-                if headers_sent and headers_sent != response.status:
-                    continue
                 #发生异常时的判断条件，放在 read 操作之前
                 content_range = response.headers.get('Content-Range')
                 accept_ranges = response.headers.get('Accept-Ranges')
@@ -590,8 +587,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     #长度未知时无法使用 autorange
                     if length == '*':
                         need_autorange = False
-                #服务器不支持 Range 且错误返回成功状态，直接放弃并断开链接
-                if range_start > 0 and not content_range and response.status < 300:
+                if (not content_range
+                        #重试中途失败的请求时返回错误
+                        and ((headers_sent and start > 0)
+                        #服务器不支持 Range 且错误返回成功状态，直接放弃并断开链接
+                            or (range_start > 0 and response.status < 300))):
                     self.close_connection = True
                     return
                 #修复某些软件无法正确处理持久链接（停用）
@@ -604,7 +604,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         response = None
                         return rangefetch.fetch()
                     data, need_chunked = self.handle_response_headers(response)
-                    headers_sent = response.status
+                    headers_sent = True
                 wrote, err = self.write_response_content(data, response, need_chunked)
                 start += wrote
                 if err:
@@ -620,7 +620,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 elif retry < GC.GAE_FETCHMAX - 1:
                     if accept_ranges == 'bytes':
                         #重试支持 Range 的失败请求
-                        request_headers['Range'] = 'bytes=%d-%s' % (start, end)
+                        if start > 0:
+                            request_headers['Range'] = 'bytes=%d-%s' % (start, end)
                     elif start > 0:
                         #终止不支持 Range 的且中途失败的请求
                         logging.error('%s do_GAE "%s %s" 失败：%r', self.address_string(response), self.command, self.url, e)
