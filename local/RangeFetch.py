@@ -39,7 +39,7 @@ class RangeFetch:
         self._stopped = False
         self._last_app_status = {}
         self.lastupdate = testip.lastupdate
-        self.iplist = GC.IPLIST_MAP['google_gws'][:]
+        self.iplist = GC.IPLIST_MAP['google_gws'].copy()
         self.appids = Queue.Queue()
         for id in GC.GAE_APPIDS:
             self.appids.put(id)
@@ -159,7 +159,7 @@ class RangeFetch:
                 with self.tLock:
                     if self.lastupdate != testip.lastupdate:
                         self.lastupdate = testip.lastupdate
-                        self.iplist = GC.IPLIST_MAP['google_gws'][:]
+                        self.iplist = GC.IPLIST_MAP['google_gws'].copy()
                 noerror = True
                 response = None
                 starttime = None
