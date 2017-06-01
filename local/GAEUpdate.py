@@ -223,3 +223,34 @@ def testipserver():
             logging.error(' IP 测试守护线程错误：%r', e)
         finally:
             sleep(2)
+
+def checkgooglecom():
+    def _checkgooglecom(ssldomain, costtime, isgaeserver):
+        logging.test('固定 GAE IP 列表检测，IP：%s，可用证书：%s，耗时：%d 毫秒，支持 GAE：%s',
+                     ip, ssldomain, costtime, bool(isgaeserver))
+        if ssldomain != 'www.google.com':
+            with lLock:
+                try:
+                    GC.IPLIST_MAP['google_com'].remove(ip)
+                except:
+                    pass
+
+    retrylist = []
+    retrytimes = 2
+    for ip in GC.IPLIST_MAP[GC.GAE_IPLIST]:
+        ssldomain, costtime, isgaeserver = gae_finder.getipinfo(ip)
+        if ssldomain is None:
+            retrylist.append(ip)
+        else:
+            _checkgooglecom(ssldomain, costtime, isgaeserver)
+    for i in range(retrytimes):
+        for ip in retrylist.copy():
+            ssldomain, costtime, isgaeserver = gae_finder.getipinfo(ip, 3, 3, 4)
+            if i == retrytimes - 1:
+                _checkgooglecom(ssldomain, costtime, isgaeserver)
+            elif ssldomain is not None:
+                retrylist.remove(ip)
+                _checkgooglecom(ssldomain, costtime, isgaeserver)
+    countcom = len(GC.IPLIST_MAP['google_com'])
+    if countcom < 3:
+        logging.error('检测出固定 GAE IP 列表 [%s] 中包含的可用 GWS IP 数量过少：%d 个，请增加。', GC.GAE_IPLIST, countcom)

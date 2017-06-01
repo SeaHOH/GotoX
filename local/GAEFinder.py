@@ -225,7 +225,7 @@ class GAE_Finder:
     def __init__(self):
         pass
 
-    def getipinfo(self, ip, retry=None):
+    def getipinfo(self, ip, conntimeout=g_conntimeout, handshaketimeout=g_handshaketimeout, timeout=g_timeout, retry=None):
         if ipnotuse(ip):
             return None, 0, False
         start_time = time()
@@ -239,13 +239,13 @@ class GAE_Finder:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
             ssl_sock = http_gws.get_ssl_socket(sock, b'www.google.com')
-            ssl_sock.settimeout(g_conntimeout)
+            ssl_sock.settimeout(conntimeout)
             ssl_sock.connect((ip, 443))
-            ssl_sock.settimeout(g_handshaketimeout)
+            ssl_sock.settimeout(handshaketimeout)
             ssl_sock.do_handshake()
+            ssl_sock.settimeout(timeout)
             handshaked_time = time() - start_time
-            ssl_sock.settimeout(g_timeout)
-            if handshaked_time > g_handshaketimeout:
+            if handshaked_time > handshaketimeout:
                 raise socket.error('handshake cost %dms timed out' % int(handshaked_time*1000))
             cert = http_gws.google_verify(ssl_sock)
             domain = cert.get_subject().CN
@@ -255,19 +255,19 @@ class GAE_Finder:
             sock.close()
             ssl_sock = None
             if not retry and e.args == (-1, 'Unexpected EOF'):
-                return self.getipinfo(ip, True)
+                return self.getipinfo(ip, conntimeout, handshaketimeout, timeout, True)
             WARNING('%r', e)
-        code = self.getstatuscode(ssl_sock, sock, ip) if ssl_sock else ''
+        code = self.getstatuscode(ssl_sock, sock, ip, timeout) if ssl_sock else ''
         costtime = int((time()-start_time)*1000)
         return domain, costtime, code in (b'302', b'200')
 
-    def getstatuscode(self, conn, sock, ip):
+    def getstatuscode(self, conn, sock, ip, timeout):
         try:
             begin = time()
             conn.send(self.httpreq)
             code = conn.read(12)[-3:]
             costime = time() - begin
-            if costime >= g_timeout:
+            if costime >= timeout:
                 WARNING('获取 http 响应超时(%ss)，ip：%s', costime, ip)
                 return
             return code

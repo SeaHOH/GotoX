@@ -274,6 +274,8 @@ def main():
         testipserver()
     else:
         logging.warning('正在使用固定的 GAE IP 列表 [%s]，将不会进行 IP 检查。', GC.GAE_IPLIST)
+        from .GAEUpdate import checkgooglecom
+        threading._start_new_thread(checkgooglecom, ())
         from time import sleep
         while True:
             sleep(10)
