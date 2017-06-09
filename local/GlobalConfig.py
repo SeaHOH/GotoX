@@ -68,7 +68,8 @@ class GC:
     GAE_MAXREQUESTS = min(CONFIG.getint('gae', 'maxrequsts'), 5)
     GAE_SSLVERIFY = CONFIG.getboolean('gae', 'sslverify')
     GAE_FETCHMAX = int(CONFIG.get('gae', 'fetchmax') or 2)
-    GAE_MAXSIZE = CONFIG.get('gae', 'maxsize')
+    #在服务端，这个数值代表的范围大小会增加 1
+    GAE_MAXSIZE = min(int(CONFIG.get('gae', 'maxsize') or 1024 * 1024 * 4), 1024 * 1024 * 32 - 1)
     GAE_IPLIST = CONFIG.get('gae', 'iplist')
     GAE_USEGWSIPLIST = True
 
@@ -84,7 +85,7 @@ class GC:
     LINK_LOCALSSL = _SSLv[LINK_LOCALSSLTXT]
     LINK_REMOTESSL = max(_SSLv[LINK_REMOTESSLTXT], _SSLv['TLS']) + (1 if LINK_OPENSSL else 0)
     LINK_TIMEOUT = max(CONFIG.getint('link', 'timeout'), 3)
-    LINK_FWDTIMEOUT = max(CONFIG.getint('link', 'fwdtimeout'), 2)
+    LINK_FWDTIMEOUT = max(CONFIG.getint('link', 'fwdtimeout'), 3)
     LINK_KEEPTIME = CONFIG.getint('link', 'keeptime')
     LINK_FWDKEEPTIME = CONFIG.getint('link', 'fwdkeeptime')
     LINK_TEMPTIME = CONFIG.getint('link', 'temptime')
@@ -142,13 +143,20 @@ class GC:
     else:
         proxy = ''
 
-    AUTORANGE_ENDSWITH = CONFIG.get('autorange', 'endswith')
-    AUTORANGE_ENDSWITH = tuple(AUTORANGE_ENDSWITH.split('|')) if AUTORANGE_ENDSWITH else ()
-    AUTORANGE_FIRSTSIZE = CONFIG.getint('autorange', 'firstsize')
-    AUTORANGE_MAXSIZE = CONFIG.getint('autorange', 'maxsize')
-    AUTORANGE_BUFSIZE = CONFIG.getint('autorange', 'bufsize')
-    AUTORANGE_THREADS = CONFIG.getint('autorange', 'threads')
-    AUTORANGE_LOWSPEED = CONFIG.getint('autorange', 'lowspeed')
+    AUTORANGE_FAST_ENDSWITH = CONFIG.get('autorange/fast', 'endswith')
+    AUTORANGE_FAST_ENDSWITH = tuple(AUTORANGE_FAST_ENDSWITH.split('|')) if AUTORANGE_FAST_ENDSWITH else ()
+    AUTORANGE_FAST_FIRSTSIZE = CONFIG.getint('autorange/fast', 'firstsize')
+    AUTORANGE_FAST_MAXSIZE = CONFIG.getint('autorange/fast', 'maxsize')
+    AUTORANGE_FAST_BUFSIZE = CONFIG.getint('autorange/fast', 'bufsize')
+    AUTORANGE_FAST_THREADS = CONFIG.getint('autorange/fast', 'threads')
+    AUTORANGE_FAST_LOWSPEED = CONFIG.getint('autorange/fast', 'lowspeed')
+
+    AUTORANGE_BIG_ONSIZE = int(CONFIG.get('autorange/big', 'onsize') or 1024 * 1024 * 32)
+    AUTORANGE_BIG_MAXSIZE = CONFIG.getint('autorange/big', 'maxsize')
+    AUTORANGE_BIG_SLEEPTIME = CONFIG.getint('autorange/big', 'sleeptime')
+    AUTORANGE_BIG_BUFSIZE = CONFIG.getint('autorange/big', 'bufsize')
+    AUTORANGE_BIG_THREADS = CONFIG.getint('autorange/big', 'threads')
+    AUTORANGE_BIG_LOWSPEED = CONFIG.getint('autorange/big', 'lowspeed')
 
     DNS_SERVERS = CONFIG.get('dns', 'servers')
     DNS_SERVERS = tuple(DNS_SERVERS.split('|')) if DNS_SERVERS else ('8.8.8.8',)

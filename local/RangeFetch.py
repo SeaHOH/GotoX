@@ -19,16 +19,7 @@ getrange = re.compile(r'bytes (\d+)-(\d+)/(\d+)').search
 class RangeFetch:
     '''Range Fetch Class'''
 
-    maxsize = GC.AUTORANGE_MAXSIZE or 1024*1024*4
-    bufsize = GC.AUTORANGE_BUFSIZE or 8192
-    threads = GC.AUTORANGE_THREADS or 2
-    minip = max(threads-2, 3)
-    lowspeed = GC.AUTORANGE_LOWSPEED or 1024*32
-    timeout = max(GC.FINDER_MAXTIMEOUT/1000, 0.8)
-    sleeptime = GC.FINDER_MAXTIMEOUT/500.0
     delable = GC.GAE_USEGWSIPLIST
-    delay_size = max(min(maxsize, 1024*1024), 1024*128)
-    timedout = bufsize / lowspeed * 2
     Lock = threading.Lock()
     lastactive = 0
     obj = 0
@@ -58,36 +49,54 @@ class RangeFetch:
         with RangeFetch.Lock:
             RangeFetch.obj += 1
             needtest = RangeFetch.obj is 1
-        response_status = self.response.status
-        response_headers = dict((k.title(), v) for k, v in self.response.getheaders())
-        content_range = response_headers['Content-Range']
-        start, end, length = tuple(int(x) for x in getrange(content_range).group(1, 2, 3))
-        _end = length - 1
-        if start is 0 and self.range_end in (0, _end):
-            response_status = 200
-            response_headers['Content-Length'] = str(length)
+        isRangeFetchBig = self.__class__ is RangeFetchBig
+        response = self.response
+        response_status = response.status
+        response_headers = dict((k.title(), v) for k, v in response.headers.items())
+        if 'Content-Range' in response_headers:
+            start, end, length = tuple(int(x) for x in getrange(response_headers['Content-Range']).group(1, 2, 3))
+            content_length = end + 1 - start
             del response_headers['Content-Range']
-            range_end = _end
         else:
+            start = end = 0
+            content_length = length = int(response.headers['Content-Length'])
+        _end = length - 1
+        if isRangeFetchBig and content_length > GC.AUTORANGE_BIG_MAXSIZE and end - start != GC.GAE_MAXSIZE:
+            #大于单线程限制且不等于服务端失败时的重试长度，放弃响应结果
+            response.close()
+            self.response = None
+            end = start - 1
+        if 'Range' in self.handler.headers:
             range_end = self.range_end or _end
             response_headers['Content-Range'] = 'bytes %s-%s/%s' % (start, range_end, length)
             length = range_end + 1
             response_headers['Content-Length'] = str(length - start)
+        #if start is 0 and self.range_end in (0, _end):
+        else:
+            response_status = 200
+            response_headers['Content-Length'] = str(length)
+            range_end = _end
 
         try:
             self.write(('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k, v) for k, v in response_headers.items()))))
         except Exception as e:
-            logging.info('%s RangeFetch 本地链接断开：%r, %r', self.address_string(self.response), self.url, e)
+            logging.info('%s RangeFetch 本地链接断开：%r, %r', self.address_string(response), self.url, e)
             self.record()
             return
-        logging.info('%s >>>>>>>>>>>>>>> RangeFetch 开始 %r %d-%d', self.address_string(self.response), self.url, start, range_end)
+        logging.info('%s >>>>>>>>>>>>>>> RangeFetch 开始 %r %d-%d', self.address_string(response), self.url, start, range_end)
 
         #开始多线程时先测试一遍 IP
-        sleeptime = self.sleeptime if needtest and time() - RangeFetch.lastactive > 30 and testallgaeip(True) else 0
+        if isRangeFetchBig:
+            sleeptime = self.sleeptime
+            if needtest and time() - RangeFetch.lastactive > 30:
+                testallgaeip(True)
+        else:
+            sleeptime = self.sleeptime if needtest and time() - RangeFetch.lastactive > 30 and testallgaeip(True) else 0
 
         data_queue = Queue.PriorityQueue()
         range_queue = Queue.PriorityQueue()
-        range_queue.put((start, end))
+        if self.response is not None:
+            self.firstrange = start, end
         # py2 弃用，xrange 参数太大时会出错，range 不出错但耗时太多
         #for begin in range(end+1, length, self.maxsize):
         #    range_queue.put((begin, min(begin+self.maxsize-1, length-1)))
@@ -102,7 +111,10 @@ class RangeFetch:
             range_queue.put((a, length - 1))
 
         for i in range(self.threads):
-            spawn_later(sleeptime if i else 0, self.__fetchlet, range_queue, data_queue, i + 1)
+            if isRangeFetchBig:
+                spawn_later(sleeptime * i if i else 0, self.__fetchlet, range_queue, data_queue, i + 1)
+            else:
+                spawn_later(sleeptime if i else 0, self.__fetchlet, range_queue, data_queue, i + 1)
         has_peek = hasattr(data_queue, 'peek')
         peek_timeout = 120
         self.expect_begin = start
@@ -166,19 +178,21 @@ class RangeFetch:
                 appid = None
                 if self._stopped: return
                 try:
-                    start, end = range_queue.get(timeout=1)
-                    headers['Range'] = 'bytes=%d-%d' % (start, end)
-                    appid = self.appids.get()
-                    if self._last_app_status.get(appid, 200) >= 500:
-                        sleep(2)
-                    while (start - self.expect_begin) / self.delay_size > 4.0 and data_queue.qsize() * self.bufsize / self.delay_size > 8.0:
-                        if self._stopped: return
-                        sleep(0.1)
                     if self.response:
                         qGAE.get()
                         response = self.response
                         self.response = None
+                        start, end = self.firstrange
                     else:
+                        start, end = range_queue.get(timeout=1)
+                    headers['Range'] = 'bytes=%d-%d' % (start, end)
+                    appid = self.appids.get()
+                    if self._last_app_status.get(appid, 200) >= 500:
+                        sleep(2)
+                    while (start - self.expect_begin) / self.delaysize > 4.0 and data_queue.qsize() * self.bufsize / self.delaysize > 8.0:
+                        if self._stopped: return
+                        sleep(0.1)
+                    if self.response is None:
                         response = gae_urlfetch(self.command, self.url, headers, self.payload, appid, getfast=self.timeout)
                     if response:
                         if response.xip[0] in self.iplist:
@@ -196,7 +210,10 @@ class RangeFetch:
                     continue
                 if self._stopped: return
                 if not response:
-                    logging.warning('%s RangeFetch %s %d-%d 没有响应，重试', self.address_string(), headers['Range'], start, end)
+                    logging.warning('%s RangeFetch %s 没有响应，重试', self.address_string(), headers['Range'])
+                    range_queue.put((start, end))
+                elif response.app_status == 503:
+                    self.handler.mark_badappid(appid)
                     range_queue.put((start, end))
                 elif response.app_status != 200:
                     logging.warning('%s Range Fetch "%s %s" %s 返回 %s', self.address_string(response), self.command, self.url, headers['Range'], response.app_status)
@@ -223,10 +240,11 @@ class RangeFetch:
                             data = None if timedout else response.read(self.bufsize)
                     except Exception as e:
                         noerror = False
-                        with self.tLock:
-                            if self.delable and response.xip[0] in self.iplist and len(self.iplist) > self.minip:
-                                self.iplist.remove(response.xip[0])
-                                logging.warning('%s RangeFetch 移除故障 ip %s', self.address_string(response), response.xip[0])
+                        if self.delable:
+                            with self.tLock:
+                                 if response.xip[0] in self.iplist and len(self.iplist) > self.minip:
+                                    self.iplist.remove(response.xip[0])
+                                    logging.warning('%s RangeFetch 移除故障 ip %s', self.address_string(response), response.xip[0])
                         logging.warning('%s RangeFetch "%s %s" %s 失败：%r', self.address_string(response), self.command, self.url, headers['Range'], e)
                     if self._stopped: return
                     if start < end + 1:
@@ -250,9 +268,33 @@ class RangeFetch:
                     if noerror:
                         #放入套接字缓存
                         ssl_connection_cache['google_gws:443'].append((time(), response.sock))
-                        if not self._stopped:
+                        if self.delable and not self._stopped:
                             #移除慢速 ip
                             with self.tLock:
-                                if self.delable and response.xip[0] in self.iplist and starttime and len(self.iplist) > self.minip and (start-realstart)/(time()-starttime) < self.lowspeed:
+                                if response.xip[0] in self.iplist and starttime and len(self.iplist) > self.minip and (start-realstart) / (time()-starttime) < self.lowspeed:
                                     self.iplist.remove(response.xip[0])
                                     logging.warning('%s RangeFetch 移除慢速 ip %s', self.address_string(), response.xip[0])
+
+class RangeFetchFast(RangeFetch):
+    maxsize = GC.AUTORANGE_FAST_MAXSIZE or 1024 * 1024 * 4
+    bufsize = GC.AUTORANGE_FAST_BUFSIZE or 8192
+    threads = GC.AUTORANGE_FAST_THREADS or 2
+    minip = max(threads-2, 3)
+    lowspeed = GC.AUTORANGE_FAST_LOWSPEED or 1024 * 32
+    timeout = max(GC.FINDER_MAXTIMEOUT / 1000, 0.8)
+    sleeptime = GC.FINDER_MAXTIMEOUT / 500.0
+    delaysize = max(min(maxsize, 1024 * 1024), 1024 * 128)
+    timedout = bufsize / lowspeed * 2
+
+class RangeFetchBig(RangeFetch):
+    maxsize = GC.AUTORANGE_BIG_MAXSIZE or 1024 * 1024 * 4
+    bufsize = GC.AUTORANGE_BIG_BUFSIZE or 8192
+    threads = GC.AUTORANGE_BIG_THREADS or 2
+    minip = int(threads * 1.5)
+    lowspeed = GC.AUTORANGE_BIG_LOWSPEED or 0
+    timeout = max(GC.LINK_FWDTIMEOUT, 5)
+    sleeptime = GC.AUTORANGE_BIG_SLEEPTIME
+    delaysize = GC.AUTORANGE_BIG_ONSIZE / 4
+    timedout = bufsize / 1024
+
+RangeFetchs = None, RangeFetchFast, RangeFetchBig

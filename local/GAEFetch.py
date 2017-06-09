@@ -19,9 +19,15 @@ if GC.GAE_DEBUG:
 if GC.GAE_PASSWORD:
     gae_kwargs['Password'] = GC.GAE_PASSWORD
 if GC.GAE_SSLVERIFY:
-    gae_kwargs['SSLVerify'] = gae_kwargs['validate'] = 1
-if GC.GAE_MAXSIZE:
-    gae_kwargs['MaxSize'] = gae_kwargs['fetchmaxsize'] = GC.GAE_MAXSIZE
+    if GC.GAE_PATH == '/2':
+        gae_kwargs['Validate'] = 1
+    else:
+        gae_kwargs['SSLVerify'] = 1
+if GC.GAE_MAXSIZE and GC.GAE_MAXSIZE != 1024 * 1024 * 4:
+    if GC.GAE_PATH == '/2':
+        gae_kwargs['FetchMaxSize'] = GC.GAE_MAXSIZE
+    else:
+        gae_kwargs['MaxSize'] = GC.GAE_MAXSIZE
 
 def make_errinfo(response, htmltxt):
     del response.headers['Content-Type']

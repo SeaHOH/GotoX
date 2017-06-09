@@ -38,7 +38,7 @@ from .HTTPUtil import (
     http_gws,
     http_nor
     )
-from .RangeFetch import RangeFetch
+from .RangeFetch import RangeFetchs
 from .GAEFetch import qGAE, gae_urlfetch
 from .FilterUtil import (
     filters_cache,
@@ -89,9 +89,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     proxy_connection_time = LRUCache(32)
     badhost = LRUCache(16, 120)
     badappids = LRUCache(len(GC.GAE_APPIDS))
-    rangesize = min(int(GC.GAE_MAXSIZE or 1024 * 1024 * 3),
-                    1024 * 1024 * 3,
-                    GC.AUTORANGE_MAXSIZE * 4)
+    rangesize = min(GC.GAE_MAXSIZE, GC.AUTORANGE_FAST_MAXSIZE * 4, 1024 * 1024 * 3)
 
     #默认值
     ssl = False
@@ -430,39 +428,52 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.action = 'do_DIRECT'
             self.target = None
             return self.do_action()
+        url_parts = self.url_parts
         request_headers, payload = self.handle_request_headers()
         #为使用非标准端口的网址加上端口
-        if (self.url_parts.scheme, self.port) not in (('http', 80), ('https', 443)):
-            self.url = '%s://%s:%s%s' % (self.url_parts.scheme, self.host, self.port, self.path)
+        if (url_parts.scheme, self.port) not in (('http', 80), ('https', 443)):
+            self.url = '%s://%s:%s%s' % (url_parts.scheme, self.host, self.port, self.path)
         #排除不支持 range 的请求
-        need_autorange = self.command != 'HEAD' and 'range=' not in self.url_parts.query and 'live=1' not in self.url_parts.query
-        self.range_end = range_start = 0
+        need_autorange = self.command != 'HEAD' and 'range=' not in url_parts.query and 'live=1' not in url_parts.query
+        self.range_end = range_end = range_start = 0
         if need_autorange:
             #匹配网址结尾
-            need_autorange = self.url_parts.path.endswith(GC.AUTORANGE_ENDSWITH)
-            request_range = request_headers.get('Range', None)
+            need_autorange = url_parts.path.endswith(GC.AUTORANGE_FAST_ENDSWITH)
+            request_range = request_headers.get('Range')
             if request_range is not None:
                 range_start, range_end, range_other = getbytes(request_range).group(1, 2, 3)
                 if not range_start or range_other:
                     # autorange 无法处理未指定开始范围和不连续范围
                     range_start = 0
-                    need_autorange = False
+                    need_autorange = 0
                 else:
                     range_start = int(range_start)
                     if range_end:
                         self.range_end = range_end = int(range_end)
                         range_length = range_end + 1 - range_start
                         #有明确范围时，根据阀值判断
-                        need_autorange = range_length > self.rangesize
+                        if need_autorange:
+                            if range_length > self.rangesize:
+                                need_autorange = 1
+                        elif range_length > GC.AUTORANGE_BIG_ONSIZE:
+                            need_autorange = 2
                     else:
                         self.range_end = range_end = 0
-                        if not need_autorange:
+                        if need_autorange:
+                            need_autorange = 1
+                        elif range_start is 0:
                             #排除疑似多线程下载工具链接
-                            need_autorange = range_start is 0
-            if need_autorange:
-                logging.info('发现[autorange]匹配：%r', self.url)
-                range_end = range_start + GC.AUTORANGE_FIRSTSIZE - 1
+                            need_autorange = 2 
+            if need_autorange is 1:
+                logging.info('发现[autorange/fast]匹配：%r', self.url)
+                range_end = range_start + GC.AUTORANGE_FAST_FIRSTSIZE - 1
                 request_headers['Range'] = 'bytes=%d-%d' % (range_start, range_end)
+            elif need_autorange is 2:
+                logging.info('发现[autorange/big]匹配：%r', self.url)
+                range_end = range_start + GC.AUTORANGE_BIG_MAXSIZE - 1
+                request_headers['Range'] = 'bytes=%d-%d' % (range_start, range_end)
+        if not need_autorange:
+            need_autorange = 0
         errors = []
         headers_sent = False
         need_chunked = False
@@ -541,13 +552,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     continue
                 #当前 appid 流量完结(Service Unavailable)
                 elif response.app_status == 503:
-                    if len(GC.GAE_APPIDS) - len(self.badappids) <= 1:
-                        logging.error('全部的 APPID 流量都使用完毕')
-                    else:
-                        logging.info('当前 appid[%s] 流量使用完毕，切换下一个…', appid)
-                    self.badappids.set(appid, True, get_refreshtime())
-                    for _ in range(GC.GAE_MAXREQUESTS):
-                        qGAE.get()
+                    self.mark_badappid(appid)
                     self.do_GAE()
                     return
                 #服务端出错（Internal Server Error）
@@ -581,27 +586,42 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 #发生异常时的判断条件，放在 read 操作之前
                 content_range = response.headers.get('Content-Range')
                 accept_ranges = response.headers.get('Accept-Ranges')
-                #提取返回范围信息（Requested Range Not Satisfiable）
-                if response.status != 416 and content_range:
-                    start, end, length = getrange(content_range).group(1, 2, 3)
-                    start = int(start)
-                    #长度未知时无法使用 autorange
-                    if length == '*':
-                        need_autorange = False
-                if (not content_range
-                        #重试中途失败的请求时返回错误
-                        and ((headers_sent and start > 0)
+                content_length = response.headers.get('Content-Length', '0')
+                content_length = int(content_length) if content_length.isdigit() else 0
+                if content_range:
+                    #提取返回范围信息（Requested Range Not Satisfiable）
+                    if response.status != 416:
+                        start, end, length = getrange(content_range).group(1, 2, 3)
+                        start = int(start)
+                        end = int(end)
+                        #长度未知时无法使用 autorange
+                        if length == '*':
+                            need_autorange = 0
+                        elif need_autorange is 0:
+                            if (    #不是原请求结束范围且长度等于服务端失败时的重试长度
+                                    (end != range_end and end - start == GC.GAE_MAXSIZE)
+                                    #长度超过指定大小时启用 autorange
+                                    or (content_length > GC.AUTORANGE_BIG_ONSIZE)):
+                                logging.info('发现[autorange/big]匹配：%r', self.url)
+                                need_autorange = 2
+                elif (  #重试中途失败的请求时返回错误
+                        (headers_sent and start > 0) 
                         #服务器不支持 Range 且错误返回成功状态，直接放弃并断开链接
-                            or (range_start > 0 and response.status < 300))):
+                        or (range_start > 0 and response.status < 300)):
                     self.close_connection = True
                     return
+                elif need_autorange is 0 and accept_ranges == 'bytes' and content_length > GC.AUTORANGE_BIG_ONSIZE:
+                    #长度超过指定大小时启用 autorange
+                    logging.info('发现[autorange/big]匹配：%r', self.url)
+                    response.status = 206
+                    need_autorange = 2
                 #修复某些软件无法正确处理持久链接（停用）
                 self.check_useragent()
                 #第一个响应，不用重复写入头部
                 if not headers_sent:
                     #开始自动多线程（Partial Content）
                     if response.status == 206 and need_autorange:
-                        rangefetch = RangeFetch(self, request_headers, payload, response)
+                        rangefetch = RangeFetchs[need_autorange](self, request_headers, payload, response)
                         response = None
                         return rangefetch.fetch()
                     data, need_chunked = self.handle_response_headers(response)
@@ -1072,6 +1092,16 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             host, _, port = host.partition(':')
         return host.lower(), port
+
+    def mark_badappid(self, appid):
+        if appid not in self.badappids:
+            if len(GC.GAE_APPIDS) - len(self.badappids) <= 1:
+                logging.error('全部的 APPID 流量都使用完毕')
+            else:
+                logging.info('当前 appid[%s] 流量使用完毕，切换下一个…', appid)
+            self.badappids.set(appid, True, get_refreshtime())
+            for _ in range(GC.GAE_MAXREQUESTS):
+                qGAE.get()
 
     def address_string(self, response=None):
         #返回请求和响应的地址

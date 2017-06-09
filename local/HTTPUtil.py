@@ -485,7 +485,7 @@ class HTTPUtil(BaseHTTPUtil):
             if getfast and GC.GAE_USEGWSIPLIST:
                 #按线程数量获取排序靠前的 IP
                 addresses.sort(key=self.get_ssl_connection_time)
-                addrs = addresses[:GC.AUTORANGE_THREADS+1]
+                addrs = addresses[:GC.AUTORANGE_FAST_THREADS+1]
             else:
                 if addresseslen > self.max_window:
                     addresses.sort(key=self.get_ssl_connection_time)
