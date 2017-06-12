@@ -24,11 +24,16 @@ testhosts = (
 def network_test(first=None):
     haserr = None
     b = None
-    while not b:
+    retry = True
+    while b is None:
         try:
             #通过域名解析测试网络状态
             b = socket.gethostbyname(random.choice(testhosts))
         except:
+            if retry:
+                retry = False
+                sleep(0.1)
+                continue
             if not haserr:
                 #发生网络故障停止代理线程
                 if not first:
