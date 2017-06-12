@@ -441,7 +441,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.range_end = range_end = range_start = 0
         if need_autorange:
             #匹配网址结尾
-            need_autorange = url_parts.path.endswith(GC.AUTORANGE_FAST_ENDSWITH)
+            need_autorange = 1 if url_parts.path.endswith(GC.AUTORANGE_FAST_ENDSWITH) else 0
             request_range = request_headers.get('Range')
             if request_range is not None:
                 range_start, range_end, range_other = getbytes(request_range).group(1, 2, 3)
@@ -475,7 +475,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 logging.info('发现[autorange/big]匹配：%r', self.url)
                 range_end = range_start + GC.AUTORANGE_BIG_MAXSIZE - 1
                 request_headers['Range'] = 'bytes=%d-%d' % (range_start, range_end)
-        if not need_autorange:
+        else:
             need_autorange = 0
         errors = []
         headers_sent = False
