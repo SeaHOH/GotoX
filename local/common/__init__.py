@@ -203,28 +203,28 @@ class LRUCache:
                 del cache[key]
 
     def _cleanup(self):
-        #按每秒一个的频率循环检查并清除靠后的 m 个项目中的过期项目
+        #按每秒一个的频率循环检查并清除靠后的 l/m 个项目中的过期项目
         lock = self.lock
         key_order = self.key_order
         key_expire = self.key_expire
         key_noexpire = self.key_noexpire
         cache = self.cache
         max_items = self.max_items
-        m = min(max_items//4, 60)
-        n = m = max_items - m
+        m = 4
+        n = 1
         while True:
             sleep(1)
             with lock:
                 l = len(key_order)
-                if l > m:
-                    if l <= n:
-                        n = m
-                    key = key_order[n]
+                if l:
+                    if l // m < n:
+                        n = 1
+                    key = key_order[-n]
                     if key in key_noexpire:
-                        del key_order[n]
+                        del key_order[-n]
                         key_order.appendleft(key)
                     elif key_expire[key] <= int(time()):
-                        del key_order[n]
+                        del key_order[-n]
                         del key_expire[key]
                         del cache[key]
                         n += 1
