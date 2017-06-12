@@ -34,7 +34,7 @@ def check_reset():
                     filters_cache.clear()
                     ssl_filters_cache.clear()
                     reset_dns()
-                    logging.warning('%r 内容被修改，已重新加载配置。', _ACTION_FILTERS.CONFIG_FILENAME)
+                    logging.warning('%r 内容被修改，已重新加载自动代理配置。', _ACTION_FILTERS.CONFIG_FILENAME)
 
 def get_redirect(target, url):
     '''Get the redirect target'''

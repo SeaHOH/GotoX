@@ -38,7 +38,7 @@ g_gvs = 1
 g_timeout = 4
 g_conntimeout = 1
 g_handshaketimeout = 1.5
-#屏蔽列表（通过测试、但无法使用 GAE）
+#屏蔽列表（当前使用的新测试方法可能用不着这个了）
 g_block = GC.FINDER_BLOCK #('74.125.', '173.194.', '203.208.', '113.171.')
 
 g_ipfile = os.path.join(data_dir, 'ip.txt')

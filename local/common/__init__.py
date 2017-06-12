@@ -25,7 +25,7 @@ try:
     import gevent.monkey
     gevent.monkey.patch_all(os=False, signal=False, subprocess=False, Event=True)
 except ImportError:
-    logging.warning('无法找到 gevent，请安装 gevent-1.0.0 以上版本，或将相应 .egg 放到 %r 文件夹！\n正在退出……', packages)
+    logging.warning('无法找到 gevent 或者与 Python 版本不匹配，请安装 gevent-1.0.0 以上版本，或将相应 .egg 放到 %r 文件夹！\n正在退出……', packages)
     sys.exit(-1)
 except TypeError:
     gevent.monkey.patch_all(os=False)
