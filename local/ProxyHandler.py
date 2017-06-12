@@ -228,7 +228,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             request_range = request_headers.get('Range')
             range_start = getbytes(request_range).group(1) if request_range is not None else None
             range_start = int(range_start) if range_start else 0
-            request_headers.replace_header('Range', 'bytes=%d-%d' % (range_start, range_start + 5242879))
+            if 'Range' in request_headers:
+                request_headers.replace_header('Range', 'bytes=%d-%d' % (range_start, range_start + 5242879))
+            else:
+                request_headers['Range'] = 'bytes=%d-%d' % (range_start, range_start + 5242879)
         #限制 sohu 视频请求，以防拒绝访问
         if 'Range' in request_headers and path.startswith('/sohu'):
             del request_headers['Range']
