@@ -123,7 +123,7 @@ else:
     addtoblocklist = testallgaeip = dummy
 
 def _testallgaeip():
-    iplist = GC.IPLIST_MAP['google_gws'] or []
+    iplist = GC.IPLIST_MAP['google_gws']
     if not iplist:
         return updateip()
     badip = set()
