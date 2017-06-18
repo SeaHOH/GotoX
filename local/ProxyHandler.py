@@ -41,6 +41,7 @@ from .HTTPUtil import (
 from .RangeFetch import RangeFetchs
 from .GAEFetch import qGAE, gae_urlfetch
 from .FilterUtil import (
+    set_temp_action,
     filters_cache,
     ssl_filters_cache,
     get_action,
@@ -970,12 +971,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def go_GAE(self):
         if self.command not in self.gae_fetcmd:
             return self.go_BAD()
-        host = '%s://%s' % (self.url_parts.scheme, self.host)
+        hostparts = self.url_parts.scheme, self.host
+        host = '%s://%s' % hostparts
         #最近是否失败（缓存设置超时两分钟）
         if host in self.badhost:
             if self.badhost[host]:
                 #记录临时规则的过期时间
-                filters_cache[host][-1] = '', '', 'TEMPGAE', time() + GC.LINK_TEMPTIME
+                set_temp_action(*hostparts, self.path[1:])
                 logging.warning('将 %r 加入 "GAE" 规则%s。', host, GC.LINK_TEMPTIME_S)
                 self.badhost[host] = False
         else:
@@ -984,19 +986,19 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.do_GAE()
 
     def go_FAKECERT(self):
-        host = self.host
+        host = 'http%s://%s' % ('s' if self.ssl else '', self.host)
         #最近是否失败（缓存设置超时两分钟）
         if host in self.badhost:
             if self.badhost[host]:
-                #设置临时规则的过期时间
-                ssl_filters_cache.set(host, ('do_FAKECERT', None), GC.LINK_TEMPTIME)
+                action, _ = filter = ssl_filters_cache[host]
+                #防止重复替换
+                if action != 'do_FAKECERT':
+                    #设置临时规则的过期时间
+                    ssl_filters_cache.set(host, ('do_FAKECERT', filter), GC.LINK_TEMPTIME)
                 logging.warning('将 %r 加入 "FAKECERT" 规则%s。', host, GC.LINK_TEMPTIME_S)
                 self.badhost[host] = False
         else:
             self.badhost[host] = True
-        #同时标记直连 badhost
-        host = 'http%s://%s' % ('s' if self.ssl else '', host)
-        self.badhost[host] = True
         self.action = 'do_FAKECERT'
         self.do_FAKECERT()
 

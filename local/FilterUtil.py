@@ -68,38 +68,57 @@ def match_path_filter(filter, path):
         return filter in path
     return filter(path)
 
-REDIRECTS = ('do_REDIRECT', 'do_IREDIRECT')
+REDIRECTS = 'do_REDIRECT', 'do_IREDIRECT'
 TEMPGAE = 'do_GAE', None
 #默认规则
 filter_DEF = '', '', numToAct[GC.FILTER_ACTION], None
 ssl_filter_DEF = numToSSLAct[GC.FILTER_SSLACTION], None
 
+def set_temp_action(scheme, host, path):
+    check_reset()
+    schemes = '', scheme
+    key = '%s://%s' % (scheme, host)
+    filters = filters_cache.get(key)
+    if filters:
+        #以临时规则替换缓存规则中第一个匹配
+        for i in range(len(filters)):
+            schemefilter, pathfilter, action, target = filter = filters[i]
+            if schemefilter in schemes and match_path_filter(pathfilter, path):
+                #防止重复替换
+                if action != 'TEMPGAE':
+                    filters[i] = '', '', 'TEMPGAE', (time() + GC.LINK_TEMPTIME, filter)
+                break
+
 def get_action(scheme, host, path, url):
     check_reset()
-    schemes = ('', scheme)
+    schemes = '', scheme
     key = '%s://%s' % (scheme, host)
     filters = filters_cache.get(key)
     if filters:
         #以缓存规则进行匹配
-        for schemefilter, pathfilter, action, target in filters:
+        for i in range(len(filters)):
+            schemefilter, pathfilter, action, target = filters[i]
             if schemefilter in schemes and match_path_filter(pathfilter, path):
                 #计算重定向网址
                 if action in REDIRECTS:
-                    durl = get_redirect(target, url)
+                    target = get_redirect(target, url)
+                    durl, mhost = target
                     if durl and durl != url:
-                        return action, durl
+                        return action, target
                     else:
                         continue
                 #是否临时规则
                 if action == 'TEMPGAE':
+                    expire, origfilter = target
                     #过期之后恢复默认规则
-                    if time() > target:
-                        filters[-1] = filter_DEF
-                        return filter_DEF[2:]
+                    if time() > expire:
+                        filters[i] = origfilter
+                        logging.warning('%r 的临时 "GAE" 规则已经失效。', key)
+                        return origfilter[2:]
                     #符合自动多线程时不使用临时 GAE 规则，仍尝试默认规则
                     #是否包含元组元素（媒体文件）
                     elif any(path.endswith(x) for x in GC.AUTORANGE_FAST_ENDSWITH):
-                        return filter_DEF[2:]
+                        return origfilter[2:]
                     else:
                         return TEMPGAE
                 return action, target
@@ -122,9 +141,10 @@ def get_action(scheme, host, path, url):
                     if not filter and match_path_filter(pathfilter, path):
                         #计算重定向网址
                         if action in REDIRECTS:
-                            durl = get_redirect(target, url)
+                            target = get_redirect(target, url)
+                            durl, mhost = target
                             if durl and durl != url:
-                                filter = action, durl
+                                filter = action, target
                         else:
                             filter = action, target
         #添加默认规则
@@ -136,9 +156,15 @@ def get_action(scheme, host, path, url):
 
 def get_connect_action(ssl, host):
     check_reset()
-    schemes = ('', 'https' if ssl else 'http')
-    if host in ssl_filters_cache:
-        return ssl_filters_cache[host]
+    scheme = 'https' if ssl else 'http'
+    schemes = '', scheme
+    key = '%s://%s' % (scheme, host)
+    contains, expired, filter = ssl_filters_cache.getstate(key)
+    if contains:
+        if expired:
+            logging.warning('%r 的临时 "FAKECERT" 规则已经失效。', key)
+            ssl_filters_cache[key] = filter = filter[1]
+        return filter
     global gn
     try:
         with gLock:
@@ -147,11 +173,11 @@ def get_connect_action(ssl, host):
             for schemefilter, hostfilter, _, target in filters:
                 if schemefilter in schemes and match_host_filter(hostfilter, host):
                     #填充结果到缓存
-                    ssl_filters_cache[host] = filter = numToSSLAct[filters.action], target
+                    ssl_filters_cache[key] = filter = numToSSLAct[filters.action], target
                     #匹配第一个，后面忽略
                     return filter
         #添加默认规则
-        ssl_filters_cache[host] = ssl_filter_DEF
+        ssl_filters_cache[key] = ssl_filter_DEF
         return ssl_filter_DEF
     finally:
         with gLock:
