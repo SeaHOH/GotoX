@@ -124,9 +124,9 @@ def save_iplist_as_db(ipdb, iplist):
     g_iplist_apnic.clear()
     g_iplist_17mon.clear()
     g_index.clear()
-    log('更新信息：%s' % update)
-    log('包含 IP 范围条目数：%s' % count)
-    log('保存地址：%s' % ipdb)
+    logging.debug('更新信息：%s' % update)
+    logging.debug('包含 IP 范围条目数：%s' % count)
+    logging.debug('保存地址：%s' % ipdb)
 
 __file__ = os.path.abspath(__file__)
 if os.path.islink(__file__):
@@ -165,7 +165,7 @@ def download(req):
         if l is 0:
             if fd:
                 fd.close()
-            log('链接直连 IP 库网址失败，%d 秒后重试' % retry_delay)
+            logging.debug('链接直连 IP 库网址失败，%d 秒后重试' % retry_delay)
             from time import sleep
             sleep(retry_delay)
     return fd, l
@@ -204,8 +204,8 @@ def download_cniplist(ipdb, parse_cniplist):
             read = max(read - 100, 0)
             req.remove_header('Range')
             req.add_header('Range', 'bytes=%d-' % read)
-            log('%s IP 下载中断，续传：%d/%d' % (name, read, l))
-    log(name + ' IP 下载完毕')
+            logging.debug('%s IP 下载中断，续传：%d/%d' % (name, read, l))
+    logging.debug(name + ' IP 下载完毕')
     return iplist
 
 def parse_apnic_cniplist(fd):
@@ -245,19 +245,19 @@ def parse_17mon_cniplist(fd):
     return iplist, read
 
 def download_apnic_cniplist_as_db(ipdb):
-    log('开始下载 APNIC IP')
+    logging.info('开始下载 APNIC IP')
     iplist = download_cniplist(ipdb, parse_apnic_cniplist)
     save_iplist_as_db(ipdb, iplist)
-    log('APNIC IP 已保存完毕')
+    logging.info('APNIC IP 已保存完毕')
 
 def download_17mon_cniplist_as_db(ipdb):
-    log('开始下载 17mon IP')
+    logging.info('开始下载 17mon IP')
     iplist = download_cniplist(ipdb, parse_17mon_cniplist)
     save_iplist_as_db(ipdb, iplist)
-    log('17mon IP 已保存完毕')
+    logging.info('17mon IP 已保存完毕')
 
 def download_both_cniplist_as_db(ipdb):
-    log('开始下载 APNIC 和 17mon IP')
+    logging.info('开始下载 APNIC 和 17mon IP')
     global update
     _iplist = download_cniplist(ipdb, parse_apnic_cniplist)
     _update = update
@@ -265,17 +265,18 @@ def download_both_cniplist_as_db(ipdb):
     iplist.extend(_iplist)
     update = '%s and %s' % (_update, update)
     save_iplist_as_db(ipdb, iplist)
-    log('APNIC 和 17mon IP 已保存完毕')
+    logging.info('APNIC 和 17mon IP 已保存完毕')
 
 def test(ipdb):
     global update
     update = 'keep IP test'
     save_iplist_as_db(ipdb, [])
-    log('keeep IP 已保存完毕')
+    print('keeep IP 已保存完毕')
 
 if __name__ == '__main__':
     import socket
-    log = print
+    class logging:
+        info = debug = print
 
     set_proxy = input('是否设置代理（Y/N）：')
     set_proxy = set_proxy.upper() == 'Y'
@@ -336,4 +337,4 @@ if __name__ == '__main__':
         else:
             print('输入错误！')
 else:
-    from local.clogging import debug as log
+    import local.clogging as logging
