@@ -99,15 +99,12 @@ class actionfilterlist(list):
                 scheme = ''
                 if k.find('://', 0, 9) > 0 :
                     scheme, _, k = k.partition('://')
-                if  '/' in  k:
-                    host, _, path = k.partition('/')
-                else:
-                    host, path = k, ''
-                if host.find('@') == 0:
+                host, _, path = k.partition('/')
+                if host and host[0] == '@':
                     host = re.compile(host[1:]).search
                 else:
                     host = host.lower()
-                if path.find('@') == 0:
+                if path and path[0] == '@':
                     path = re.compile(path[1:]).search
                 if filters.action in (FORWARD, DIRECT):
                     if isempty(v):

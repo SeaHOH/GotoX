@@ -390,7 +390,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 noerror = False
             #拒绝服务、非直连 IP
             if response.status == 403 and not isdirect(host):
-                logging.warn('%s do_DIRECT "%s %s" 链接被拒绝，尝试使用 "GAE" 规则。', self.address_string(), self.command, self.url)
+                logging.warn('%s do_DIRECT "%s %s" 链接被拒绝，尝试使用 "GAE" 规则。', self.address_string(response), self.command, self.url)
                 return self.go_GAE()
             #修复某些软件无法正确处理持久链接（停用）
             self.check_useragent()
@@ -964,9 +964,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.write(content)
         else:
             self.write(b'Content-Length: 0\r\n\r\n')
-        logging.warning('%s "%s%s %s" 已经被拦截',
-            self.address_string(), 'CONNECT BLOCK ' if self.ssl else '',
-            self.command, self.url or self.host)
+        logging.warning('"%s%s %s" 已经被拦截', self.address_string(), self.command, self.url or self.host)
 
     def go_GAE(self):
         if self.command not in self.gae_fetcmd:

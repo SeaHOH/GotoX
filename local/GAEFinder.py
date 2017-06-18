@@ -369,7 +369,6 @@ def randomip():
             return g.goodlist.pop()
         elif g.weaklist:
             return _randomip(g.weaklist)
-    return
 
 g.running = False
 #g.reloadlist = False
