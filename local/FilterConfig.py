@@ -7,7 +7,7 @@ from functools import partial
 from time import sleep
 from . import clogging as logging
 from .compat import thread, ConfigParser
-from .common import config_dir, isip, isipv4, isipv6, classlist
+from .common import config_dir, isipv4, isipv6, classlist
 from .GlobalConfig import GC
 
 BLOCK     = 1
@@ -114,7 +114,7 @@ class actionfilterlist(list):
                         v = None
                     elif '|' in v:
                         v = pickip(' '+v.lower()) or None
-                    elif ipnotuse(v) or not (v in GC.IPLIST_MAP or isip(v)):
+                    elif ipnotuse(v) or not (v in GC.IPLIST_MAP or v.find('.') > 0):
                         v = None
                 elif filters.action in (REDIRECT, IREDIRECT) and '>>' in v:
                     patterns, _, replaces = v.partition('>>')

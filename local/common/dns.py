@@ -37,6 +37,11 @@ def set_dns(host, iporname):
             return host
         else:
             return
+    #尝试解析可能的域名
+    if isinstance(iporname, str) and iporname.find('.') > 0:
+        _host = iporname.lower()
+        if dns_resolve(_host):
+            return _host
     key = host, str(iporname) if isinstance(iporname, list) else iporname
     with alock:
         hasname = None
