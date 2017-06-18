@@ -116,23 +116,25 @@ class actionfilterlist(list):
                         v = pickip(' '+v.lower()) or None
                     elif ipnotuse(v) or not (v in GC.IPLIST_MAP or v.find('.') > 0):
                         v = None
-                elif filters.action in (REDIRECT, IREDIRECT) and '>>' in v:
-                    patterns, _, replaces = v.partition('>>')
-                    patterns = patterns.rstrip(' \t')
-                    replaces = replaces.lstrip(' \t')
-                    if patterns[0] == '@':
-                        patterns = patterns[1:].lstrip(' \t')
-                        if replaces[0] == '@':
-                            replaces = replaces[1:].lstrip(' \t')
-                            v = partial(re.compile(patterns).sub, replaces), True
-                        else:
-                            v = partial(re.compile(patterns).sub, replaces), False
+                elif filters.action in (REDIRECT, IREDIRECT):
+                    if v and v[0] == '!':
+                        v = v[1:].lstrip(' \t')
+                        mhost = False
                     else:
-                        if replaces[0] == '@':
+                        mhost = True
+                    if '>>' in v:
+                        patterns, _, replaces = v.partition('>>')
+                        patterns = patterns.rstrip(' \t')
+                        replaces = replaces.lstrip(' \t')
+                        unquote = replaces[0] == '@'
+                        if unquote:
                             replaces = replaces[1:].lstrip(' \t')
-                            v = (patterns, replaces, 1), True
+                        if patterns[0] == '@':
+                            patterns = patterns[1:].lstrip(' \t')
+                            rule = partial(re.compile(patterns).sub, replaces)
                         else:
-                            v = (patterns, replaces, 1), False
+                            rule = patterns, replaces, 1
+                        v = rule, unquote, mhost
                 filters.append((scheme.lower(), host, path, v))
             self.append(filters)
 

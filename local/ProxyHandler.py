@@ -754,17 +754,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_REDIRECT(self):
         #重定向到目标地址
         self.close_connection = False
-        target = self.target
-        if not target:
-            return
+        target, _ = self.target
         logging.info('%s 重定向 %r 到 %r', self.address_string(), self.url, target)
         self.write('HTTP/1.1 301 Moved Permanently\r\nLocation: %s\r\nContent-Length: 0\r\n\r\n' % target)
 
     def do_IREDIRECT(self):
         #直接返回重定向地址的内容
-        target = self.target
-        if not target:
-            return
+        target, mhost = self.target
         if target.startswith('file://'):
             filename = target.lstrip('file:').lstrip('/')
             logging.info('%s %r 匹配本地文件 %r', self.address_string(), self.url, filename)
@@ -780,10 +776,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.host = host
             if ':' in host:
                 host = '[' + host + ']'
-            if 'Host' in self.headers:
-                self.headers.replace_header('Host', host)
-            else:
-                self.headers['Host'] = host
+            if mhost:
+                if 'Host' in self.headers:
+                    self.headers.replace_header('Host', host)
+                else:
+                    self.headers['Host'] = host
             #重设协议
             origssl = self.ssl
             self.ssl = url_parts.scheme == 'https'
