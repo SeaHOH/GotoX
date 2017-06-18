@@ -20,7 +20,6 @@ refresh_proxy = os.path.join(app_root, 'launcher', 'refresh_proxy_win.py')
 
 #使用安装版 Python
 if os.path.dirname(py_exe) != py_path:
-    import glob
     helpers = os.path.join(py_path, 'site-packages', 'helpers_win32.egg')
     sys.path.insert(0, helpers)
 sys.path.insert(0, app_root)
@@ -198,7 +197,8 @@ def on_about(systray):
 def on_quit(systray):
     stop_GotoX()
     winreg.CloseKey(SETTINGS)
-    sys.exit(0)
+    global running
+    running = False
 
 def on_disable_proxy(systray):
     proxy_state = proxy_state_menu
@@ -337,7 +337,8 @@ systray_GotoX.update(
               'GotoX 通知', 4 | 32, 15)
     )
 
-while True:
+running = True
+while running:
     now_proxy_state = get_proxy_state()
     if proxy_state.str != now_proxy_state.str:
         text = '设置由：\n%s\n变更为：\n%s' % (proxy_state, now_proxy_state)
@@ -346,4 +347,8 @@ while True:
             hover_text='GotoX\n当前系统（IE）代理：\n%s' % proxy_state,
             balloons=(text, '系统代理改变', 2 | 32, 15)
             )
-    sleep(5)
+    for _ in range(50):
+        if running:
+            sleep(0.1)
+        else:
+            break
