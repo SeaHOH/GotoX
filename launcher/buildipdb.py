@@ -182,8 +182,8 @@ def download_cniplist(ipdb, parse_cniplist):
         if Req_17MON is None:
             Req_17MON = req = urllib.request.Request(Url_17MON)
         import time
-        #设定为当月第一天
-        update = '17mon-' + time.strftime('%Y%m01', time.localtime(time.time()))
+        #更新一般在月初几天，由于内容不包含日期信息，故记录为获取时的日期信息
+        update = '17mon-' + time.strftime('%Y%m%d', time.localtime(time.time()))
         name = '17mon'
     req.remove_header('Range')
     read = 0
