@@ -477,7 +477,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 range_end = range_start + GC.AUTORANGE_BIG_MAXSIZE - 1
                 request_headers['Range'] = 'bytes=%d-%d' % (range_start, range_end)
         else:
-            need_autorange = 0
+            need_autorange = -1
         errors = []
         headers_sent = False
         need_chunked = False
@@ -624,7 +624,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 #第一个响应，不用重复写入头部
                 if not headers_sent:
                     #开始自动多线程（Partial Content）
-                    if response.status == 206 and need_autorange:
+                    if response.status == 206 and need_autorange > 0:
                         rangefetch = RangeFetchs[need_autorange](self, request_headers, payload, response)
                         response = None
                         return rangefetch.fetch()
