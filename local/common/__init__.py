@@ -272,9 +272,14 @@ def message_html(title, banner, detail=''):
 #def onlytime():
 #    return int(time())+random.random()
 
-isip = re.compile(r'^(\d+\.){3}\d+$|^(([a-f\d]{1,4}:){1,6}|:)([a-f\d]{1,4})?(:[a-f\d]{1,4}){1,6}$').match
-isipv4 = re.compile(r'^(\d+\.){3}\d+$').match
-isipv6 = re.compile(r'^(([a-f\d]{1,4}:){1,6}|:)([a-f\d]{1,4})?(:[a-f\d]{1,4}){1,6}$').match
+def isip(ip):
+    return isipv4(ip) or isipv6(ip)
+
+isipv4 = re.compile(r'^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$').match
+isipv6 = re.compile(r'^(?!:[^:]|.*::.*::)'
+                    r'(?:[0-9a-f]{0,4}(?:(?<=::)|(?<!::):)){7}'
+                    r'([0-9a-f]{1,4}'
+                    r'|(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})$', re.I).match
 
 class classlist(list): pass
 
