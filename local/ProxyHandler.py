@@ -804,14 +804,14 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.path = target[target.find('/', target.find('//')+3):]
             #重设 action
             self.action, self.target = get_action(url_parts.scheme, self.host, self.path[1:], target)
-            #内部重定向到加密链接，结果匹配其它代理或转发规则
-            if self.ssl and self.action in ('do_PROXY', 'do_FORWARD'):
-                self.fakecert = True
+            #内部重定向到加密链接，相当于已伪造证书
+            self.fakecert = self.ssl
             self.do_action()
 
     def do_FAKECERT(self):
         #为当前客户链接配置一个伪造证书
         self.write(b'HTTP/1.1 200 Connection Established\r\n\r\n')
+        if not self.fakecert: return
         context = self.get_context()
         try:
             ssl_sock = context.wrap_socket(self.connection, server_side=True)
