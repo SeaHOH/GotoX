@@ -64,6 +64,7 @@ def get_refreshtime():
 class LRUCache:
     # Modified from http://pypi.python.org/pypi/lru/
     #最近最少使用缓存，支持过期时间设置
+    failobj = object()
 
     def __init__(self, max_items, expire=None):
         self.cache = {}
@@ -89,21 +90,14 @@ class LRUCache:
                 raise KeyError(key)
 
     def __setitem__(self, key, value):
-        with self.lock:
-            expire = False if key in self.key_noexpire else self.expire
-            if expire:
-                self.key_expire[key] = int(time()) + expire
-            self._mark(key)
-            self.cache[key] = value
+        self.set(key, value)
 
     def __getitem__(self, key):
-        with self.lock:
-            self._expire_check(key)
-            if key in self.cache:
-                self._mark(key)
-                return self.cache[key]
-            else:
-                raise KeyError(key)
+        value = self.get(key, self.failobj)
+        if value is self.failobj:
+            raise KeyError(key)
+        else:
+            return value
 
     def __contains__(self, key):
         with self.lock:
@@ -125,6 +119,8 @@ class LRUCache:
                 expire = expire or self.expire
             if expire:
                 self.key_expire[key] = int(time()) + expire
+            elif key in self.key_expire:
+                del self.key_expire[key]
             self._mark(key)
             self.cache[key] = value
 
@@ -140,9 +136,10 @@ class LRUCache:
     def getstate(self, key):
         with self.lock:
             contains = key in self.cache
+            value = self.cache.get(key)
             self._expire_check(key)
-            expired = key in self.cache
-            return contains, expired
+            expired = key not in self.cache
+            return contains, expired, value
 
     def pop(self, key=False):
         with self.lock:

@@ -495,7 +495,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if nappid >= len(GC.GAE_APPIDS):
                         nappid = 0
                     appid = GC.GAE_APPIDS[nappid]
-                    contains, expired = self.badappids.getstate(appid)
+                    contains, expired, _ = self.badappids.getstate(appid)
                     if contains and expired:
                         for _ in range(GC.GAE_MAXREQUESTS):
                             qGAE.put(True)
