@@ -39,7 +39,15 @@ def get_listen_addr():
     CONFIG._optcre = re.compile(r'(?P<option>[^=\s]+)\s*(?P<vi>=?)\s*(?P<value>.*)')
     CONFIG.read([CONFIG_FILENAME, CONFIG_USER_FILENAME])
     LISTEN_IP = CONFIG.get('listen', 'ip')
-    if LISTEN_IP == '0.0.0.0': LISTEN_IP = '127.0.0.1'
+    if LISTEN_IP == '0.0.0.0':
+        LISTEN_IP = '127.0.0.1'
+    elif LISTEN_IP == '::':
+        LISTEN_IP = '::1'
+    elif LISTEN_IP == '':
+        LINK_PROFILE = CONFIG.get('link', 'profile')
+        if LINK_PROFILE not in ('ipv4', 'ipv6', 'ipv46'):
+            LINK_PROFILE = 'ipv4'
+        LISTEN_IP = '127.0.0.1' if '4' in LINK_PROFILE else '::1'
     LISTEN_GAE = '%s:%d' % (LISTEN_IP, CONFIG.getint('listen', 'gae_port'))
     LISTEN_AUTO = '%s:%d' % (LISTEN_IP, CONFIG.getint('listen', 'auto_port'))
     return proxy_server(LISTEN_GAE, True), proxy_server(LISTEN_AUTO, True)
