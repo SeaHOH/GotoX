@@ -973,13 +973,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         host = '%s://%s' % hostparts
         #最近是否失败（缓存设置超时两分钟）
         if host in self.badhost:
-            if self.badhost[host]:
+            if self.badhost[host] & 2 == 0:
                 #记录临时规则的过期时间
                 set_temp_action(*hostparts, self.path[1:])
                 logging.warning('将 %r 加入 "GAE" 规则%s。', host, GC.LINK_TEMPTIME_S)
-                self.badhost[host] = False
+                self.badhost[host] |= 2
         else:
-            self.badhost[host] = True
+            self.badhost[host] = 0
         self.action = 'do_GAE'
         self.do_GAE()
 
@@ -987,16 +987,16 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         host = 'http%s://%s' % ('s' if self.ssl else '', self.host)
         #最近是否失败（缓存设置超时两分钟）
         if host in self.badhost:
-            if self.badhost[host]:
+            if self.badhost[host] & 1 == 0:
                 action, _ = filter = ssl_filters_cache[host]
                 #防止重复替换
                 if action != 'do_FAKECERT':
                     #设置临时规则的过期时间
                     ssl_filters_cache.set(host, ('do_FAKECERT', filter), GC.LINK_TEMPTIME)
                 logging.warning('将 %r 加入 "FAKECERT" 规则%s。', host, GC.LINK_TEMPTIME_S)
-                self.badhost[host] = False
+                self.badhost[host] |= 1
         else:
-            self.badhost[host] = True
+            self.badhost[host] = 0
         self.action = 'do_FAKECERT'
         self.do_FAKECERT()
 
