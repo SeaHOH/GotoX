@@ -1103,6 +1103,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             for _ in range(GC.GAE_MAXREQUESTS):
                 qGAE.get()
 
+    def log_error(self, format, *args):
+        logging.error('%s "%s %s %s" 失败，%s', self.address_string(), self.action[3:], self.command, self.url, format % args)
+
     def address_string(self, response=None):
         #返回请求和响应的地址
         if not hasattr(self, 'address_str'):
