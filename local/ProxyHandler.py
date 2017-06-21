@@ -1126,6 +1126,7 @@ class GAEProxyHandler(AutoProxyHandler):
         #处理 CONNECT 请求，使用伪造证书进行链接
         self._do_CONNECT()
         self.action = 'do_FAKECERT'
+        self.fakecert = True
         self.do_action()
 
     def do_METHOD(self):
