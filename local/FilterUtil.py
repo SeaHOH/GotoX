@@ -65,6 +65,13 @@ def match_host_filter(filter, host):
 
 def match_path_filter(filter, path):
     if isinstance(filter, str):
+        if filter:
+            if filter[0] == '^':
+                if filter[-1] == '$':
+                    return path == filter[1:-1]
+                return path.startswith(filter[1:])
+            if filter[-1] == '$':
+                return path.endswith(filter[:-1])
         return filter in path
     return filter(path)
 
