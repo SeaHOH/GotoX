@@ -66,16 +66,15 @@ class RangeFetch:
             response.close()
             self.response = None
             end = start - 1
-        if 'Range' in self.handler.headers:
+        if start is 0 and self.range_end in (0, _end) and 'Range' not in self.handler.headers:
+            response_status = 200
+            response_headers['Content-Length'] = str(length)
+            range_end = _end
+        else:
             range_end = self.range_end or _end
             response_headers['Content-Range'] = 'bytes %s-%s/%s' % (start, range_end, length)
             length = range_end + 1
             response_headers['Content-Length'] = str(length - start)
-        #if start is 0 and self.range_end in (0, _end):
-        else:
-            response_status = 200
-            response_headers['Content-Length'] = str(length)
-            range_end = _end
 
         try:
             self.write(('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k, v) for k, v in response_headers.items()))))
