@@ -463,11 +463,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             need_autorange = 2
                     else:
                         self.range_end = range_end = 0
-                        if need_autorange:
-                            need_autorange = 1
-                        elif range_start is 0:
-                            #排除疑似多线程下载工具链接
-                            need_autorange = 2 
+                        if not need_autorange:
+                            #非 autorange/fast 匹配
+                            need_autorange = 2
             if need_autorange is 1:
                 logging.info('发现[autorange/fast]匹配：%r', self.url)
                 range_end = range_start + GC.AUTORANGE_FAST_FIRSTSIZE - 1
