@@ -149,6 +149,7 @@ def download(req):
         import ssl
         context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
         context.verify_mode = ssl.CERT_REQUIRED
+        context.check_hostname = True
         context.set_ciphers(ssl._RESTRICTED_SERVER_CIPHERS)
         context.load_verify_locations(ca1)
         context.load_verify_locations(ca2)
