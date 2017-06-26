@@ -574,7 +574,7 @@ class HTTPUtil(BaseHTTPUtil):
 
         sock.sendall(request_data)
         try:
-            response = httplib.HTTPResponse(sock)
+            response = httplib.HTTPResponse(sock, method=method)
             response.begin()
         except Exception as e:
             #这里有时会捕捉到奇怪的异常，找不到来源路径
