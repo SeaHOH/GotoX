@@ -99,7 +99,7 @@ class GC:
 
     IPLIST_MAP = dict((k.lower(), [x for x in v.split('|') if x]) for k, v in CONFIG.items('iplist'))
 
-    if GAE_IPLIST and GAE_IPLIST != 'google_gws':
+    if GAE_IPLIST and GAE_IPLIST not in ('google_gws', 'google_com'):
         GAE_USEGWSIPLIST = False
         IPLIST_MAP['google_gws'] = IPLIST_MAP[GAE_IPLIST].copy()
         IPLIST_MAP['google_com'] = IPLIST_MAP[GAE_IPLIST].copy()
