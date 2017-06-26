@@ -137,9 +137,11 @@ class actionfilterlist(list):
 
     def check_modify(self):
         while True:
-            sleep(10)
+            sleep(1)
+            if self.RESET:
+                continue
             filemtime = os.path.getmtime(self.CONFIG_FILENAME)
-            if filemtime > self.FILE_MTIME and not self.RESET:
+            if filemtime > self.FILE_MTIME:
                 try:
                     self.readconfig()
                     self.FILE_MTIME = filemtime

@@ -24,7 +24,7 @@ ssl_filters_cache = LRUCache(32)
 def check_reset():
     if _ACTION_FILTERS.RESET:
         while _ACTION_FILTERS.RESET and gn > 0:
-            sleep(0.005)
+            sleep(0.001)
         else:
             with gLock:
                 if gn == 0 and _ACTION_FILTERS.RESET:
@@ -81,7 +81,6 @@ filter_DEF = '', '', numToAct[GC.FILTER_ACTION], None
 ssl_filter_DEF = numToSSLAct[GC.FILTER_SSLACTION], None
 
 def set_temp_action(scheme, host, path):
-    check_reset()
     schemes = '', scheme
     key = '%s://%s' % (scheme, host)
     filters = filters_cache.get(key)
