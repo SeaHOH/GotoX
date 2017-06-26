@@ -132,7 +132,7 @@ def _testallgaeip():
     network_test()
     testip.queobj.queue.clear()
     for ip in iplist:
-        thread.start_new_thread(http_gws._create_ssl_connection, ((ip, 443), 'google_gws', 'google_gws:443', timeout/1000.0, None, testip.queobj, True))
+        thread.start_new_thread(http_gws._create_ssl_connection, ((ip, 443), 'google_gws:443', None, testip.queobj, timeout/1000.0))
     for _ in iplist:
         result = testip.queobj.get()
         if isinstance(result, Exception):
@@ -167,7 +167,7 @@ def testonegaeip(again=False):
     statistics = finder.statistics
     network_test()
     testip.queobj.queue.clear()
-    http_gws._create_ssl_connection((ip, 443), 'google_gws', 'google_gws:443', timeout/1000.0, None, testip.queobj, True)
+    http_gws._create_ssl_connection((ip, 443), 'google_gws:443', None, testip.queobj, timeout/1000.0)
     result = testip.queobj.get()
     if isinstance(result, Exception):
         logging.warning('测试失败（超时：%d 毫秒）%s：%s，Bad IP 已删除' % (timeout,  '.'.join(x.rjust(3) for x in ip.split('.')), result.args[0]))

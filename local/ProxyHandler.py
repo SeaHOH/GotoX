@@ -678,7 +678,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             connection_cache_key = '%s:%d' % (hostname, port)
             for _ in range(2):
                 try:
-                    remote = http_util.create_connection((host, port), hostname, connection_cache_key, self.fwd_timeout, self.ssl, True)
+                    remote = http_util.create_connection((host, port), hostname, connection_cache_key, self.ssl, self.fwd_timeout)
                     break
                 except NetWorkIOError as e:
                     logging.warning('%s 转发到 %r 失败：%r', self.address_string(e), self.url or host, e)
@@ -687,7 +687,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 remote.settimeout(None)
         else:
             hostip = random.choice(dns_resolve(host))
-            remote = http_util.create_connection((hostip, int(port)), self.fwd_timeout, self.ssl, True)
+            remote = http_util.create_connection((hostip, int(port)), self.ssl, self.fwd_timeout)
         if remote is None:
             if not isdirect(host):
                 if self.command == 'CONNECT':
