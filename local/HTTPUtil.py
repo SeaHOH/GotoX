@@ -36,6 +36,7 @@ b'yhT8ziJqs07PRgOXlwN+wLHee69FM8+6PnG33vQlJcINNYmdnfsOEXmJHjfFr45y\n'
 b'aQIDAQAB\n'
 b'-----END PUBLIC KEY-----\n'
 )
+gws_servername = GC.GAE_SERVERNAME
 gae_usegwsiplist = GC.GAE_USEGWSIPLIST
 autorange_threads = GC.AUTORANGE_FAST_THREADS
 
@@ -375,7 +376,9 @@ class HTTPUtil(BaseHTTPUtil):
             # disable negal algorithm to send http request quickly.
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
             # pick up the sock socket
-            if cache_key == 'google_gws:443':
+            if self.gws and gws_servername is not None:
+                server_hostname = random.choice(gws_servername)
+            elif cache_key == 'google_gws:443':
                 server_hostname = b'www.google.com'
             else:
                 server_hostname = None if isip(host) else host.encode()

@@ -71,6 +71,8 @@ class GC:
     #在服务端，这个数值代表的范围大小会增加 1
     GAE_MAXSIZE = min(int(CONFIG.get('gae', 'maxsize') or 1024 * 1024 * 4), 1024 * 1024 * 32 - 1)
     GAE_IPLIST = CONFIG.get('gae', 'iplist')
+    GAE_SERVERNAME = CONFIG.get('gae', 'servername').encode()
+    GAE_SERVERNAME = tuple(GAE_SERVERNAME.split(b'|')) if GAE_SERVERNAME else None
     GAE_USEGWSIPLIST = True
 
     LINK_PROFILE = CONFIG.get('link', 'profile')
