@@ -40,6 +40,9 @@ g_conntimeout = 1
 g_handshaketimeout = 1.5
 #屏蔽列表（当前使用的新测试方法可能用不着这个了）
 g_block = GC.FINDER_BLOCK #('74.125.', '173.194.', '203.208.', '113.171.')
+#扫描时使用的主机名和匹配的域名，需配对
+g_servername = b'update.googleapis.com'
+g_comdomain = '*.googleapis.com'
 
 g_ipfile = os.path.join(data_dir, 'ip.txt')
 g_ipexfile = os.path.join(data_dir, 'ipex.txt')
@@ -238,7 +241,7 @@ class GAE_Finder:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
-            ssl_sock = http_gws.get_ssl_socket(sock, b'www.google.com')
+            ssl_sock = http_gws.get_ssl_socket(sock, g_servername)
             ssl_sock.settimeout(conntimeout)
             ssl_sock.connect((ip, 443))
             ssl_sock.settimeout(handshaketimeout)
@@ -291,9 +294,11 @@ def runfinder(ip):
             g.testedok += 1
         if ip in baddict: #删除未到容忍次数的 badip
             del baddict[ip]
+        com = ssldomain == g_comdomain
+        if com:
+            ssldomain = '*.google.com'
         PRINT('剩余：%s，%s，%sms，%s', str(remain).rjust(4), ip.rjust(15),
               str(costtime).rjust(4), ssldomain)
-        com = ssldomain == 'www.google.com'
         #判断是否够快
         if costtime < g.maxhandletimeout:
             g.gaelist.append((ip, costtime, com))

@@ -11,6 +11,7 @@ from .ProxyServer import network_test
 from .HTTPUtil import http_gws
 from .GAEFinder import (
     g as finder,
+    g_comdomain as comdomain,
     timeToDelay,
     gae_finder,
     getgaeip,
@@ -226,14 +227,16 @@ def testipserver():
 
 def checkgooglecom():
     def _checkgooglecom(ssldomain, costtime, isgaeserver):
-        logging.test('固定 GAE IP 列表检测，IP：%s，可用证书：%s，耗时：%d 毫秒，支持 GAE：%s',
-                     ip, ssldomain, costtime, bool(isgaeserver))
-        if ssldomain != 'www.google.com':
+        if ssldomain == comdomain:
+            ssldomain = '*.google.com'
+        else:
             with lLock:
                 try:
                     GC.IPLIST_MAP['google_com'].remove(ip)
                 except:
                     pass
+        logging.test('固定 GAE IP 列表检测，IP：%s，可用证书：%s，耗时：%d 毫秒，支持 GAE：%s',
+                     ip, ssldomain, costtime, bool(isgaeserver))
 
     retrylist = []
     retrytimes = 2
