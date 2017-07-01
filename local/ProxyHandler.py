@@ -130,7 +130,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         port = None
         #从命令获取主机、端口
         chost, cport = self.parse_netloc(self.path)
-        #确定主机，优先 Host 头域
+        #确定主机，优先 Host 头域（忽略 CONNECT 命令）
         if host:
             #从头域获取主机、端口
             host, port = self.parse_netloc(host)
@@ -149,7 +149,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             self.headers['Host'] = host
         self.port = port = int(port or cport or 443)
-        #某些 http 链接也可能会使用 CONNECT 方法
+        #某些 http 链接（前端代理）也可能会使用 CONNECT 方法
         #认为非 80 端口都是加密链接
         self.ssl = port != 80
 
@@ -1094,9 +1094,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def mark_badappid(self, appid):
         if appid not in self.badappids:
             if len(GC.GAE_APPIDS) - len(self.badappids) <= 1:
-                logging.error('全部的 APPID 流量都使用完毕')
+                logging.error('全部的 AppID 流量都使用完毕')
             else:
-                logging.info('当前 appid[%s] 流量使用完毕，切换下一个…', appid)
+                logging.info('当前 AppID[%s] 流量使用完毕，切换下一个…', appid)
             self.badappids.set(appid, True, get_refreshtime())
             for _ in range(GC.GAE_MAXREQUESTS):
                 qGAE.get()

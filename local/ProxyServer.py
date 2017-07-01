@@ -17,7 +17,7 @@ from .GlobalConfig import GC
 localhosts = ['127.0.0.1', '::1', 'localhost', 'gotox.go']
 test_dnsips = (
     #需用稳定快速的 IP 来测试，所以选国内的 DNS IP
-    #电信114
+    #电信 114
     #https://www.114dns.com/
     '114.114.114.114',
     '114.114.115.115',
