@@ -667,6 +667,16 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             #干扰严重时考虑不复用
                             response.sock.close()
 
+    #未配置 AppID
+    if not GC.GAE_APPIDS:
+        def do_GAE(self):
+            noid = '请编辑 %r 文件，添加可用的 AppID 到 [gae] 配置中并重启 GotoX！' % GC.CONFIG_FILENAME
+            logging.critical(noid)
+            c = message_html('404 AppID 为空', 'AppID 配置为空，无法使用 GAE 代理', noid).encode()
+            self.write(b'HTTP/1.1 502 Service Unavailable\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
+            self.write(c)
+            return
+
     def do_FORWARD(self):
         #转发到请求地址
         hostname = self.hostname

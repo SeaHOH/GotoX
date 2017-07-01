@@ -230,8 +230,8 @@ def main():
         except:
             pass
         if not GC.GAE_APPIDS:
-            logging.critical('请编辑 %r 文件，添加可用的 appid 到 [gae] 配置中！', GC.CONFIG_FILENAME)
-            sys.exit(-1)
+            logging.critical('请编辑 %r 文件，添加可用的 AppID 到 [gae] 配置中，否则无法使用 GAE 代理！', GC.CONFIG_FILENAME)
+            #sys.exit(-1)
         if not GC.PROXY_ENABLE:
             #logging.info('开始将 GC.IPLIST_MAP names=%s 解析为 IP 列表', list(GC.IPLIST_MAP))
             resolve_iplist()
@@ -246,7 +246,7 @@ def main():
     info = ['==================================================================================\n',]
     info.append(' GotoX  版 本 : %s (python/%s gevent/%s pyOpenSSL/%s)\n' % (__version__, sys.version.split(' ')[0], gevent.__version__, opensslver))
     #info.append(' Uvent Version    : %s (pyuv/%s libuv/%s)\n' % (__import__('uvent').__version__, __import__('pyuv').__version__, __import__('pyuv').LIBUV_VERSION) if all(x in sys.modules for x in ('pyuv', 'uvent')) else '')
-    info.append('\n GAE    APPID : %s\n' % '|'.join(GC.GAE_APPIDS))
+    info.append('\n GAE    AppID : %s\n' % ('|'.join(GC.GAE_APPIDS) or '请填入 AppID'))
     info.append('\n GAE 远程验证 : %s启用\n' % '已' if GC.GAE_SSLVERIFY else '未')
     info.append('\n  监 听 地 址 : 自动代理 - %s:%d\n' % (GC.LISTEN_IP, GC.LISTEN_AUTO_PORT))
     info.append('                GAE 代理 - %s:%d\n' % (GC.LISTEN_IP, GC.LISTEN_GAE_PORT))
