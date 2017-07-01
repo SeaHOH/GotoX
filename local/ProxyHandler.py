@@ -486,6 +486,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if retry > 0 and payload:
                 logging.warning('%s do_GAE 由于有上传数据 "%s %s" 终止重试', self.address_string(), self.command, self.url)
                 self.close_connection = True
+                if not headers_sent:
+                    c = message_html('504 GAE 响应超时', '本地从 GAE 获取 %r 超时，请稍后重试。' % self.url, str(errors)).encode()
+                    self.write('HTTP/1.1 504 Gateway Timeout\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n' % len(c))
+                    self.write(c)
                 return
             with self.nLock:
                 nappid = self.__class__.nappid
@@ -508,9 +512,12 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 response = gae_urlfetch(self.command, self.url, request_headers, payload, appid)
                 if response is None:
                     if retry == GC.GAE_FETCHMAX - 1:
-                        c = message_html('502 资源获取失败', '本地从 GAE 获取 %r 失败' % self.url, str(errors)).encode()
-                        self.write(b'HTTP/1.1 502 Service Unavailable\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
-                        self.write(c)
+                        if headers_sent:
+                            self.close_connection = True
+                        else:
+                            c = message_html('502 资源获取失败', '本地从 GAE 获取 %r 失败' % self.url, str(errors)).encode()
+                            self.write(b'HTTP/1.1 502 Service Unavailable\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
+                            self.write(c)
                         return
                     else:
                         logging.warning('%s do_GAE 超时，url=%r，重试', self.address_string(), self.url)
@@ -574,9 +581,14 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         self.do_GAE()
                     else:
                         logging.error('APPID %r 不存在，请将你的 APPID 填入 Config.ini 中', appid)
-                        c = message_html('404 Appid 不存在', 'Appid %r 不存在' % appid, '请编辑 Config.ini 文件，将你的 APPID 填入其中。').encode()
-                        self.write(b'HTTP/1.1 502 Service Unavailable\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
-                        self.write(c)
+                        if headers_sent:
+                            self.close_connection = True
+                        else:
+                            c = message_html('404 AppID 不存在',
+                                             'AppID %r 不存在' % appid,
+                                             '请编辑 %r 文件，将你的 AppID 填入其中并重启 GotoX。' % GC.CONFIG_FILENAME).encode()
+                            self.write(b'HTTP/1.1 502 Service Unavailable\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
+                            self.write(c)
                     return
                 #输出服务端返回的错误信息
                 if response.app_status != 200:
