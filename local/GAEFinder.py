@@ -74,6 +74,11 @@ def PRINT(fmt, *args, **kwargs):
 def WARNING(fmt, *args, **kwargs):
     logging.debug('[%s] %s' % (threading.current_thread().name, fmt), *args, **kwargs)
 
+def writebytes(write):
+    def newwrite(str):
+        write(str.encode())
+    return newwrite
+
 if GC.LINK_PROFILE == 'ipv4':
     ipnotuse = lambda x: not isipv4(x)
 elif GC.LINK_PROFILE == 'ipv6':
@@ -146,8 +151,8 @@ def savestatistics(statistics=None):
     statistics = statistics or g.statistics[1]
     statistics = [(ip, stats1, stats2) for ip, (stats1, stats2) in statistics.items()]
     statistics.sort(key=lambda x: -(x[1]+0.01)/(x[2]**2+0.1))
-    op = 'w'
-    with open(statisticsfile, op) as f:
+    with open(statisticsfile, 'wb') as f:
+        f.write = writebytes(f.write)
         for ip, good, bad in statistics:
             f.write(str(ip).rjust(15))
             f.write(' * ')
@@ -213,8 +218,8 @@ def savebadlist(baddict=None):
             os.remove(g_badfilebak)
         os.rename(g_badfile, g_badfilebak)
     baddict = baddict or g.baddict
-    op = 'w'
-    with open(g_badfile, op) as f:
+    with open(g_badfile, 'wb') as f:
+        f.write = writebytes(f.write)
         for ip in baddict:
             f.write(' * '.join([ip, str(baddict[ip][0]), str(baddict[ip][1])]))
             f.write('\n')
