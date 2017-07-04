@@ -457,10 +457,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         range_length = range_end + 1 - range_start
                         #有明确范围时，根据阀值判断
                         if need_autorange:
-                            if range_length > self.rangesize:
-                                need_autorange = 1
-                        elif range_length > GC.AUTORANGE_BIG_ONSIZE:
-                            need_autorange = 2
+                            if range_length < self.rangesize:
+                                need_autorange = -1
+                        else:
+                            need_autorange = 2 if range_length > GC.AUTORANGE_BIG_ONSIZE else -1
                     else:
                         self.range_end = range_end = 0
                         if not need_autorange:
