@@ -105,6 +105,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_action(self):
         #记录 gws 链接活动时间
         #获取 hostname 别名
+        self.close_connection = True
         if self.action == 'do_GAE' and self.headers.get('Upgrade') == 'websocket':
             self.action = 'do_FORWARD'
             self.target = None
@@ -122,7 +123,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 testip.lastactive = time()
         elif self.action == 'do_GAE':
             testip.lastactive = time()
-        self.close_connection = True
         getattr(self, self.action)()
 
     def _do_CONNECT(self):
