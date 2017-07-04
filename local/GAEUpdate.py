@@ -61,7 +61,7 @@ def refreship(needgws=None, needcom=None):
         cf.read(GC.CONFIG_IPDB)
         for name in gaeip:
             cf.set("iplist", name, '|'.join(x for x in GC.IPLIST_MAP[name]))
-        cf.write(open(GC.CONFIG_IPDB, "w"))
+        cf.write(open(GC.CONFIG_IPDB, 'w'))
         logging.test('GAE IP 更新完毕')
     if len(GC.IPLIST_MAP['google_gws']) < GC.FINDER_MINIPCNT:
         logging.warning('没有检测到足够数量符合要求的 GAE IP，请重新设定参数！')
@@ -221,7 +221,7 @@ def testipserver():
                     now - testip.lasttest > looptime/(len(GC.IPLIST_MAP['google_gws']) or 1)): #强制 x 秒间隔
                 testonegaeip()
         except Exception as e:
-            logging.error(' IP 测试守护线程错误：%r', e)
+            logging.exception(' IP 测试守护线程错误：%r', e)
         finally:
             sleep(2)
 
