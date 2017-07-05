@@ -170,12 +170,12 @@ def readiplist(nowgaeset):
     weakset = set()
     #判断是否屏蔽
     for ip, (v1, v2) in baddict.copy().items():
+        if now - v2 > g_blocktime:
+            del baddict[ip]
+            continue
         if v1 > g_timesblock:
-            if now - v2 > g_blocktime:
-                del baddict[ip]
-            else:
-                blockset.add(ip)
-                continue
+            blockset.add(ip)
+            continue
         if not ip.startswith(g_block):
             weakset.add(ip)
     #读取待捡 IP
