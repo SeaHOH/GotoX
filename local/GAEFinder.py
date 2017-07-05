@@ -335,20 +335,21 @@ def runfinder(ip):
                     good, bad = ipdict[ip]
                     ipdict[ip] = max(good - 1, 0), bad
     else:
+        if ip in baddict: # badip 容忍次数 +1
+            baddict[ip] = baddict[ip][0]+1, int(time())
+        else: #记录检测到 badip 的时间
+            baddict[ip] = 1, int(time())
+        badb = baddict[ip][0]
         for ipdict in statistics:
             if ip in ipdict:
                  good, bad = ipdict[ip]
                  if good < 0: break
                  #失败次数超出预期，设置 -1 表示删除
                  s = bad/max(good, 1)
-                 if s > 2 or (s > 0.6 and bad > 10):
+                 if s > 2 or (s > 0.4 and bad > 10) or (s > 0.15 and badb > 10):
                      ipdict[ip] = -1, 0
                  else:
                      ipdict[ip] = max(good - 1, 0), bad + 1
-        if ip in baddict: # badip 容忍次数 +1
-            baddict[ip] = baddict[ip][0]+1, int(time())
-        else: #记录检测到 badip 的时间
-            baddict[ip] = 1, int(time())
     #测试了足够多 IP 数目或达标 IP 满足数量后停止
     if g.testedok > g.testok or g.needgwscnt < 1 and g.needcomcnt < 1:
         return True
