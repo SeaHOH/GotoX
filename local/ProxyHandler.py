@@ -456,14 +456,14 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         self.range_end = range_end = int(range_end)
                         range_length = range_end + 1 - range_start
                         #有明确范围时，根据阀值判断
-                        if need_autorange:
+                        if need_autorange is 1:
                             if range_length < self.rangesize:
                                 need_autorange = -1
                         else:
                             need_autorange = 2 if range_length > GC.AUTORANGE_BIG_ONSIZE else -1
                     else:
                         self.range_end = range_end = 0
-                        if not need_autorange:
+                        if need_autorange is 0:
                             #非 autorange/fast 匹配
                             need_autorange = 2
             if need_autorange is 1:
@@ -487,7 +487,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 logging.warning('%s do_GAE 由于有上传数据 "%s %s" 终止重试', self.address_string(), self.command, self.url)
                 self.close_connection = True
                 if not headers_sent:
-                    c = message_html('504 GAE 响应超时', '本地从 GAE 获取 %r 超时，请稍后重试。' % self.url, str(errors)).encode()
+                    c = message_html('504 GAE 响应超时', '从本地上传到 GAE-%r 超时，请稍后重试。' % self.url, str(errors)).encode()
                     self.write('HTTP/1.1 504 Gateway Timeout\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n' % len(c))
                     self.write(c)
                 return

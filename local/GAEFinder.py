@@ -339,7 +339,6 @@ def runfinder(ip):
         return True
 
 class Finder(threading.Thread):
-    #线程默认运行函数
     def run(self):
         ip = randomip()
         while ip:
