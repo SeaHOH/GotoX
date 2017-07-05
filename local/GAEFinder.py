@@ -181,6 +181,8 @@ def readiplist(nowgaeset):
     #读取待捡 IP
     ipexset = set()
     ipset = set()
+    source_ipset = set()
+    source_ipcnt = 0
     if os.path.exists(g_ipexfile):
         with open(g_ipexfile, 'r') as fd:
             for line in fd:
@@ -189,8 +191,21 @@ def readiplist(nowgaeset):
     if os.path.exists(g_ipfile):
         with open(g_ipfile, 'r') as fd:
             for line in fd:
+                source_ipcnt += 1
+                ip = line.strip('\r\n')
+                source_ipset.add(ip)
                 if not line.startswith(g_block):
-                    ipset.add(line.strip('\r\n'))
+                    ipset.add(ip)
+    #自动去重保存主列表
+    if len(source_ipset) < source_ipcnt:
+        with open(g_ipfile, 'wb') as f:
+            f.write = writebytes(f.write)
+            for ip in source_ipset:
+                f.write(ip)
+                f.write('\n')
+        g.ipmtime = os.path.getmtime(g_ipfile)
+        PRINT('从主 IP 列表发现重复 IP，已保存去重后的列表文件。')
+        
     #自动屏蔽列表、正在使用的 IP
     otherset = blockset | nowgaeset | set(g.goodlist)
     ipexset = ipexset - otherset
