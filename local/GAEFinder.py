@@ -194,8 +194,13 @@ def readiplist(nowgaeset):
                 source_ipset.add(ip)
                 if not line.startswith(g_block):
                     ipset.add(ip)
+    else:
+        logging.error('未发现 IP 列表文件 "%s"，请创建！', g_ipfile)
+    source_ipsetlen = len(source_ipset)
+    if source_ipsetlen < g_maxgaeipcnt:
+        logging.warning('IP 列表文件 "%s" 包含 IP 过少，请添加。', g_ipfile)
     #自动去重保存主列表
-    if len(source_ipset) < source_ipcnt:
+    if source_ipsetlen < source_ipcnt:
         with open(g_ipfile, 'wb') as f:
             write = writebytes(f.write)
             for ip in source_ipset:
