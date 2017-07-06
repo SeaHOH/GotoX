@@ -24,9 +24,8 @@ tLock = threading.Lock()
 
 class testip:
     running = False
-    lastactive = None
     queobj = Queue.Queue()
-    lastupdate = time()
+    lastactive = lastupdate = time()
     lasttest = lastupdate - 30
 
 def removeip(ip):
@@ -157,12 +156,11 @@ def _testallgaeip():
     if needgws > 0 or needcom > 0:
         updateip(needgws, needcom)
 
-def testonegaeip(again=False):
-    if not again:
-        with tLock:
-            if updateip.running or testip.running:
-                return
-            testip.running = 1
+def testonegaeip():
+    with tLock:
+        if updateip.running or testip.running:
+            return
+        testip.running = 1
     ip = GC.IPLIST_MAP['google_gws'][-1]
     timeout = gettimeout()
     badip = False
@@ -199,27 +197,27 @@ def testonegaeip(again=False):
                 ipdict[ip] = addn, 0
     savestatistics()
     testip.lasttest = time()
+    testip.running = False
     #刷新开始
     needgws = countneedgws()
     needcom = countneedcom()
     if needgws > 0 or needcom > 0:
-        testip.running = False
         updateip(needgws, needcom)
     elif badip:
-        testonegaeip(True)
-    testip.running = False
+        testonegaeip()
 
 def testipserver():
+    #启动时全部测一遍
+    testallgaeip()
     looptime = max(120, GC.GAE_KEEPTIME)
     while True:
         now = time()
+        lasttest = now - testip.lasttest
         try:
-            if not testip.lastactive:                    #启动时
-                testallgaeip()
-            elif ((now - testip.lastactive > 6 or # X 秒钟未使用
-                    now - testip.lasttest > 30) and  #强制 X 秒钟检测
+            if ((now - testip.lastactive > 6 or # X 秒钟未使用
+                    lasttest > 30) and  #强制 X 秒钟检测
                     #and not GC.PROXY_ENABLE              #无代理
-                    now - testip.lasttest > looptime/(len(GC.IPLIST_MAP['google_gws']) or 1)): #强制 x 秒间隔
+                    lasttest > looptime/(len(GC.IPLIST_MAP['google_gws']) or 1)): #强制 x 秒间隔
                 testonegaeip()
         except Exception as e:
             logging.exception(' IP 测试守护线程错误：%r', e)
