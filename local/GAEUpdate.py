@@ -4,7 +4,7 @@
 import threading
 from . import clogging as logging
 from time import time, sleep, strftime
-from .compat import thread, ConfigParser, Queue
+from .compat import thread, Queue
 from .common import config_dir
 from .GlobalConfig import GC
 from .ProxyServer import network_test
@@ -13,6 +13,7 @@ from .GAEFinder import (
     g as finder,
     g_comdomain as comdomain,
     timeToDelay,
+    writebytes,
     gae_finder,
     getgaeip,
     savestatistics,
@@ -43,6 +44,10 @@ def _refreship(gaeip):
             GC.IPLIST_MAP[name][:] = gaeip[name] + GC.IPLIST_MAP[name]
     testip.lastupdate = time()
 
+ipuse_h = ('#coding: utf-8\n'
+           '#此文件由 GotoX 自动维护，请不要修改。\n'
+           '[iplist]\n').encode()
+
 def refreship(needgws=None, needcom=None):
     threading.current_thread().setName('Ping-IP')
     #检测当前 IP 并搜索新的 IP
@@ -55,17 +60,19 @@ def refreship(needgws=None, needcom=None):
     #更新 IP
     if gaeip and gaeip['google_gws']:
         _refreship(gaeip)
-        #更新 proxy.user.ini
-        cf = ConfigParser()
-        cf.read(GC.CONFIG_IPDB)
-        for name in gaeip:
-            cf.set("iplist", name, '|'.join(x for x in GC.IPLIST_MAP[name]))
-        cf.write(open(GC.CONFIG_IPDB, 'w'))
+        #更新 ip.use
+        with open(GC.CONFIG_IPDB, 'wb') as f:
+            write = writebytes(f.write)
+            f.write(ipuse_h)
+            for name in gaeip:
+                write(name)
+                f.write(b' = ')
+                write('|'.join(GC.IPLIST_MAP[name]))
+                f.write(b'\n')
         logging.test('GAE IP 更新完毕')
     if len(GC.IPLIST_MAP['google_gws']) < GC.FINDER_MINIPCNT:
         logging.warning('没有检测到足够数量符合要求的 GAE IP，请重新设定参数！')
     #更新完毕
-    #sleep(10)
     updateip.running = False
 
 def updateip(needgws=None, needcom=None):

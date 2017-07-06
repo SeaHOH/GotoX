@@ -105,6 +105,10 @@ class GC:
         GAE_USEGWSIPLIST = False
         IPLIST_MAP['google_gws'] = IPLIST_MAP[GAE_IPLIST].copy()
         IPLIST_MAP['google_com'] = IPLIST_MAP[GAE_IPLIST].copy()
+    if 'google_gws' not in IPLIST_MAP:
+        IPLIST_MAP['google_gws'] = []
+    if 'google_com' not in IPLIST_MAP:
+        IPLIST_MAP['google_com'] = []
 
     FILTER_ACTION = CONFIG.getint('filter', 'action')
     FILTER_ACTION = FILTER_ACTION if FILTER_ACTION in (1, 2, 3, 4) else 3
