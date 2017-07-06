@@ -260,18 +260,19 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return len(data), None
         wrote = 0
         err = None
+        write = self.write
         try:
             if not data:
                 data = response.read(8192)
             while data:
                 if need_chunked:
-                    self.write(hex(len(data))[2:])
-                    self.write(b'\r\n')
-                    self.write(data)
-                    self.write(b'\r\n')
+                    write(hex(len(data))[2:])
+                    write(b'\r\n')
+                    write(data)
+                    write(b'\r\n')
                     wrote += len(data)
                 else:
-                    self.write(data)
+                    write(data)
                     wrote += len(data)
                     if wrote >= length:
                         break
@@ -280,7 +281,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             err = e
         finally:
             if need_chunked:
-                self.write(b'0\r\n\r\n')
+                write(b'0\r\n\r\n')
             return wrote, err
 
     def handle_request_headers(self):

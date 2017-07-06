@@ -32,8 +32,6 @@ g_maxthreads = GC.FINDER_MAXTHREADS
 g_timesblock = GC.FINDER_TIMESBLOCK
 #屏蔽 badip 的时限，单位：小时
 g_blocktime = GC.FINDER_BLOCKTIME * 3600
-#是否允许 gvs IP: 0否，1是
-g_gvs = 1
 #连接超时设置，单位：秒
 g_timeout = 4
 g_conntimeout = 1
@@ -152,14 +150,14 @@ def savestatistics(statistics=None):
     statistics = [(ip, stats1, stats2) for ip, (stats1, stats2) in statistics.items()]
     statistics.sort(key=lambda x: -(x[1]+0.01)/(x[2]**2+0.1))
     with open(statisticsfile, 'wb') as f:
-        f.write = writebytes(f.write)
+        write = writebytes(f.write)
         for ip, good, bad in statistics:
-            f.write(str(ip).rjust(15))
-            f.write(' * ')
-            f.write(str(good).rjust(3))
-            f.write(' * ')
-            f.write(str(bad).rjust(3))
-            f.write('\n')
+            write(str(ip).rjust(15))
+            f.write(b' * ')
+            write(str(good).rjust(3))
+            f.write(b' * ')
+            write(str(bad).rjust(3))
+            f.write(b'\n')
 
 #读取 checkgoogleip 输出 ip.txt
 def readiplist(nowgaeset):
@@ -199,10 +197,10 @@ def readiplist(nowgaeset):
     #自动去重保存主列表
     if len(source_ipset) < source_ipcnt:
         with open(g_ipfile, 'wb') as f:
-            f.write = writebytes(f.write)
+            write = writebytes(f.write)
             for ip in source_ipset:
-                f.write(ip)
-                f.write('\n')
+                write(ip)
+                f.write(b'\n')
         g.ipmtime = os.path.getmtime(g_ipfile)
         PRINT('从主 IP 列表发现重复 IP，已保存去重后的列表文件。')
         
@@ -234,10 +232,10 @@ def savebadlist(baddict=None):
         os.rename(g_badfile, g_badfilebak)
     baddict = baddict or g.baddict
     with open(g_badfile, 'wb') as f:
-        f.write = writebytes(f.write)
+        write = writebytes(f.write)
         for ip in baddict:
-            f.write(' * '.join([ip, str(baddict[ip][0]), str(baddict[ip][1])]))
-            f.write('\n')
+            write(' * '.join([ip, str(baddict[ip][0]), str(baddict[ip][1])]))
+            f.write(b'\n')
 
 from .HTTPUtil import http_gws
 
