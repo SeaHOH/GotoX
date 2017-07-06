@@ -126,6 +126,7 @@ else:
 def _testallgaeip():
     iplist = GC.IPLIST_MAP['google_gws']
     if not iplist:
+        testip.running = False
         return updateip()
     badip = set()
     timeout = gettimeout()
