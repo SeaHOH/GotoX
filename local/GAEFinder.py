@@ -434,12 +434,13 @@ def getgaeip(nowgaelist, needgwscnt, needcomcnt):
         ipexmtime = os.path.getmtime(g_ipexfile)
         if now - ipexmtime > 2*3600: #两小时后删除
             os.remove(g_ipexfile)
+            ipexmtime = 0
     if ipmtime > g.ipmtime or ipexmtime > g.ipexmtime:
         # 更新过 IP 列表
         g.ipmtime = ipmtime
         g.ipexmtime = ipexmtime
         g.ipexlist, g.iplist, g.weaklist = readiplist(nowgaeset)
-    elif (len(g.weaklist) <= g.halfweak or # 上一次加载 IP 时出过错的 IP
+    elif (len(g.weaklist) < g.halfweak or # 上一次加载 IP 时出过错的 IP
              now - g.readtime > 8*3600 or # n 小时强制重载 IP
              #g.reloadlist or
              len(g.ipexlist) == len(g.iplist) == len(g.weaklist) == 0):
