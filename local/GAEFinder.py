@@ -16,10 +16,13 @@ import select
 import random
 import OpenSSL
 from . import clogging as logging
+from shutil import copyfile
 from time import time, localtime, strftime
 from .common import cert_dir, data_dir, NetWorkIOError, isip, isipv4, isipv6
 from .ProxyServer import network_test
 from .GlobalConfig import GC
+
+exists = os.path.exists
 
 #全局只读写数据
 #最大 IP 延时，单位：毫秒
@@ -30,6 +33,8 @@ g_maxgaeipcnt = GC.FINDER_MINIPCNT
 g_maxthreads = GC.FINDER_MAXTHREADS
 #容忍 badip 的次数
 g_timesblock = GC.FINDER_TIMESBLOCK
+#累计容忍 badip 的次数
+g_timesdel = GC.FINDER_TIMESDEL
 #屏蔽 badip 的时限，单位：小时
 g_blocktime = GC.FINDER_BLOCKTIME * 3600
 #连接超时设置，单位：秒
@@ -43,9 +48,13 @@ g_servername = b'update.googleapis.com'
 g_comdomain = '*.googleapis.com'
 
 g_ipfile = os.path.join(data_dir, 'ip.txt')
+g_ipfilebak = os.path.join(data_dir, 'ipbak.txt')
 g_ipexfile = os.path.join(data_dir, 'ipex.txt')
+g_ipexfilebak = os.path.join(data_dir, 'ipexbak.txt')
 g_badfile = os.path.join(data_dir, 'ip_bad.txt')
 g_badfilebak = os.path.join(data_dir, 'ip_badbak.txt')
+g_delfile = os.path.join(data_dir, 'ip_del.txt')
+g_delfilebak = os.path.join(data_dir, 'ip_delbak.txt')
 g_statisticsfilebak = os.path.join(data_dir, 'statisticsbak')
 
 #加各时段 IP 延时，单位：毫秒
@@ -59,9 +68,6 @@ timeToDelay = {
     '07': 0, '15':  50, '23':  50,
     '08': 0, '16':  50, '00':   0
     }
-
-#全局可读写数据
-class g: pass
 
 gLock = threading.Lock()
 
@@ -94,8 +100,7 @@ def readstatistics():
             name = os.path.join(data_dir, 'statistics'+n)
             names.append(name)
         #新建当日统计文件
-        if not os.path.exists(names[0]):
-            with open(names[0], 'w'): pass
+        #with open(names[0], 'ab'): pass
         #删除过期的统计文件
         sfiles = [g_statisticsfilebak,]
         sfiles.extend(names)
@@ -115,16 +120,18 @@ def readstatistics():
     deledipset = set()
     g.statisticsfiles = statisticsfiles = getnames()
     for file in statisticsfiles:
-        if os.path.exists(file):
+        if exists(file):
             with open(file, 'r') as fd:
                 for line in fd:
-                    ips = [x.strip('\r\n ') for x in line.split('*')]
-                    if len(ips) == 3:
-                        ip = ips[0]
+                    try:
+                        ip, good, bad = (x.strip('\r\n ') for x in line.split('*'))
+                    except:
+                        pass
+                    else:
                         if ip.startswith(g_block):
                             continue
-                        good = int(ips[1])
-                        bad = int(ips[2])
+                        good = int(good)
+                        bad = int(bad)
                         # 小于 0 表示已删除
                         if good < 0:
                             deledipset.add(ip)
@@ -142,10 +149,7 @@ def readstatistics():
 
 def savestatistics(statistics=None):
     statisticsfile = g.statisticsfiles[0]
-    if os.path.exists(statisticsfile):
-        if os.path.exists(g_statisticsfilebak):
-            os.remove(g_statisticsfilebak)
-        os.rename(statisticsfile, g_statisticsfilebak)
+    backupfile(statisticsfile, g_statisticsfilebak)
     statistics = statistics or g.statistics[1]
     statistics = [(ip, stats1, stats2) for ip, (stats1, stats2) in statistics.items()]
     statistics.sort(key=lambda x: -(x[1]+0.01)/(x[2]**2+0.1))
@@ -160,33 +164,44 @@ def savestatistics(statistics=None):
             f.write(b'\n')
 
 #读取 checkgoogleip 输出 ip.txt
-def readiplist(nowgaeset):
+def readiplist(otherset):
     #g.reloadlist = False
     now = time()
+    otherset.update(g.goodlist)
     baddict = g.baddict
-    blockset = set()
+    delset = g.delset
+    ipexset = g.ipexset
+    ipset = g.ipset
+    source_ipexset = g.source_ipexset
+    source_ipset = g.source_ipset
+    source_ipcnt = g.source_ipcnt
     weakset = set()
+    deledset = set()
     #判断是否屏蔽
-    for ip, (v1, v2) in baddict.copy().items():
-        if now - v2 > g_blocktime:
-            del baddict[ip]
+    for ip, (timesblock, blocktime, timesdel) in baddict.copy().items():
+        if timesblock is 0:
             continue
-        if v1 > g_timesblock:
-            blockset.add(ip)
+        if timesdel > g_timesdel:
+            del baddict[ip]
+            deledset.add(ip)
+            continue
+        if now - blocktime > g_blocktime:
+            baddict[ip] = 0, 0, timesdel
+            continue
+        if timesblock > g_timesblock:
+            otherset.add(ip)
             continue
         if not ip.startswith(g_block):
             weakset.add(ip)
     #读取待捡 IP
-    ipexset = set()
-    ipset = set()
-    source_ipset = set()
-    source_ipcnt = 0
-    if os.path.exists(g_ipexfile):
+    if not ipexset and exists(g_ipexfile):
         with open(g_ipexfile, 'r') as fd:
             for line in fd:
+                ip = line.strip('\r\n')
+                source_ipexset.add(ip)
                 if not line.startswith(g_block):
-                    ipexset.add(line.strip('\r\n'))
-    if os.path.exists(g_ipfile):
+                    ipexset.add(ip)
+    if not ipset and exists(g_ipfile):
         with open(g_ipfile, 'r') as fd:
             for line in fd:
                 source_ipcnt += 1
@@ -194,53 +209,187 @@ def readiplist(nowgaeset):
                 source_ipset.add(ip)
                 if not line.startswith(g_block):
                     ipset.add(ip)
-    else:
-        logging.error('未发现 IP 列表文件 "%s"，请创建！', g_ipfile)
+    #检测重复 IP 
+    hasdupl = max(source_ipcnt - len(source_ipset), 0)
+    if hasdupl:
+        PRINT('从主列表发现重复 IP，数量：%d。', hasdupl)
+        g.source_ipcnt = 0
+    #移除永久屏蔽 IP
+    if deledset:
+        ipset -= deledset
+        source_ipset -= deledset
+    #检测并添加新 IP
+    addset = source_ipexset - source_ipset
+    if addset:
+        ipset |= addset
+        source_ipset |= addset
+        PRINT('检测到新添加 IP，数量：%d。', len(addset))
+        backupfile(g_ipfile, g_ipfilebak)
+        #从永久屏蔽 IP 中移除新添加 IP
+        adddeledset = deledset & addset
+        if adddeledset:
+            deledset -= adddeledset
+    #检测并移除永久屏蔽 IP，保存扩展列表
+    deledexset = source_ipexset & deledset
+    if deledexset:
+        ipexset -= deledexset
+        source_ipexset -= deledexset
+        saveipexlist()
+    #添加和撤销永久屏蔽 IP，保存永久屏蔽列表
+    issavedellist = False
+    restoreset = delset & source_ipset
+    if restoreset:
+        delset -= restoreset
+        issavedellist = True
+        PRINT('检测到被撤销永久屏蔽的 IP，数量：%d。', len(restoreset))
+    if deledset:
+        delset |= deledset
+        issavedellist = True
+        logging.warning('检测到新的永久屏蔽 IP，数量：%d。', len(deledset))
+    if issavedellist:
+        savedellist()
+        logging.warning('已保存永久屏蔽列表文件，数量：%d。', len(delset))
+    #保存主列表
     source_ipsetlen = len(source_ipset)
     if source_ipsetlen < g_maxgaeipcnt:
         logging.warning('IP 列表文件 "%s" 包含 IP 过少，请添加。', g_ipfile)
-    #自动去重保存主列表
-    if source_ipsetlen < source_ipcnt:
-        with open(g_ipfile, 'wb') as f:
-            write = writebytes(f.write)
-            for ip in source_ipset:
-                write(ip)
-                f.write(b'\n')
-        g.ipmtime = os.path.getmtime(g_ipfile)
-        PRINT('从主 IP 列表发现重复 IP，已保存去重后的列表文件。')
-        
-    #自动屏蔽列表、正在使用的 IP
-    otherset = blockset | nowgaeset | set(g.goodlist)
+    if hasdupl or deledset or addset:
+        saveiplist()
+        PRINT('已保存主列表文件，数量：%d。', source_ipsetlen)
+    #排除自动屏蔽列表、正在使用的列表、good 列表
+    #用等号赋值不会改变原集合内容，之前都是用非等号赋值的
     ipexset = ipexset - otherset
-    ipset = ipset - otherset - ipexset
+    ipset = ipset - otherset
+    ipset -= ipexset
     #排除非当前配置的遗留 IP
-    weakset = weakset & ipset
-    ipset = ipset - weakset
+    weakset &= ipset
+    ipset -= weakset
     g.halfweak = len(weakset)/2
     g.readtime = now
     return list(ipexset), list(ipset), list(weakset)
 
+def saveipexlist(ipexset=None):
+    ipexset = ipexset or g.ipexset
+    savelist(ipexset, g_ipexfile)
+    #保持修改时间不变（自动删除判断依据）
+    os.utime(g_ipexfile, (g.ipexmtime, g.ipexmtime))
+
+def saveiplist(ipset=None):
+    ipset = ipset or g.ipset
+    savelist(ipset, g_ipfile)
+    g.ipmtime = os.path.getmtime(g_ipfile)
+
+def savelist(set, file):
+    with open(file, 'wb') as f:
+        write = writebytes(f.write)
+        for ip in set:
+            write(ip)
+            f.write(b'\n')
+
 def readbadlist():
     ipdict = {}
-    if os.path.exists(g_badfile):
+    if exists(g_badfile):
         with open(g_badfile, 'r') as fd:
             for line in fd:
-                ips = [x.strip('\r\n ') for x in line.split('*')]
-                if len(ips) == 3:
-                    ipdict[ips[0]] = int(ips[1]), int(ips[2])
+                #兼容之前的格式，下个版本会去掉
+                entry = line.strip('\r\n ').split('*')
+                entrylen = len(entry)
+                if entrylen is 4:
+                    ip, timesblock, blocktime, timesdel = entry
+                if entrylen is 3:
+                    ip, timesblock, blocktime = entry
+                    timesdel = timesblock
+                if entrylen > 2:
+                    ipdict[ip] = int(timesblock), int(blocktime), int(timesdel)
     return ipdict
 
 def savebadlist(baddict=None):
-    if os.path.exists(g_badfile):
-        if os.path.exists(g_badfilebak):
-            os.remove(g_badfilebak)
-        os.rename(g_badfile, g_badfilebak)
     baddict = baddict or g.baddict
+    backupfile(g_badfile, g_badfilebak)
     with open(g_badfile, 'wb') as f:
         write = writebytes(f.write)
         for ip in baddict:
-            write(' * '.join([ip, str(baddict[ip][0]), str(baddict[ip][1])]))
+            timesblock, blocktime, timesdel = baddict[ip]
+            write(ip)
+            f.write(b'*')
+            write(str(timesblock))
+            f.write(b'*')
+            write(str(blocktime))
+            f.write(b'*')
+            write(str(timesdel))
             f.write(b'\n')
+
+def readdellist():
+    ipset = set()
+    if exists(g_delfile):
+        with open(g_delfile, 'r') as fd:
+            for line in fd:
+                ipset.add(line.strip('\r\n'))
+    return ipset
+
+def savedellist(delset=None):
+    delset = delset or g.delset
+    backupfile(g_delfile, g_delfilebak)
+    savelist(delset, g_delfile)
+
+def backupfile(file, bakfile):
+    if exists(file):
+        if exists(bakfile):
+            os.remove(bakfile)
+        os.rename(file, bakfile)
+
+def clearzerofile(file):
+    if exists(file) and os.path.getsize(file) == 0:
+        os.remove(file)
+
+def makegoodlist(nowgaeset=()):
+    #日期变更、重新加载统计文件
+    if not g.statisticsfiles[0].endswith(strftime('%y%j')):
+        savestatistics()
+        g.statistics = readstatistics()
+    # goodlist 根据统计来排序已经足够，不依据 baddict 来排除 IP
+    #不然干扰严重时可能过多丢弃可用 IP
+    # baddict 只用来排除没有进入统计的IP 以减少尝试次数
+    statistics = g.statistics[0]
+    statistics = [(ip, stats1, stats2) for ip, (stats1, stats2) in statistics.items() if ip not in nowgaeset and stats1 >= 0]
+    #根据统计数据排序（bad 降序、good 升序）供 pop 使用
+    statistics.sort(key=lambda x: (x[1]+0.01)/(x[2]**2+0.1))
+    g.goodlist = [ip[0] for ip in statistics]
+
+#全局可读写数据
+class g:
+    ipexset = set()
+    ipset = set()
+    source_ipexset = set()
+    source_ipset = set()
+    source_ipcnt = 0
+    running = False
+    #reloadlist = False
+    ipmtime = os.path.getmtime(g_ipfile) if exists(g_ipfile) else 0
+    ipexmtime = os.path.getmtime(g_ipexfile) if exists(g_ipexfile) else 0
+    baddict = readbadlist()
+    delset = readdellist()
+
+clearzerofile(g_ipfile)
+clearzerofile(g_ipfilebak)
+clearzerofile(g_badfile)
+clearzerofile(g_badfilebak)
+#启动时备份主列表
+if exists(g_ipfile):
+    if not exists(g_ipfilebak):
+        copyfile(g_ipfile, g_ipfilebak)
+#只有启动时，才从备份恢复主列表
+elif exists(g_ipfilebak):
+    copyfile(g_ipfilebak, g_ipfile)
+else:
+    logging.error('未发现 IP 列表文件 "%s"，请创建！', g_ipfile)
+#只有启动时，才从备份恢复 bad 列表
+if not exists(g_badfile) and exists(g_badfilebak):
+    os.rename(g_badfilebak, g_badfile)
+g.statistics = readstatistics()
+makegoodlist()
+g.ipexlist, g.iplist, g.weaklist = readiplist(set())
+savebadlist()
 
 from .HTTPUtil import http_gws
 
@@ -315,8 +464,9 @@ def runfinder(ip):
     if isgaeserver:
         with gLock:
             g.testedok += 1
-        if ip in baddict: #删除未到容忍次数的 badip
-            del baddict[ip]
+        if ip in baddict: #重置未到容忍次数的 badip
+            _, _, timesdel = baddict[ip]
+            baddict[ip] = 0, 0, timesdel
         com = ssldomain == g_comdomain
         if com:
             ssldomain = '*.google.com'
@@ -338,21 +488,32 @@ def runfinder(ip):
                     good, bad = ipdict[ip]
                     ipdict[ip] = max(good - 1, 0), bad
     else:
+        timesdel = 0
         if ip in baddict: # badip 容忍次数 +1
-            baddict[ip] = baddict[ip][0]+1, int(time())
+            timesblock, _, timesdel = baddict[ip]
+            baddict[ip] = timesblock + 1, int(time()), timesdel + 1
         else: #记录检测到 badip 的时间
-            baddict[ip] = 1, int(time())
+            baddict[ip] = 1, int(time()), 1
         badb = baddict[ip][0]
-        for ipdict in statistics:
-            if ip in ipdict:
-                 good, bad = ipdict[ip]
-                 if good < 0: break
-                 #失败次数超出预期，设置 -1 表示删除
-                 s = bad/max(good, 1)
-                 if s > 2 or (s > 0.4 and bad > 10) or (s > 0.15 and badb > 10):
-                     ipdict[ip] = -1, 0
-                 else:
-                     ipdict[ip] = max(good - 1, 0), bad + 1
+        ipdict, ipdicttoday = statistics
+        if ip in ipdict:
+            #累计容忍次数超出预期，设置 -1 表示删除
+            if timesdel >= g_timesdel:
+                ipdict[ip] = ipdicttoday[ip] = -1, 0
+            else:
+                good, bad = ipdict[ip]
+                if good >= 0:
+                    #失败次数超出预期，设置 -1 表示删除
+                    s = bad/max(good, 1)
+                    if s > 2 or (s > 0.4 and bad > 10) or (s > 0.15 and badb > 10):
+                        ipdict[ip] = ipdicttoday[ip] = -1, 0
+                    else:
+                        ipdict[ip] = max(good - 2, 0), bad + 1
+                        if ip in ipdicttoday:
+                            good, bad = ipdicttoday[ip]
+                        else:
+                            good = bad = 0
+                        ipdicttoday[ip] = max(good - 2, 0), bad + 1
     #测试了足够多 IP 数目或达标 IP 满足数量后停止
     if g.testedok > g.testok or g.needgwscnt < 1 and g.needcomcnt < 1:
         return True
@@ -398,12 +559,6 @@ def randomip():
         elif g.weaklist:
             return _randomip(g.weaklist)
 
-g.running = False
-#g.reloadlist = False
-g.ipmtime = 0
-g.ipexmtime = 0
-g.statistics = readstatistics()
-g.baddict = readbadlist()
 def getgaeip(nowgaelist, needgwscnt, needcomcnt):
     if g.running or needgwscnt == needcomcnt == 0:
         return
@@ -413,28 +568,31 @@ def getgaeip(nowgaelist, needgwscnt, needcomcnt):
     g.needgwscnt = needgwscnt
     g.needcomcnt = needcomcnt
     threads = min(needgwscnt + needcomcnt*2 + 1, g_maxthreads)
-    now = time()
-    #日期变更、重新加载统计文件
-    if not g.statisticsfiles[0].endswith(strftime('%y%j')):
-        savestatistics()
-        g.statistics = readstatistics()
-    # goodlist 根据统计来排序已经足够，不依据 baddict 来排除 IP
-    #不然干扰严重时可能过多丢弃可用 IP
-    # baddict 只用来排除没有进入统计的IP 以减少尝试次数
-    statistics = g.statistics[0]
-    statistics = [(ip, stats1, stats2) for ip, (stats1, stats2) in statistics.items() if ip not in nowgaeset and stats1 >= 0]
-    #根据统计数据排序（bad 降序、good 升序）供 pop 使用
-    statistics.sort(key=lambda x: (x[1]+0.01)/(x[2]**2+0.1))
-    g.goodlist = [ip[0] for ip in statistics]
+    #重建 good 列表
+    makegoodlist(nowgaeset)
     #检查 IP 数据修改时间
     ipmtime = ipexmtime = 0
-    if os.path.exists(g_ipfile):
+    if exists(g_ipfile):
         ipmtime = os.path.getmtime(g_ipfile)
-    if os.path.exists(g_ipexfile):
+        if ipmtime > g.ipmtime:
+            copyfile(g_ipfile, g_ipfilebak)
+            g.source_ipset.clear()
+            g.source_ipcnt = 0
+            g.ipset.clear()
+    else:
+        logging.error('未发现 IP 列表文件 "%s"，请创建！', g_ipfile)
+    now = time()
+    if exists(g_ipexfile):
         ipexmtime = os.path.getmtime(g_ipexfile)
-        if now - ipexmtime > 2*3600: #两小时后删除
+        passtime = now - ipexmtime
+        #最快两小时，最慢十小时后删除
+        if passtime > 36000 or len(g.ipexlist) == 0 and passtime > 7200:
             os.remove(g_ipexfile)
             ipexmtime = 0
+        if ipexmtime > g.ipexmtime:
+            copyfile(g_ipexfile, g_ipexfilebak)
+            g.source_ipexset.clear()
+            g.ipexset.clear()
     if ipmtime > g.ipmtime or ipexmtime > g.ipexmtime:
         # 更新过 IP 列表
         g.ipmtime = ipmtime
@@ -445,7 +603,6 @@ def getgaeip(nowgaelist, needgwscnt, needcomcnt):
              #g.reloadlist or
              len(g.ipexlist) == len(g.iplist) == len(g.weaklist) == 0):
         g.ipexlist, g.iplist, g.weaklist = readiplist(nowgaeset)
-    del nowgaelist, nowgaeset, statistics
     g.getgood = 0
     g.gaelist = []
     g.gaelistbak = gaelistbak = []
@@ -461,7 +618,7 @@ def getgaeip(nowgaelist, needgwscnt, needcomcnt):
     for i in range(threads):
         ping_thread = Finder()
         ping_thread.setDaemon(True)
-        ping_thread.setName('Ping-%s' % str(i+1).rjust(2, '0'))
+        ping_thread.setName('Finder%s' % str(i+1).rjust(2, '0'))
         ping_thread.start()
         threadiplist.append(ping_thread)
     for p in threadiplist:

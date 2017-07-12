@@ -49,7 +49,7 @@ ipuse_h = ('#coding: utf-8\n'
            '[iplist]\n').encode()
 
 def refreship(needgws=None, needcom=None):
-    threading.current_thread().setName('Ping-IP')
+    threading.current_thread().setName('Find GAE')
     #检测当前 IP 并搜索新的 IP
     network_test()
     if needgws is None:
@@ -83,15 +83,17 @@ def updateip(needgws=None, needcom=None):
     thread.start_new_thread(refreship, (needgws, needcom))
 updateip.running = False
 
+timeoutb = max(GC.FINDER_MAXTIMEOUT*1.3, 1000)
 def gettimeout():
-    timeout = max(GC.FINDER_MAXTIMEOUT*1.3, 1000) + min(len(GC.IPLIST_MAP['google_gws']), 20)*10 + timeToDelay[strftime('%H')]
+    timeout = timeoutb + min(len(GC.IPLIST_MAP['google_gws']), 20)*10 + timeToDelay[strftime('%H')]
     return int(timeout)
 
 def countneedgws():
     return max(GC.FINDER_MINIPCNT - len(GC.IPLIST_MAP['google_gws']), 0)
 
+ipcomcnt = max(min(GC.FINDER_MINIPCNT//3, 5), 1)
 def countneedcom():
-    return max(max(min(GC.FINDER_MINIPCNT//3, 5), 1) - len(GC.IPLIST_MAP['google_com']), 0)
+    return max(ipcomcnt - len(GC.IPLIST_MAP['google_com']), 0)
 
 def testipuseable(ip):
     _, _, isgaeserver = gae_finder.getipinfo(ip)
@@ -103,7 +105,8 @@ def testipuseable(ip):
 
 if GC.GAE_USEGWSIPLIST:
     def addtoblocklist(ip):
-        finder.baddict[ip] = GC.FINDER_TIMESBLOCK+1, int(time())
+        timesdel = finder.baddict[ip][2] if ip in finder.baddict else 0
+        finder.baddict[ip] = GC.FINDER_TIMESBLOCK+1, int(time()), timesdel+1
         for ipdict in finder.statistics:
             if ip in ipdict:
                 ipdict[ip] = -1, 0
@@ -117,7 +120,7 @@ if GC.GAE_USEGWSIPLIST:
                 if testip.running == 9:
                     return
                 while testip.running == 1:
-                    sleep(0.2)
+                    sleep(0.1)
             elif testip.running:
                 return
             testip.running = 9
@@ -180,26 +183,40 @@ def testonegaeip():
         logging.warning('测试失败（超时：%d 毫秒）%s：%s，Bad IP 已删除' % (timeout,  '.'.join(x.rjust(3) for x in ip.split('.')), result.args[0]))
         removeip(ip)
         badip = True
-        for ipdict in statistics:
-            if ip in ipdict:
-                good, bad = ipdict[ip]
-                #失败次数超出预期，设置 -1 表示删除
-                s = bad/max(good, 1)
-                if s > 2 or (s > 0.4 and bad > 10):
-                    ipdict[ip] = -1, 0
-                else:
-                    ipdict[ip] = good, bad + 1
+        ipdict, ipdicttoday = statistics
+        if ip in ipdict:
+            good, bad = ipdict[ip]
+            #失败次数超出预期，设置 -1 表示删除
+            s = bad/max(good, 1)
+            if s > 2 or (s > 0.4 and bad > 10):
+                ipdict[ip] = ipdicttoday[ip] = -1, 0
             else:
-                ipdict[ip] = 0, 1
+                ipdict[ip] = good, bad + 1
+                if ip in ipdicttoday:
+                    good, bad = ipdicttoday[ip]
+                else:
+                    good = bad = 0
+                ipdicttoday[ip] = good, bad + 1
+        #加入统计
+        else:
+            ipdict[ip] = ipdicttoday[ip] = 0, 1
     else:
         logging.test('测试连接（超时：%d 毫秒）%s: %d' %(timeout,  '.'.join(x.rjust(3) for x in result[0].split('.')), int(result[1]*1000)))
         GC.IPLIST_MAP['google_gws'].insert(0, GC.IPLIST_MAP['google_gws'].pop())
         #调高 com 权重
         addn = 2 if ip in GC.IPLIST_MAP['google_com'] else 1
+        baddict = finder.baddict
         for ipdict in statistics:
             if ip in ipdict:
                 good, bad = ipdict[ip]
-                ipdict[ip] = good + addn, bad
+                good += addn
+                ipdict[ip] = good, bad
+                #当天通过测试次数达到条件后重置容忍次数
+                if ipdict is statistics[1] and ip in baddict:
+                    s = bad/max(good, 1)
+                    if s < 0.1:
+                        del baddict[ip]
+            #加入统计
             else:
                 ipdict[ip] = addn, 0
     savestatistics()
