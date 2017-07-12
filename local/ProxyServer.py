@@ -33,8 +33,12 @@ test_dnsips = (
     #http://dudns.baidu.com/intro/publicdns/
     '180.76.76.76',
     #腾讯
-    #DNSPod https://www.dnspod.cn/Products/Public.DNS
+    #DNSPod
+    #https://www.dnspod.cn/Products/Public.DNS
+    '119.28.28.28',
     '119.29.29.29',
+    '182.254.116.116',
+    '182.254.118.118',
     #DNS 派
     #http://www.dnspai.com/public.html
     '101.226.4.6',
