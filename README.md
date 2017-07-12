@@ -4,22 +4,36 @@
 - 主要使用 GAE 服务作为后端代理，也支持任意 HTTP/SOCKS4/SOCKS5 代理，两者处于同等地位。SOCKS 代理支持认证。
 - 运行时会一直维护一个较小但快速的 GAE IP 列表。
 
+# 安全
+- 由于平台限制，对于通过 GAE 的 https 流量，GotoX 使用自动生成的证书作为凭证，采取中间人方法进行代理；对于需要修改（某些自动代理规则需要）的 https 流量也是如此，不论其是否通过 GAE。
+- 默认配置时，GotoX 会验证 GAE 服务器的中级证书是否为谷歌 [GIAG2](https://pki.google.com/GIAG2.crt)，同时会在 AppID 请求 https 网址时验证其证书有效性。
+
 # 部署
 - 配置 GAE 路径为“ ***/_gh/*** ”可使用 GoProxy、XX-Net 及 GoAgent 3.2.X 服务端，“ ***/2*** ”使用 GoAgent 3.1.X 服务端。
-- 推荐使用 [GoProxy 服务端](https://github.com/phuslu/goproxy/tree/server.gae)。
-- 部署服务端时，请在 VPN、Shadowsocks 等代理条件下上传，或者去 [XX-Net 配置](https://github.com/XX-net/XX-Net/blob/master/code/default/gae_proxy/local/proxy.ini) 中取用公共 APPID 填入本代理来上传。公共 APPID **不支持视频和下载**。
-    - **相关链接**
+    - 推荐使用 [GoProxy 服务端](https://github.com/phuslu/goproxy/tree/server.gae)。
+- 申请 AppID 或部署服务端时，可尝试直接以默认配置运行本代理使用；如果无法顺利进行，请使用 VPN、Shadowsocks 等其它代理重新开始。
+- 如果你没有自己的 AppID，可以去 [XX-Net 配置](https://github.com/XX-net/XX-Net/blob/master/code/default/gae_proxy/local/proxy.ini) 中取用公共 AppID。
+    - 公共 AppID **不支持视频和下载**（以前是，现在没确认过）；
+    - 不建议填入过多公共 AppID，10 个左右就差不多，需要时请手动更换并重启 GotoX；
+    - 不建议使用未知来源的 AppID，它们可能会记录你的各种信息，如果极端点，XX-Net 的公共 AppID 也是如此。
+- **相关链接**
     - 简易教程 https://github.com/phuslu/goproxy/blob/wiki/SimpleGuide.md
     - 常见问题 https://github.com/phuslu/goproxy/blob/wiki/FAQ.md
     - 新版谷歌云部署问题 https://github.com/XX-net/XX-Net/issues/4720
     - GoProxy 服务端 https://github.com/phuslu/goproxy/tree/server.gae
     - XX-Net 服务端 https://github.com/jzp820927/Deploy_XXNET_Server
-    - XX-Net 公共 APPID https://github.com/XX-net/XX-Net/blob/master/code/default/gae_proxy/local/proxy.ini
+    - XX-Net 公共 AppID https://github.com/XX-net/XX-Net/blob/master/code/default/gae_proxy/local/proxy.ini
 
 # 使用
 - **主要配置：**
     - 具体配置说明，在配置文件中都有较为详细的描述。只有 **Config.ini** 支持 **Config.user.ini** 用户配置。
-    - 需事先提供由**其它扫描工具**取得一个较大的（**上万也支持**）**可用** GAE IP 列表以供筛选，放入“**data/ip.txt**”或“**data/ipex.txt**（优先）”中，格式为每行一个完整 IP；ipex.txt 文件会在建立时间两小时后被删除，其中的 IP 会保存在统计记录中直到无法稳定使用为止，如果要长期使用这些 IP 需同时将之加入 ip.txt 文件中。
+    - 需事先提供由**其它扫描工具**取得一个较大的（**上万也支持**）**可用** GAE IP 列表以供筛选，放入“**data/ip.txt**”或“**data/ipex.txt**（）”中。
+        - 格式为每行一个完整 IP；
+        - 每次修改或新建以上两个文件都会自动进行备份，只有一份，会被后来的覆盖；
+        - ipex.txt 中的 IP 会优先使用，同时会自动并入 ip.txt；
+        - ipex.txt 文件会在修改后大约二至十小时内被删除，其 IP 优先使用也同时失效；
+        - 从列表载入 IP 时，会根据 ip_bad.txt 记录判断生成永久屏蔽 IP，并放入 ip_del.txt；
+        - 如果新加 IP 包含永久屏蔽 IP，会自动从 ip_del.txt 删除重置。
     - 也可以在 **［gae/iplist］** 配置中指定使用固定的 GAE IP 列表，不再进行 IP 检查筛选。
 - **自动化：**
     - 自动代理规则和 IP 列表文件可以在运行时替换，无需重启 GotoX。
@@ -47,7 +61,10 @@
         - **重要**：由于只认 IP，多台主机可以通过一个处于成功登录状态的 IP 来使用本代理，所以请谨慎分享代理地址；
         - 同一个用户，只有最新登录成功的 IP 才能通过认证使用代理。
 - **导入证书：**
-    - 成功运行后会创建独一无二的 CA 证书，证书名称为：“**GotoX CA**”。配置好浏览器代理后，在地址栏输入“**http://gotox.go/** ” 即可安装或下载 CA 证书，也可在“**cert**”文件夹找到“**CA.crt**”证书文件。由于还不完善，暂时不打算启用自动导入和删除功能，如有需求请手动删除老旧证书。
+    - 成功运行后会创建独一无二的 CA 证书，证书名称为：“**GotoX CA**”。
+    - 配置好浏览器代理后，在地址栏输入“**http://gotox.go/** ” 即可安装或下载 CA 证书；
+    - 也可在“**cert**”文件夹找到“**CA.crt**”证书文件；
+    - 由于还不完善，暂时不打算启用自动导入和删除功能，如有需求请手动删除老旧证书。
         - **相关链接**
         - 手动导入证书 https://github.com/XX-net/XX-Net/wiki/GoAgent-Import-CA
 - **本地服务：** 提供一个简单的支持加密链接的静态 web 服务器。
@@ -70,7 +87,7 @@
         - 可在**转发（forward）或直连（direct）** 规则中设置成**反向代理** IP；
         - 或在**其它代理（proxy）** 规则中设置成 **SOCKS 代理**（格式见 ActionFilter.ini）。
     - 反向代理一般**不支持**非加密链接，请**慎用**支持非加密链接的反向代理！
-    - 尽量不要在 GAE 代理中使用多线程下载工具下载大于 32MB 的文件，会导致 appid 入口流量浪费（配额与出口相同也是每日 1GB），针对通过 GAE 代理的大文件下载可以使用内建 **autorange** 功能（具体配置见 Config.ini）。
+    - 尽量不要在 GAE 代理中使用多线程下载工具下载大于 32MB 的文件，会导致 AppID 入口流量浪费（配额与出口相同也是每日 1GB），针对通过 GAE 代理的大文件下载可以使用内建 **autorange** 功能（具体配置见 Config.ini）。
 
 # 兼容性
 - CPython 3.4/3.5 已测试。
@@ -89,7 +106,7 @@
 - 请求和响应的修改还未完成，将会加入。
 - 直连（direct）的自动多线程支持（低）。
 - 前置代理代码还未整理，暂时不提供此功能。请使用转发到后端代理（不通过 GAE）。
-- 不会提供对 HTTP/2 的直接支持，对我个人来说带来的改善无法与付出对等，代码不是我的本行。其部分特性可用多 IP、多 appid 以及 keep-alive 的组合来替代，主要损失的是头部的压缩支持，其次某些情况下延迟更大些，尤其是对应 IP 稀少或只有 1 个 IP 时。**仅在服务器支持 HTTP/2 时对比。**
+- 不会提供对 HTTP/2 的直接支持，对我个人来说带来的改善无法与付出对等，代码不是我的本行。其部分特性可用多 IP、多 AppID 以及 keep-alive 的组合来替代，主要损失的是头部的压缩支持，其次某些情况下延迟更大些，尤其是对应 IP 稀少或只有 1 个 IP 时。**仅在服务器支持 HTTP/2 时对比。**
     - **GAE** 问题不大，实际的头部也会压缩。
     - **直接转发**完全等于直连，是否支持看客户端。
     - **转发代理**还要看代理服务器是否支持。
