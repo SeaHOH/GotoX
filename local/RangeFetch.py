@@ -115,7 +115,7 @@ class RangeFetch:
             else:
                 spawn_later(sleeptime if i else 0, self.__fetchlet, range_queue, data_queue, i + 1)
         has_peek = hasattr(data_queue, 'peek')
-        peek_timeout = 120
+        peek_timeout = 30
         self.expect_begin = start
         while self.expect_begin < length:
             try:
@@ -153,6 +153,8 @@ class RangeFetch:
             logging.info('%s RangeFetch 成功完成 %r', self.address_string(), self.url)
         self._stopped = True
         self.record()
+        if self.expect_begin < length:
+            self.handler.close_connection = True
 
     def address_string(self, response=None):
         return self.handler.address_string(response)

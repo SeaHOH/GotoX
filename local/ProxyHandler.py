@@ -287,6 +287,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def handle_request_headers(self):
         #无法重复读取套接字，使用属性保存
         if self.reread_req:
+            self.close_connection = self.cc
             return self.request_headers.copy(), self.payload
         #处理请求
         request_headers = dict((k.title(), v) for k, v in self.headers.items() if k.title() not in self.skip_request_headers)
@@ -305,6 +306,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.request_headers = request_headers
         self.payload = payload
         self.reread_req = True
+        self.cc = self.close_connection
         return request_headers.copy(), payload
 
     def handle_response_headers(self, response):
@@ -412,6 +414,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             logging.warning('%s do_DIRECT "%s %s" 失败：%r', self.address_string(response), self.command, self.url, e)
             raise
         finally:
+            if not noerror:
+                self.close_connection = True
             if response:
                 response.close()
                 if noerror:
@@ -652,6 +656,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if e.args[0] in closed_errno or isinstance(e, NetWorkIOError) and len(e.args) > 1 and 'bad write' in e.args[1]:
                     #链接主动终止
                     logging.debug('%s do_GAE %r 返回 %r，终止', self.address_string(response), self.url, e)
+                    self.close_connection = True
                     return
                 elif retry < GC.GAE_FETCHMAX - 1:
                     if accept_ranges == 'bytes':
