@@ -174,7 +174,6 @@ def readiplist(otherset):
     ipset = g.ipset
     source_ipexset = g.source_ipexset
     source_ipset = g.source_ipset
-    source_ipcnt = g.source_ipcnt
     weakset = set()
     deledset = set()
     #判断是否屏蔽
@@ -202,6 +201,7 @@ def readiplist(otherset):
                 if not line.startswith(g_block):
                     ipexset.add(ip)
     if not ipset and exists(g_ipfile):
+        source_ipcnt = 0
         with open(g_ipfile, 'r') as fd:
             for line in fd:
                 source_ipcnt += 1
@@ -209,11 +209,12 @@ def readiplist(otherset):
                 source_ipset.add(ip)
                 if not line.startswith(g_block):
                     ipset.add(ip)
-    #检测重复 IP 
-    hasdupl = max(source_ipcnt - len(source_ipset), 0)
-    if hasdupl:
-        PRINT('从主列表发现重复 IP，数量：%d。', hasdupl)
-        g.source_ipcnt = 0
+        #检测重复 IP 
+        hasdupl = source_ipcnt - len(source_ipset)
+        if hasdupl:
+            PRINT('从主列表发现重复 IP，数量：%d。', hasdupl)
+    else:
+        hasdupl = False
     #移除永久屏蔽 IP
     if deledset:
         ipset -= deledset
@@ -269,13 +270,13 @@ def readiplist(otherset):
     return list(ipexset), list(ipset), list(weakset)
 
 def saveipexlist(ipexset=None):
-    ipexset = ipexset or g.ipexset
+    ipexset = ipexset or g.source_ipexset
     savelist(ipexset, g_ipexfile)
     #保持修改时间不变（自动删除判断依据）
     os.utime(g_ipexfile, (g.ipexmtime, g.ipexmtime))
 
 def saveiplist(ipset=None):
-    ipset = ipset or g.ipset
+    ipset = ipset or g.source_ipset
     savelist(ipset, g_ipfile)
     g.ipmtime = os.path.getmtime(g_ipfile)
 
@@ -362,7 +363,6 @@ class g:
     ipset = set()
     source_ipexset = set()
     source_ipset = set()
-    source_ipcnt = 0
     running = False
     #reloadlist = False
     ipmtime = os.path.getmtime(g_ipfile) if exists(g_ipfile) else 0
@@ -577,7 +577,6 @@ def getgaeip(nowgaelist, needgwscnt, needcomcnt):
         if ipmtime > g.ipmtime:
             copyfile(g_ipfile, g_ipfilebak)
             g.source_ipset.clear()
-            g.source_ipcnt = 0
             g.ipset.clear()
     else:
         logging.error('未发现 IP 列表文件 "%s"，请创建！', g_ipfile)
