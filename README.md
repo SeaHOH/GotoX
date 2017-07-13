@@ -1,21 +1,24 @@
 # GotoX
-- GotoX 修改自 goagent，可用于访问被**防火墙**屏蔽的网络服务。
-- 其特色，一是自动代理，可支持标准 HTTP/1.1 请求；二是可根据需要修改来自客户端的请求以及服务器的响应。
-- 主要使用 GAE 服务作为后端代理，也支持任意 HTTP/SOCKS4/SOCKS5 代理，两者处于同等地位。SOCKS 代理支持认证。
+- GotoX 修改自 goagent，其主要目的在于，当访问的网络服务出现问题，用户可以通过方便快速地添加更改规则来自行解决。
+- 其特色，一是自动代理，可支持标准 HTTP/1.1 请求；二是可根据需要修改来自客户端的请求以及服务器返回的响应。
+- 主要使用 GAE 服务作为后端代理，也支持 HTTP/SOCKS4/SOCKS5 代理，两者处于同等地位。SOCKS 代理支持认证。
 - 运行时会一直维护一个较小但快速的 GAE IP 列表。
 
 # 安全
 - 由于平台限制，对于通过 GAE 的 https 流量，GotoX 使用自动生成的证书作为凭证，采取中间人方法进行代理；对于需要修改（某些自动代理规则需要）的 https 流量也是如此，不论其是否通过 GAE。
+- GotoX 使用 sha256 算法生成证书，只要你不把生成的私钥文件泄露出去，就不会有第三方能通过它们对你进行中间人攻击。
 - 默认配置时，GotoX 会验证 GAE 服务器的中级证书是否为谷歌 [GIAG2](https://pki.google.com/GIAG2.crt)，同时会在 AppID 请求 https 网址时验证其证书有效性。
+- 使用 GAE 代理也就意味着：你需要**信任谷歌和你所使用的 AppID 服务端的权限者**，他们能够窥探和修改通过 GAE 代理的流量信息。
+- **未防止被滥用，谷歌在 GAE 代理的用户代理字段中会包含了你使用的 AppID 和链接 GAE 服务器的 IP 信息，请慎记之。**
 
-# 部署
-- 配置 GAE 路径为“ ***/_gh/*** ”可使用 GoProxy、XX-Net 及 GoAgent 3.2.X 服务端，“ ***/2*** ”使用 GoAgent 3.1.X 服务端。
+# 部署服务端
+- 配置 GAE 路径为“**/_gh/**”可使用 GoProxy、XX-Net 及 GoAgent 3.2.X 服务端，“**/2**”使用 GoAgent 3.1.X 服务端。
     - 推荐使用 [GoProxy 服务端](https://github.com/phuslu/goproxy/tree/server.gae)。
 - 申请 AppID 或部署服务端时，可尝试直接以默认配置运行本代理使用；如果无法顺利进行，请使用 VPN、Shadowsocks 等其它代理重新开始。
 - 如果你没有自己的 AppID，可以去 [XX-Net 配置](https://github.com/XX-net/XX-Net/blob/master/code/default/gae_proxy/local/proxy.ini) 中取用公共 AppID。
     - 公共 AppID **不支持视频和下载**（以前是，现在没确认过）；
     - 不建议填入过多公共 AppID，10 个左右就差不多，需要时请手动更换并重启 GotoX；
-    - 不建议使用未知来源的 AppID，它们可能会记录你的各种信息，如果极端点，XX-Net 的公共 AppID 也是如此。
+    - **警告**：不建议使用未知来源的 AppID，它们**可能会记录你的各种信息，甚至更改你的流量**以达到更危险的目的，如果极端点，XX-Net 的公共 AppID 也是如此。
 - **相关链接**
     - 简易教程 https://github.com/phuslu/goproxy/blob/wiki/SimpleGuide.md
     - 常见问题 https://github.com/phuslu/goproxy/blob/wiki/FAQ.md
@@ -26,18 +29,18 @@
 
 # 使用
 - **主要配置：**
-    - 具体配置说明，在配置文件中都有较为详细的描述。只有 **Config.ini** 支持 **Config.user.ini** 用户配置。
-    - 需事先提供由**其它扫描工具**取得一个较大的（最好有几千上万）**可用的** GAE IP 列表以供筛选，放入“**data/ip.txt**”或“**data/ipex.txt**”中。
+    - 具体配置说明，在配置文件中都有较为详细的描述。只有 `Config.ini` 支持 `Config.user.ini` 用户配置。
+    - 需事先提供由**其它扫描工具**取得一个较大的（最好有几千上万）**可用的** GAE IP 列表以供筛选，放入 `data/ip.txt` 或 `data/ipex.txt` 中。
         - 格式为每行一个完整 IP；
         - 每次修改或新建以上两个文件时都会自动进行备份，只有一份，会被后来的覆盖；
-        - ipex.txt 中的 IP 会优先使用，同时会自动并入 ip.txt；
-        - ipex.txt 文件会在修改后大约二至十小时内被删除，其 IP 优先使用也同时失效；
-        - 从列表载入 IP 时，会根据 ip_bad.txt 记录判断生成永久屏蔽 IP，并放入 ip_del.txt；
-        - 如果新加 IP 包含永久屏蔽 IP，会自动从 ip_del.txt 删除重置。
+        - `ipex.txt` 中的 IP 会优先使用，同时会自动并入 `ip.txt`；
+        - `ipex.txt` 文件会在修改后大约二至十小时内被删除，其 IP 优先使用也同时失效；
+        - 从列表载入 IP 时，会根据 `ip_bad.txt` 记录判断生成永久屏蔽 IP，并放入 `ip_del.txt`；
+        - 如果新加 IP 包含永久屏蔽 IP，会自动从 `ip_del.txt` 删除重置。
     - 也可以在 **［gae/iplist］** 配置中指定使用固定的 GAE IP 列表，不再进行 IP 检查筛选。
 - **自动化：**
     - 自动代理规则和 IP 列表文件可以在运行时替换，无需重启 GotoX。
-    - 直连和转发规则失败后，如果主机 IP 地址不属于国内会根据条件判断是否尝试使用 GAE 规则。
+    - 直连和转发规则失败后，会根据条件判断是否尝试使用 GAE 规则。
     - 可设置三级 DNS 查询优先级：系统设置、**［dns/server］** 配置、谷歌 DNS-over-HTTPS API。
 - **使用 IP 列表：**
     - google IP 列表名称“**google_gws、google_com**”选项由代理自身维护，无需用户填写；
@@ -66,36 +69,37 @@
 - **导入证书：**
     - 成功运行后会创建独一无二的 CA 证书，证书名称为：“**GotoX CA**”。
     - 配置好浏览器代理后，在地址栏输入“**http://gotox.go/** ” 即可安装或下载 CA 证书；
-    - 也可在“**cert**”文件夹找到“**CA.crt**”证书文件；
+    - 也可在 `cert` 文件夹找到 `CA.crt` 证书文件；
     - 由于还不完善，暂时不打算启用自动导入和删除功能，如有需求请手动删除老旧证书。
     - **相关链接**
         - 手动导入证书 https://github.com/XX-net/XX-Net/wiki/GoAgent-Import-CA
 - **本地服务：** 提供一个简单的支持加密链接的静态 web 服务器。
     - 不提供单独端口，**无法直接访问**，需要在设置了 GotoX 代理的情况下访问。
-    - 主机名为 gotox.go 或 GotoX 代理地址，如果是在本机运行 GotoX 且未设置成代理例外，那也可以是本机地址（127.0.0.1、localhost）。
+    - 主机名为“gotox.go”或 GotoX 代理地址，如果是在本机运行 GotoX 且未设置成代理例外，那也可以是本机地址（`127.0.0.1`、`localhost`）。
     - 路径根目录为程序的 web 文件夹。
     - 路径为目录时不自动发现 index 文件，显示目录列表以替代。
     - 返回头部支持常见文件类型，不包含缓存信息。
 - **辅助工具：**
-    - Windows 下提供一个系统托盘辅助工具，作者没有条件为其它系统开发类似工具，欢迎感兴趣者分享代码。
-        - 使用发布的便携版 Python 可以从 GotoX.vbs 或新建快捷方式启动（GotoX.vbs 里有写怎么新建）；
-        - 使用安装版 Python 可直接运行 **launcher/win32.py** 启动。
+    - Windows 下提供一个系统托盘辅助工具。
+        - 使用发布的便携版 Python 可以从 GotoX.vbs 或新建快捷方式启动（`GotoX.vbs` 里有写怎么新建）；
+        - 使用安装版 Python 可直接运行 `launcher/win32.py` 启动。
         - 可以打开 GotoX 配置文件；
-        - 可以下载生成直连 IP 数据库，其它系统需直接运行 **launcher/buildipdb.py** 脚本；
+        - 可以下载生成直连 IP 数据库，**其它系统**需直接运行 `launcher/buildipdb.py` 脚本；
         - 隐藏或显示窗口；
         - 监视和设置系统代理；
         - 重新载入 GotoX。
+    - 作者现在没有条件为其它系统开发类似工具，欢迎感兴趣者分享代码。
 - **小技巧：**
     - 对于不支持 GAE 出口的网址
         - 可在**转发（forward）或直连（direct）** 规则中设置成**反向代理** IP；
-        - 或在**其它代理（proxy）** 规则中设置成 **SOCKS 代理**（格式见 ActionFilter.ini）。
+        - 或在**其它代理（proxy）** 规则中设置成 **SOCKS 代理**（格式见 `ActionFilter.ini`）。
     - 反向代理一般**不支持**非加密链接，请**慎用**支持非加密链接的反向代理！
-    - 尽量不要在 GAE 代理中使用多线程下载工具下载大于 32MB 的文件，会导致 AppID 入口流量浪费（配额与出口相同也是每日 1GB），针对通过 GAE 代理的大文件下载可以使用内建 **autorange** 功能（具体配置见 Config.ini）。
+    - 尽量不要在 GAE 代理中使用多线程下载工具下载大于 32MB 的文件，会导致 AppID 入口流量浪费（配额与出口相同也是每日 1GB），针对通过 GAE 代理的大文件下载可以使用内建 **autorange** 功能（具体配置见 `Config.ini`）。
 
 # 兼容性
 - CPython 3.4/3.5 已测试。
 - **不支持** Python 2，保持兼容比较麻烦，已放弃。
-- 必须组件（可放入“**python/site-packages**”目录，支持 “**.egg**”）：
+- 必须组件（可放入 `python/site-packages` 目录，支持 `.egg`）：
     - gevent 1.1.2 及以上
     - pyOpenSSL 16.0.0 及以上
     - dnslib 0.8.3 及以上
