@@ -118,6 +118,7 @@ def readstatistics():
     ipdict = {}
     ipdicttoday = None
     deledipset = set()
+    delset = g.delset
     g.statisticsfiles = statisticsfiles = getnames()
     for file in statisticsfiles:
         if exists(file):
@@ -128,7 +129,7 @@ def readstatistics():
                     except:
                         pass
                     else:
-                        if ip.startswith(g_block):
+                        if ip in delset or ip.startswith(g_block):
                             continue
                         good = int(good)
                         bad = int(bad)
@@ -222,7 +223,7 @@ def readiplist(otherset):
     #检测并添加新 IP
     addset = source_ipexset - source_ipset
     if addset:
-        ipset |= addset
+        ipset |= ipexset       #合并所有符合条件的 IP
         source_ipset |= addset
         PRINT('检测到新添加 IP，数量：%d。', len(addset))
         backupfile(g_ipfile, g_ipfilebak)
@@ -587,9 +588,10 @@ def getgaeip(nowgaelist, needgwscnt, needcomcnt):
         #最快两小时，最慢十小时后删除
         if passtime > 36000 or len(g.ipexlist) == 0 and passtime > 7200:
             os.remove(g_ipexfile)
-            ipexmtime = 0
+            ipexmtime = now
         if ipexmtime > g.ipexmtime:
-            copyfile(g_ipexfile, g_ipexfilebak)
+            if exists(g_ipexfile):
+                copyfile(g_ipexfile, g_ipexfilebak)
             g.source_ipexset.clear()
             g.ipexset.clear()
     if ipmtime > g.ipmtime or ipexmtime > g.ipexmtime:
