@@ -569,8 +569,11 @@ class HTTPUtil(BaseHTTPUtil):
         timeout = getfast or self.timeout
         has_content = realmethod in ('POST', 'PUT', 'PATCH')
 
+        #有上传数据适当增加超时时间
+        if has_content:
+            timeout += 4
         #单 IP 适当增加超时时间
-        if len(dns[hostname]) == 1 and timeout < 5:
+        elif len(dns[hostname]) == 1 and timeout < 5:
             timeout += 2
         if 'Host' not in headers:
             headers['Host'] = request_params.host
