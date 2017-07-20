@@ -13,17 +13,17 @@
 
 # 部署服务端
 - 配置 GAE 路径为“**/_gh/**”可使用 GoProxy、XX-Net 及 GoAgent 3.2.X 服务端，“**/2**”使用 GoAgent 3.1.X 服务端。
-    - 推荐使用 [GoProxy 服务端](https://github.com/phuslu/goproxy/tree/server.gae)。
+    - 推荐使用 [GoProxy 服务端](https://github.com/phuslu/goproxy-ci/releases/latest)。
 - 申请 AppID 或部署服务端时，可尝试直接以默认配置运行本代理使用；如果无法顺利进行，请使用 VPN、Shadowsocks 等其它代理重新开始。
 - 如果你没有自己的 AppID，可以去 [XX-Net 配置](https://github.com/XX-net/XX-Net/blob/master/code/default/gae_proxy/local/proxy.ini) 中取用公共 AppID。
     - 公共 AppID **不支持视频和下载**（以前是，现在没确认过）；
     - 不建议填入过多公共 AppID，10 个左右就差不多，需要时请手动更换并重启 GotoX；
     - **警告**：不建议使用未知来源的 AppID，它们**可能会记录你的各种信息，甚至更改你的流量**以达到更危险的目的，如果极端点，XX-Net 的公共 AppID 也是如此。
 - **相关链接**
-    - 简易教程 https://github.com/phuslu/goproxy/blob/wiki/SimpleGuide.md
-    - 常见问题 https://github.com/phuslu/goproxy/blob/wiki/FAQ.md
+    - 简易教程 https://github.com/SeaHOH/goproxy/blob/wiki/SimpleGuide.md
+    - 常见问题 https://github.com/SeaHOH/goproxy/blob/wiki/FAQ.md
     - 新版谷歌云部署问题 https://github.com/XX-net/XX-Net/issues/4720
-    - GoProxy 服务端 https://github.com/phuslu/goproxy/tree/server.gae
+    - GoProxy 服务端 https://github.com/phuslu/goproxy-ci/releases/latest
     - XX-Net 服务端 https://github.com/jzp820927/Deploy_XXNET_Server
     - XX-Net 公共 AppID https://github.com/XX-net/XX-Net/blob/master/code/default/gae_proxy/local/proxy.ini
 
@@ -49,7 +49,7 @@
     - “**google_com**”是支持一般谷歌域名反向代理的服务器，可用于大部分 google 域名直连，转发则有极小概率出现证书错误。
     - 默认谷歌配置是用 google_gws 直连，兼容性较好；也可配置成用 google_com 转发，保持谷歌证书不变，特殊谷歌主机名需自行测试调整。
     - **相关链接**
-        - 如何区分各种 Server 端｜思起（转） https://github.com/phuslu/goproxy/issues/1614
+        - 如何区分各种 Server 端｜思起（转） https://github.com/SeaHOH/GotoX/wiki/GServers
         - 如何区分各种 Server 端｜思起（原） https://blog.aofall.com/archives/7.html
 - **代理端口：** 现提供两个端口。
     - 自动代理端口需自行配置规则，可根据需要自动分配链接路径，推荐使用（开发动力之一）；
@@ -81,7 +81,7 @@
     - 返回头部支持常见文件类型，不包含缓存信息。
 - **辅助工具：**
     - Windows 下提供一个系统托盘辅助工具。
-        - 使用发布的便携版 Python 可以从 GotoX.vbs 或新建快捷方式启动（`GotoX.vbs` 里有写怎么新建）；
+        - 使用发布的便携版 Python 可以从 `GotoX.vbs` 或新建快捷方式启动（`GotoX.vbs` 里有写怎么新建）；
         - 使用安装版 Python 可直接运行 `launcher/win32.py` 启动。
         - 可以打开 GotoX 配置文件；
         - 可以下载生成直连 IP 数据库，**其它系统**需直接运行 `launcher/buildipdb.py` 脚本；
