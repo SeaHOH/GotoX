@@ -71,6 +71,12 @@ def set_dns(host, iporname):
         hostnames[key] = hostname
         return hostname
 
+def _dns_resolve(host):
+    for _resolve in dns_resolves:
+        iplist = _resolve(host)
+        if iplist: break
+    return iplist
+
 def dns_resolve(host):
     if isip(host):
         dns[host] = iplist = host,
@@ -83,12 +89,7 @@ def dns_resolve(host):
             iplist = dns[host]
     else:
         dns[host] = None
-        iplist = None
-        iplist = dns_resolve1(host)
-        if not iplist:
-            iplist = dns_resolve2(host)
-            if not iplist:
-                iplist = dns_resolve3(host)
+        iplist = _dns_resolve(host)
         if iplist:
             if GC.LINK_PROFILE == 'ipv4':
                 iplist = [ip for ip in iplist if isipv4(ip)]
@@ -268,21 +269,9 @@ def dns_over_https_resolve(host):
     return iplist
 
 #设置使用 DNS 的优先级别
-if GC.DNS_PRIORITY[0] == 'system':
-    dns_resolve1 = dns_system_resolve
-elif GC.DNS_PRIORITY[0] == 'remote':
-    dns_resolve1 = dns_remote_resolve
-else:
-    dns_resolve1 = dns_over_https_resolve
-if GC.DNS_PRIORITY[1] == 'system':
-    dns_resolve2 = dns_system_resolve
-elif GC.DNS_PRIORITY[1] == 'remote':
-    dns_resolve2 = dns_remote_resolve
-else:
-    dns_resolve2 = dns_over_https_resolve
-if GC.DNS_PRIORITY[2] == 'system':
-    dns_resolve3 = dns_system_resolve
-elif GC.DNS_PRIORITY[2] == 'remote':
-    dns_resolve3 = dns_remote_resolve
-else:
-    dns_resolve3 = dns_over_https_resolve
+_DNSLv = {
+    'system'    : dns_system_resolve,
+    'remote'    : dns_remote_resolve,
+    'overhttps' : dns_over_https_resolve
+    }
+dns_resolves = tuple(_DNSLv[lv] for lv in GC.DNS_PRIORITY)

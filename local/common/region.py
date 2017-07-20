@@ -10,17 +10,12 @@ from local.GlobalConfig import GC
 if '4' in GC.LINK_PROFILE:
     from .dns import dns_resolve
 else:
-    from .dns import dns_resolve1, dns_resolve2, dns_resolve3
+    from .dns import _dns_resolve
 
     def dns_resolve(host):
         if isip(host):
             return host,
-        iplist = dns_resolve1(host)
-        if not iplist:
-            iplist = dns_resolve2(host)
-            if not iplist:
-                iplist = dns_resolve3(host)
-        return iplist
+        return _dns_resolve(host)
 
 class DirectIPv4Database:
     #载入 IPv4 保留地址和 CN 地址数据库，数据来源：
