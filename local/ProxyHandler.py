@@ -800,7 +800,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             logging.info('%s 内部重定向 %r 到 %r', self.address_string(), self.url, target)
             #重设网址
             origurl = self.url
-            self.url = target
+            self.url = url = target
             #重设主机
             self.url_parts = url_parts = urlparse.urlsplit(target)
             host, port = self.parse_netloc(url_parts.netloc)
@@ -833,7 +833,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             #重设路径
             self.path = target[target.find('/', target.find('//')+3):]
             #重设 action
-            self.action, self.target = get_action(url_parts.scheme, self.host, self.path[1:], target)
+            self.action, self.target = get_action(url_parts.scheme, self.host, self.path[1:], url)
             #内部重定向到加密链接，相当于已伪造证书
             self.fakecert = self.ssl
             self.do_action()
