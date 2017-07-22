@@ -222,6 +222,7 @@ class HTTPUtil(BaseHTTPUtil):
     '''HTTP Request Class'''
 
     protocol_version = 'HTTP/1.1'
+    offlinger_val = struct.pack('ii', 1, 0)
 
     def __init__(self, max_window=4, timeout=8, proxy='', ssl_ciphers=None, max_retry=2):
         # http://docs.python.org/dev/library/ssl.html
@@ -259,9 +260,9 @@ class HTTPUtil(BaseHTTPUtil):
             # set reuseaddr option to avoid 10048 socket error
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             # set struct linger{l_onoff=1,l_linger=0} to avoid 10048 socket error
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
-            # resize socket recv buffer 8K->32K to improve browser releated application performance
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32768)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, self.offlinger_val)
+            # resize socket recv buffer 8K->1M to improve browser releated application performance
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1048576)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32768)
             # disable nagle algorithm to send http request quickly.
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
@@ -369,9 +370,9 @@ class HTTPUtil(BaseHTTPUtil):
             # set reuseaddr option to avoid 10048 socket error
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             # set struct linger{l_onoff=1,l_linger=0} to avoid 10048 socket error
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
-            # resize socket recv buffer 8K->32K to improve browser releated application performance
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32768)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, self.offlinger_val)
+            # resize socket recv buffer 8K->1M to improve browser releated application performance
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1048576)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32768)
             # disable negal algorithm to send http request quickly.
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
