@@ -236,19 +236,25 @@ class LocalProxyServer(SocketServer.ThreadingTCPServer):
         self.orig_server_address = server_address
 
     def bind_and_activate(self):
+        server_listen_ip = self.orig_server_address[0]
         try:
             #优先尝试 IPv6
-            sock = socket.socket(socket.AF_INET6, self.socket_type)
+            sock = socket.socket(socket.AF_INET6)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             # server_address 为空时同时监听 v6 和 v4 端口，'::' 也可以但不这样使用
-            if self.orig_server_address[0] == '':
+            if server_listen_ip == '':
                 sock.setsockopt(IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
             sock.bind(self.orig_server_address)
         except:
             sock.close()
-            sock = socket.socket(socket.AF_INET, self.socket_type)
+            sock = socket.socket(socket.AF_INET)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind(self.orig_server_address)
+        #本机关闭监听端口接收缓冲
+        if server_listen_ip in ('127.0.0.1', '::1'):
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 0)
+        #关闭 nagle's algorithm 算法
+        sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
         self.socket = sock
         self.server_address = sock.getsockname()
         sock.listen(self.request_queue_size)
