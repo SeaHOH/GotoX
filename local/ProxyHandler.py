@@ -248,7 +248,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     do_PATCH = do_METHOD
 
     def write_response_content(self, data, response, need_chunked):
-        length = int(response.headers.get('Content-Length', 0))
+        length = self.response_length
         #无内容返回
         if not need_chunked and not length:
             return 0, None
@@ -313,20 +313,31 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.cc = self.close_connection
         return request_headers.copy(), payload
 
+    def get_response_length(self, response):
+        if hasattr(response, 'app_status') and response.app_status == 200:
+            response._method = self.command
+            content_length = response.headers.get('Content-Length', '0')
+            self.response_length = content_length = int(content_length) if content_length.isdigit() else 0
+            response.length = content_length if content_length else None
+        elif hasattr(response, 'data'):
+            self.response_length = content_length = len(response.data)
+        else:
+            self.response_length = content_length = response.length or 0
+        return content_length
+
     def handle_response_headers(self, response):
         #处理响应
         response_headers = dict((k.title(), v) for k, v in response.headers.items() if k.title() not in self.skip_response_headers)
         #明确设置 Accept-Ranges
         if response_headers.get('Accept-Ranges', '') != 'bytes':
             response_headers['Accept-Ranges'] = 'none'
-        length = response.headers.get('Content-Length')
+        length = self.response_length
         if hasattr(response, 'data'):
             # goproxy 服务端错误信息处理预读数据
             data = response.data
-            length = str(len(data))
             response_headers['Content-Type'] = 'text/html; charset=UTF-8'
         else:
-            data = response.read(8192)
+            data = response.read(self.bufsize)
         need_chunked = data and not length # response 中的数据已经正确解码
         if need_chunked:
             if self.request_version == 'HTTP/1.1':
@@ -336,11 +347,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 need_chunked = False
                 self.close_connection = True
                 response_headers['Proxy-Connection'] = 'close'
-        elif length:
-            response_headers['Content-Length'] = length
         else:
-            #明确设置为 0
-            response_headers['Content-Length'] = 0
+            response_headers['Content-Length'] = length
         cookies = response.headers.get_all('Set-Cookie')
         if cookies:
             if self.action == 'do_GAE' and len(cookies) == 1:
@@ -401,6 +409,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 return self.go_GAE()
             #修复某些软件无法正确处理持久链接（停用）
             self.check_useragent()
+            self.get_response_length(response)
             data, need_chunked = self.handle_response_headers(response)
             _, err = self.write_response_content(data, response, need_chunked)
             if err:
@@ -599,6 +608,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             self.write(b'HTTP/1.1 502 Service Unavailable\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
                             self.write(c)
                     return
+                content_length = self.get_response_length(response)
                 #输出服务端返回的错误信息
                 if response.app_status != 200:
                     if not headers_sent:
@@ -609,8 +619,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 #发生异常时的判断条件，放在 read 操作之前
                 content_range = response.headers.get('Content-Range')
                 accept_ranges = response.headers.get('Accept-Ranges')
-                content_length = response.headers.get('Content-Length', '0')
-                content_length = int(content_length) if content_length.isdigit() else 0
                 if content_range:
                     #提取返回范围信息（Requested Range Not Satisfiable）
                     if response.status != 416:
