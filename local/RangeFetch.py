@@ -37,6 +37,7 @@ class RangeFetch:
 
         self.handler = handler
         self.write = handler.write
+        self.bufsize = handler.bufsize
         self.command = handler.command
         self.host = handler.host
         self.range_end = handler.range_end
@@ -278,24 +279,20 @@ class RangeFetch:
 
 class RangeFetchFast(RangeFetch):
     maxsize = GC.AUTORANGE_FAST_MAXSIZE or 1024 * 1024 * 4
-    bufsize = GC.AUTORANGE_FAST_BUFSIZE or 8192
     threads = GC.AUTORANGE_FAST_THREADS or 2
     minip = max(threads-2, 3)
     lowspeed = GC.AUTORANGE_FAST_LOWSPEED or 1024 * 32
     timeout = max(GC.FINDER_MAXTIMEOUT / 1000, 0.8)
     sleeptime = GC.FINDER_MAXTIMEOUT / 500.0
     delaysize = max(min(maxsize, 1024 * 1024), 1024 * 128)
-    timedout = bufsize / lowspeed * 2
 
 class RangeFetchBig(RangeFetch):
     maxsize = GC.AUTORANGE_BIG_MAXSIZE or 1024 * 1024 * 4
-    bufsize = GC.AUTORANGE_BIG_BUFSIZE or 8192
     threads = GC.AUTORANGE_BIG_THREADS or 2
     minip = int(threads * 1.5)
     lowspeed = GC.AUTORANGE_BIG_LOWSPEED or 0
     timeout = max(GC.LINK_FWDTIMEOUT, 5)
     sleeptime = GC.AUTORANGE_BIG_SLEEPTIME
     delaysize = GC.AUTORANGE_BIG_ONSIZE / 4
-    timedout = bufsize / 1024
 
 RangeFetchs = None, RangeFetchFast, RangeFetchBig

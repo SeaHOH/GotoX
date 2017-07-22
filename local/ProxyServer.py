@@ -209,6 +209,7 @@ def start_proxyserver():
         if '(libev) select: Unknown error' in repr(e):
             logging.error('如果出现此错误请告诉作者，谢谢！\nhttps://github.com/SeaHOH/GotoX/issues')
             sys.exit(-1)
+    AutoProxyHandler.bufsize = AutoProxy.socket.getsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF)
 
 def stop_proxyserver():
     AutoProxy.server_close()

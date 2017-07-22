@@ -253,30 +253,34 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if not need_chunked and not length:
             return 0, None
         #写入响应内容
+        ndata = len(data) if data else 0
         if hasattr(response, 'data'):
             # goproxy 服务端错误信息处理预读数据
-            if data:
+            if ndata:
                 self.write(data)
-            return len(data), None
+            return ndata, None
         wrote = 0
         err = None
         write = self.write
+        buf = memoryview(bytearray(self.bufsize))
         try:
-            if not data:
-                data = response.read(8192)
-            while data:
+            if ndata:
+                buf[:ndata] = data
+            else:
+                ndata = response.readinto(buf)
+            while ndata:
                 if need_chunked:
-                    write(hex(len(data))[2:])
+                    write(hex(ndata)[2:])
                     write(b'\r\n')
-                    write(data)
+                    write(buf[:ndata].tobytes())
                     write(b'\r\n')
-                    wrote += len(data)
+                    wrote += ndata
                 else:
-                    write(data)
-                    wrote += len(data)
+                    write(buf[:ndata].tobytes())
+                    wrote += ndata
                     if wrote >= length:
                         break
-                data = response.read(8192)
+                ndata = response.readinto(buf)
         except Exception as e:
             err = e
         finally:

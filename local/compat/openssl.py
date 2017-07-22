@@ -121,6 +121,7 @@ class SSLConnection:
             elif e.args[0] in zero_errno:
                 return 0
             raise e
+    readinto = recv_into
 
     def close(self):
         if self._io_refs < 1:

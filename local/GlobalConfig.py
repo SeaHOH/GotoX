@@ -154,14 +154,12 @@ class GC:
     AUTORANGE_FAST_ENDSWITH = tuple(AUTORANGE_FAST_ENDSWITH.split('|')) if AUTORANGE_FAST_ENDSWITH else ()
     AUTORANGE_FAST_FIRSTSIZE = CONFIG.getint('autorange/fast', 'firstsize')
     AUTORANGE_FAST_MAXSIZE = CONFIG.getint('autorange/fast', 'maxsize')
-    AUTORANGE_FAST_BUFSIZE = CONFIG.getint('autorange/fast', 'bufsize')
     AUTORANGE_FAST_THREADS = CONFIG.getint('autorange/fast', 'threads')
     AUTORANGE_FAST_LOWSPEED = CONFIG.getint('autorange/fast', 'lowspeed')
 
     AUTORANGE_BIG_ONSIZE = int(CONFIG.get('autorange/big', 'onsize') or 1024 * 1024 * 32)
     AUTORANGE_BIG_MAXSIZE = CONFIG.getint('autorange/big', 'maxsize')
     AUTORANGE_BIG_SLEEPTIME = CONFIG.getint('autorange/big', 'sleeptime')
-    AUTORANGE_BIG_BUFSIZE = CONFIG.getint('autorange/big', 'bufsize')
     AUTORANGE_BIG_THREADS = CONFIG.getint('autorange/big', 'threads')
     AUTORANGE_BIG_LOWSPEED = CONFIG.getint('autorange/big', 'lowspeed')
 
