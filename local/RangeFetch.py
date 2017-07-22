@@ -197,7 +197,8 @@ class RangeFetch:
                     if self.response is None:
                         response = gae_urlfetch(self.command, self.url, headers, self.payload, appid, getfast=self.timeout)
                     if response:
-                        if response.xip[0] in self.iplist:
+                        xip = response.xip[0]
+                        if xip in self.iplist:
                             self._last_app_status[appid] = response.app_status
                             realstart = start
                             starttime = time()
@@ -220,6 +221,8 @@ class RangeFetch:
                 elif response.app_status != 200:
                     logging.warning('%s Range Fetch "%s %s" %s 返回 %s', self.address_string(response), self.command, self.url, headers['Range'], response.app_status)
                     range_queue.put((start, end))
+                    if response.reason != 'debug error':
+                        noerror = False
                 elif response.getheader('Location'):
                     self.url = urlparse.urljoin(self.url, response.getheader('Location'))
                     logging.info('%s RangeFetch Redirect(%r)', self.address_string(response), self.url)
@@ -234,19 +237,22 @@ class RangeFetch:
                     logging.info('%s >>>>>>>>>>>>>>> %s: 线程 %s %s %s', self.address_string(response), self.host, threadorder, content_length, content_range)
                     try:
                         data = response.read(self.bufsize)
-                        timedout = time() - starttime > self.timedout
                         while data:
                             data_queue.put((start, data))
                             start += len(data)
                             if self._stopped: return
-                            data = None if timedout else response.read(self.bufsize)
+                            if (start-realstart) / (time()-starttime) < self.lowspeed:
+                                #移除慢速 ip
+                                if self.delable: 
+                                    with self.tLock:
+                                        if xip in self.iplist and len(self.iplist) > self.minip:
+                                            self.iplist.remove(xip)
+                                            logging.warning('%s RangeFetch 移除慢速 ip %s', self.address_string(), xip)
+                                break
+                            else:
+                                data = response.read(self.bufsize)
                     except Exception as e:
                         noerror = False
-                        if self.delable:
-                            with self.tLock:
-                                 if response.xip[0] in self.iplist and len(self.iplist) > self.minip:
-                                    self.iplist.remove(response.xip[0])
-                                    logging.warning('%s RangeFetch 移除故障 ip %s', self.address_string(response), response.xip[0])
                         logging.warning('%s RangeFetch "%s %s" %s 失败：%r', self.address_string(response), self.command, self.url, headers['Range'], e)
                     if self._stopped: return
                     if start < end + 1:
@@ -270,12 +276,11 @@ class RangeFetch:
                     if noerror:
                         #放入套接字缓存
                         ssl_connection_cache['google_gws:443'].append((time(), response.sock))
-                        if self.delable and not self._stopped:
-                            #移除慢速 ip
-                            with self.tLock:
-                                if response.xip[0] in self.iplist and starttime and len(self.iplist) > self.minip and (start-realstart) / (time()-starttime) < self.lowspeed:
-                                    self.iplist.remove(response.xip[0])
-                                    logging.warning('%s RangeFetch 移除慢速 ip %s', self.address_string(), response.xip[0])
+                    elif self.delable:
+                        with self.tLock:
+                             if xip in self.iplist and len(self.iplist) > self.minip:
+                                self.iplist.remove(xip)
+                                logging.warning('%s RangeFetch 移除故障 ip %s', self.address_string(response), xip)
 
 class RangeFetchFast(RangeFetch):
     maxsize = GC.AUTORANGE_FAST_MAXSIZE or 1024 * 1024 * 4
