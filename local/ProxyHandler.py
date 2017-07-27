@@ -481,9 +481,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             need_autorange = 2 if range_length > GC.AUTORANGE_BIG_ONSIZE else -1
                     else:
                         self.range_end = range_end = 0
-                        if need_autorange is 0:
-                            #非 autorange/fast 匹配
-                            need_autorange = 2
+                        #if need_autorange is 0:
+                        #    #非 autorange/fast 匹配
+                        #    need_autorange = 2
             if need_autorange is 1:
                 logging.info('发现[autorange/fast]匹配：%r', self.url)
                 range_end = range_start + GC.AUTORANGE_FAST_FIRSTSIZE - 1
