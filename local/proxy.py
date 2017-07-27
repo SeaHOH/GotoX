@@ -269,7 +269,7 @@ def main():
 
     start_proxyserver()
 
-    if GC.GAE_USEGWSIPLIST:
+    if GC.GAE_TESTGWSIPLIST:
         from .GAEUpdate import testipserver
         testipserver()
     else:

@@ -10,13 +10,13 @@ import fnmatch
 from .compat import ConfigParser
 from .common import config_dir, data_dir
 #from .common.proxy import get_system_proxy, parse_proxy
-from . import clogging
+from . import clogging as logging
 
 _LOGLv = {
-    0 : clogging.WARNING,
-    1 : clogging.INFO,
-    2 : clogging.TEST,
-    3 : clogging.DEBUG
+    0 : logging.WARNING,
+    1 : logging.INFO,
+    2 : logging.TEST,
+    3 : logging.DEBUG
     }
 
 _SSLv = {
@@ -73,7 +73,6 @@ class GC:
     GAE_IPLIST = CONFIG.get('gae', 'iplist')
     GAE_SERVERNAME = CONFIG.get('gae', 'servername').encode()
     GAE_SERVERNAME = tuple(GAE_SERVERNAME.split(b'|')) if GAE_SERVERNAME else None
-    GAE_USEGWSIPLIST = True
 
     LINK_PROFILE = CONFIG.get('link', 'profile')
     if LINK_PROFILE not in ('ipv4', 'ipv6', 'ipv46'):
@@ -101,14 +100,24 @@ class GC:
 
     IPLIST_MAP = dict((k.lower(), [x for x in v.split('|') if x]) for k, v in CONFIG.items('iplist'))
 
-    if GAE_IPLIST and GAE_IPLIST not in ('google_gws', 'google_com'):
-        GAE_USEGWSIPLIST = False
-        IPLIST_MAP['google_gws'] = IPLIST_MAP[GAE_IPLIST].copy()
-        IPLIST_MAP['google_com'] = IPLIST_MAP[GAE_IPLIST].copy()
     if 'google_gws' not in IPLIST_MAP:
         IPLIST_MAP['google_gws'] = []
     if 'google_com' not in IPLIST_MAP:
         IPLIST_MAP['google_com'] = []
+    if GAE_IPLIST:
+        GAE_TESTGWSIPLIST = False
+        if GAE_IPLIST == 'google_gws' and IPLIST_MAP['google_gws']:
+            IPLIST_MAP['google_com'] = IPLIST_MAP['google_gws'].copy()
+        elif GAE_IPLIST == 'google_com' and IPLIST_MAP['google_com']:
+            IPLIST_MAP['google_gws'] = IPLIST_MAP['google_com'].copy()
+        elif GAE_IPLIST in IPLIST_MAP and IPLIST_MAP[GAE_IPLIST]:
+            IPLIST_MAP['google_gws'] = IPLIST_MAP[GAE_IPLIST].copy()
+            IPLIST_MAP['google_com'] = IPLIST_MAP[GAE_IPLIST].copy()
+        else:
+            GAE_TESTGWSIPLIST = True
+            logging.warning('没有找到列表 [%s]，使用默认查找 IP 模式。', GAE_IPLIST)
+    else:
+        GAE_TESTGWSIPLIST = True
 
     FILTER_ACTION = CONFIG.getint('filter', 'action')
     FILTER_ACTION = FILTER_ACTION if FILTER_ACTION in (1, 2, 3, 4) else 3

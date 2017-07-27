@@ -19,7 +19,7 @@ getrange = re.compile(r'bytes (\d+)-(\d+)/(\d+)').search
 class RangeFetch:
     '''Range Fetch Class'''
 
-    delable = GC.GAE_USEGWSIPLIST
+    delable = GC.GAE_TESTGWSIPLIST
     Lock = threading.Lock()
     lastactive = 0
     obj = 0

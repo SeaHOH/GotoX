@@ -103,7 +103,7 @@ def testipuseable(ip):
         logging.warning('IP：%r 暂时不可用，已经删除', ip)
     return isgaeserver
 
-if GC.GAE_USEGWSIPLIST:
+if GC.GAE_TESTGWSIPLIST:
     def addtoblocklist(ip):
         timesdel = finder.baddict[ip][2] if ip in finder.baddict else 0
         finder.baddict[ip] = GC.FINDER_TIMESBLOCK+1, int(time()), timesdel+1

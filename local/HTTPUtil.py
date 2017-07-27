@@ -37,7 +37,7 @@ b'aQIDAQAB\n'
 b'-----END PUBLIC KEY-----\n'
 )
 gws_servername = GC.GAE_SERVERNAME
-gae_usegwsiplist = GC.GAE_USEGWSIPLIST
+gae_testgwsiplist = GC.GAE_TESTGWSIPLIST
 autorange_threads = GC.AUTORANGE_FAST_THREADS
 
 class BaseHTTPUtil:
@@ -454,7 +454,7 @@ class HTTPUtil(BaseHTTPUtil):
         addresses = [(x, port) for x in dns[hostname]]
         for i in range(self.max_retry):
             addresseslen = len(addresses)
-            if getfast and gae_usegwsiplist:
+            if getfast and gae_testgwsiplist:
                 #按线程数量获取排序靠前的 IP
                 addresses.sort(key=self.get_ssl_connection_time)
                 addrs = addresses[:autorange_threads + 1]
