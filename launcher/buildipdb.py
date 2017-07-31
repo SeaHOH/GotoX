@@ -176,12 +176,14 @@ def download_cniplist(ipdb, parse_cniplist):
     global Req_APNIC, Req_17MON, update
     if parse_cniplist is parse_apnic_cniplist:
         if Req_APNIC is None:
-            Req_APNIC = req = urllib.request.Request(Url_APNIC)
+            Req_APNIC = urllib.request.Request(Url_APNIC)
+        req = Req_APNIC
         update = None
         name = 'APNIC'
     elif parse_cniplist is parse_17mon_cniplist:
         if Req_17MON is None:
-            Req_17MON = req = urllib.request.Request(Url_17MON)
+            Req_17MON = urllib.request.Request(Url_17MON)
+        req = Req_17MON
         import time
         #更新一般在月初几天，由于内容不包含日期信息，故记录为获取时的日期信息
         update = '17mon-' + time.strftime('%Y%m%d', time.localtime(time.time()))
