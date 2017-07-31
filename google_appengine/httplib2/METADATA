@@ -1,0 +1,19 @@
+# Format: google3/devtools/metadata/metadata.proto (go/google3metadata)
+
+name: "httplib2"
+description:
+    "httplib2 is a comprehensive HTTP client library that supports many "
+    "features left out of other HTTP libraries."
+
+third_party {
+  url {
+    type: ARCHIVE
+    value: "http://httplib2.googlecode.com/files/httplib2-0.7.5.zip"
+  }
+  version: "0.7.5"
+  last_upgrade_date: {
+    year: 2012
+    month: 9
+    day: 4
+  }
+}
