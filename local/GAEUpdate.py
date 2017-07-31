@@ -249,34 +249,41 @@ def testipserver():
             sleep(2)
 
 def checkgooglecom():
-    def _checkgooglecom(ssldomain, costtime, isgaeserver):
-        if ssldomain == comdomain:
+    def _checkgooglecom(lastcheck=None):
+        nonlocal ssldomain, costtime, isgaeserver
+        if isgaeserver and ssldomain == comdomain:
             ssldomain = '*.google.com'
+            with lLock:
+                if ip not in google_com:
+                    google_com.append(ip)
         else:
             with lLock:
                 try:
-                    GC.IPLIST_MAP['google_com'].remove(ip)
+                    google_com.remove(ip)
                 except:
                     pass
-        logging.test('固定 GAE IP 列表检测，IP：%s，可用证书：%s，耗时：%d 毫秒，支持 GAE：%s',
-                     ip, ssldomain, costtime, bool(isgaeserver))
+        log = logging.warning if lastcheck and not isgaeserver else logging.test
+        log('固定 GAE IP 列表检测，IP：%s，可用证书：%s，耗时：%d 毫秒，支持 GAE：%s',
+                     ip, ssldomain, costtime, isgaeserver)
 
+    google_com = GC.IPLIST_MAP['google_com']
     retrylist = []
     retrytimes = 2
     for ip in GC.IPLIST_MAP[GC.GAE_IPLIST]:
         ssldomain, costtime, isgaeserver = gae_finder.getipinfo(ip)
-        if ssldomain is None:
+        _checkgooglecom()
+        if not isgaeserver and (ssldomain is None or 'google' in ssldomain):
             retrylist.append(ip)
-        else:
-            _checkgooglecom(ssldomain, costtime, isgaeserver)
     for i in range(retrytimes):
+        sleep(5)
         for ip in retrylist.copy():
             ssldomain, costtime, isgaeserver = gae_finder.getipinfo(ip, 3, 3, 4)
             if i == retrytimes - 1:
-                _checkgooglecom(ssldomain, costtime, isgaeserver)
-            elif ssldomain is not None:
-                retrylist.remove(ip)
-                _checkgooglecom(ssldomain, costtime, isgaeserver)
-    countcom = len(GC.IPLIST_MAP['google_com'])
+                _checkgooglecom(True)
+            else:
+                if isgaeserver:
+                    retrylist.remove(ip)
+                _checkgooglecom()
+    countcom = len(google_com)
     if countcom < 3:
         logging.error('检测出固定 GAE IP 列表 [%s] 中包含的可用 GWS IP 数量过少：%d 个，请增加。', GC.GAE_IPLIST, countcom)
