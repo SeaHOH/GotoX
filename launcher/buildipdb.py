@@ -188,7 +188,7 @@ def download_cniplist(ipdb, parse_cniplist):
         #更新一般在月初几天，由于内容不包含日期信息，故记录为获取时的日期信息
         update = '17mon-' + time.strftime('%Y%m%d', time.localtime(time.time()))
         name = '17mon'
-    req.remove_header('Range')
+    req.headers.pop('Range', None)
     read = 0
     l = None
     while read != l:
@@ -205,8 +205,7 @@ def download_cniplist(ipdb, parse_cniplist):
         if read != l:
             #往回跳过可能的缺损条目
             read = max(read - 100, 0)
-            req.remove_header('Range')
-            req.add_header('Range', 'bytes=%d-' % read)
+            req.headers['Range'] = 'bytes=%d-' % read
             logging.debug('%s IP 下载中断，续传：%d/%d' % (name, read, l))
     logging.debug(name + ' IP 下载完毕')
     return iplist
@@ -221,12 +220,12 @@ def parse_apnic_cniplist(fd):
             read += len(line)
             if line.startswith(b'apnic|CN|ipv4'):
                 ip = line.decode().split('|')
-                if len(ip) > 4:
+                if len(ip) > 5:
                     iplist.append((ip2int(ip[3]), mask_dict[ip[4]]))
             elif _update is None and line.startswith(b'2|apnic'):
-                ip = line.decode().split('|')
-                if len(ip) > 5:
-                    update = _update = 'APNIC-%s/%s' % (ip[2], ip[5])
+                date = line.decode().split('|')
+                if len(date) > 6:
+                    update = _update = 'APNIC-%s/%s' % (date[2], date[5])
             elif line.startswith(b'apnic|JP|ipv6'):
                 #不需要 IPv6 数据，提前结束
                 return iplist, None
