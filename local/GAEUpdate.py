@@ -245,8 +245,7 @@ def testipserver():
                 testonegaeip()
         except Exception as e:
             logging.exception(' IP 测试守护线程错误：%r', e)
-        finally:
-            sleep(2)
+        sleep(2)
 
 def checkgooglecom():
     def _checkgooglecom(lastcheck=None):
