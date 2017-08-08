@@ -171,7 +171,11 @@ def testonegaeip():
         if updateip.running or testip.running:
             return
         testip.running = 1
-    ip = GC.IPLIST_MAP['google_gws'][-1]
+    iplist = GC.IPLIST_MAP['google_gws']
+    if not iplist:
+        testip.running = False
+        return updateip()
+    ip = iplist[-1]
     timeout = gettimeout()
     badip = False
     statistics = finder.statistics
@@ -202,7 +206,7 @@ def testonegaeip():
             ipdict[ip] = ipdicttoday[ip] = 0, 1
     else:
         logging.test('测试连接（超时：%d 毫秒）%s: %d' %(timeout,  '.'.join(x.rjust(3) for x in result[0].split('.')), int(result[1]*1000)))
-        GC.IPLIST_MAP['google_gws'].insert(0, GC.IPLIST_MAP['google_gws'].pop())
+        iplist.insert(0, iplist.pop())
         #调高 com 权重
         addn = 2 if ip in GC.IPLIST_MAP['google_com'] else 1
         baddict = finder.baddict
