@@ -236,8 +236,9 @@ def testonegaeip():
 
 def testipserver():
     #启动时全部测一遍
+    iplist = GC.IPLIST_MAP['google_gws']
     testallgaeip()
-    looptime = max(120, GC.GAE_KEEPTIME)
+    looptime = max(90, GC.GAE_KEEPTIME) + min(10, GC.FINDER_MINIPCNT) * 6
     while True:
         now = time()
         lasttest = now - testip.lasttest
@@ -245,11 +246,11 @@ def testipserver():
             if ((now - testip.lastactive > 6 or # X 秒钟未使用
                     lasttest > 30) and  #强制 X 秒钟检测
                     #and not GC.PROXY_ENABLE              #无代理
-                    lasttest > looptime/(len(GC.IPLIST_MAP['google_gws']) or 1)): #强制 x 秒间隔
+                    lasttest > looptime/(len(iplist) or 1)): #强制 x 秒间隔
                 testonegaeip()
         except Exception as e:
             logging.exception(' IP 测试守护线程错误：%r', e)
-        sleep(2)
+        sleep(1)
 
 def checkgooglecom():
     def _checkgooglecom(lastcheck=None):
