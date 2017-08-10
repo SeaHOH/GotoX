@@ -19,14 +19,13 @@ from local.GlobalConfig import GC
 
 jsondecoder = JSONDecoder()
 dns = LRUCache(GC.DNS_CACHE_ENTRIES, GC.DNS_CACHE_EXPIRATION)
-#需要特别指定 host IP 列表的数量不会太多，不作数量限制
-hostnames = {'hostname': 0}
 alock = threading.Lock()
 
 def reset_dns():
     dns.clear()
     #保持链接 GAE 列表不过期
     dns.set('google_gws', GC.IPLIST_MAP['google_gws'], noexpire=True)
+    dns.set('google_com', GC.IPLIST_MAP['google_com'], noexpire=True)
 
 reset_dns()
 
@@ -42,33 +41,22 @@ def set_dns(host, iporname):
         _host = iporname.lower()
         if dns_resolve(_host):
             return _host
-    key = host, str(iporname) if isinstance(iporname, list) else iporname
+    #生成唯一别名
+    namea = id(iporname) if isinstance(iporname, list) else iporname
+    hostname = '%s|%s' % (namea, host)
     with alock:
-        hasname = None
-        if key in hostnames:
-            hostname = hostnames[key]
-            if hostname in dns:
-                return hostname
-            hasname = True
-        #重复利用别名
-        if hasname is None:
-            #增序数字作为 host 别名
-            hostnames['hostname'] += 1
-            hostname = str(hostnames['hostname'])
+        if hostname in dns:
+            return hostname
         if isinstance(iporname, str):
             #建立规则时已经剔除了不合格字串
             if isip(iporname):
                 dns[hostname] = iporname,
             elif iporname in GC.IPLIST_MAP:
-                if hasname is None:
-                    #保持列表名称为前缀
-                    hostname = iporname + hostname
                 dns[hostname] = GC.IPLIST_MAP[iporname]
         elif isinstance(iporname, list):
             dns[hostname] = iporname
         else:
             raise TypeError('set_dns 第二参数类型错误：' + type(iporname))
-        hostnames[key] = hostname
         return hostname
 
 def _dns_resolve(host):
@@ -104,7 +92,7 @@ dnshostalias = 'dns.over.https'
 https_resolve_cache_key = GC.DNS_OVER_HTTPS_LIST + ':443'
 https_resolve_threads = max(min((GC.LINK_WINDOW - 1), 3), 1)
 
-from local.HTTPUtil import ssl_connection_cache, http_gws
+from local.HTTPUtil import http_gws
 
 def address_string(item):
    return item.xip[0] + ' ' if hasattr(item, 'xip') else ''
@@ -156,7 +144,7 @@ def _https_resolve(qname, qtype, queobj):
             response.close()
             if noerror:
                 if GC.GAE_KEEPALIVE:
-                    ssl_connection_cache[https_resolve_cache_key].append((time(), response.sock))
+                    http_gws.ssl_connection_cache[https_resolve_cache_key].append((time(), response.sock))
                 else:
                     response.sock.close()
     queobj.put(iplist)
