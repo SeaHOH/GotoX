@@ -23,7 +23,7 @@ RawConfigParser.optionxform = lambda s, opt: opt
 #默认编码
 _read = ConfigParser.read
 ConfigParser.read = lambda s, f, encoding='utf8': _read(s, f, encoding)
-#可添加属性
-import socket
-class socketMod(socket.socket): pass
-socket.socket = socketMod
+#可添加属性，强制使用 gevent 后已经不需要此 patch
+#import socket
+#class socketMod(socket.socket): pass
+#socket.socket = socketMod
