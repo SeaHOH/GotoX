@@ -32,12 +32,7 @@ from .common.proxy import parse_proxy
 from .common.region import isdirect
 from .GlobalConfig import GC
 from .GAEUpdate import testip
-from .HTTPUtil import (
-    tcp_connection_cache,
-    ssl_connection_cache,
-    http_gws,
-    http_nor
-    )
+from .HTTPUtil import http_gws, http_nor
 from .RangeFetch import RangeFetchs
 from .GAEFetch import qGAE, gae_urlfetch
 from .FilterUtil import (
@@ -434,14 +429,14 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if noerror:
                     #放入套接字缓存
                     if self.ssl:
-                        if GC.GAE_KEEPALIVE or not connection_cache_key.startswith('google'):
-                            ssl_connection_cache[connection_cache_key].append((time(), response.sock))
+                        if GC.GAE_KEEPALIVE or http_util is not http_gws:
+                            http_util.ssl_connection_cache[connection_cache_key].append((time(), response.sock))
                         else:
                             #干扰严重时考虑不复用 google 链接
                             response.sock.close()
                     else:
                         response.sock.used = None
-                        tcp_connection_cache[connection_cache_key].append((time(), response.sock))
+                        http_util.tcp_connection_cache[connection_cache_key].append((time(), response.sock))
 
     def do_GAE(self):
         #发送请求到 GAE 代理
@@ -692,7 +687,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if noerror:
                         if GC.GAE_KEEPALIVE:
                             #放入套接字缓存
-                            ssl_connection_cache['google_gws:443'].append((time(), response.sock))
+                            http_gws.ssl_connection_cache['google_gws:443'].append((time(), response.sock))
                         else:
                             #干扰严重时考虑不复用
                             response.sock.close()

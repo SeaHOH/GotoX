@@ -11,9 +11,10 @@ from .compat import Queue, thread, urlparse
 from .common import spawn_later
 from .GAEFetch import qGAE, gae_urlfetch
 from .GlobalConfig import GC
-from .HTTPUtil import ssl_connection_cache
+from .HTTPUtil import http_gws
 from .GAEUpdate import testip, testallgaeip
 
+ssl_connection_cache = http_gws.ssl_connection_cache
 getrange = re.compile(r'bytes (\d+)-(\d+)/(\d+)').search
 
 class RangeFetch:

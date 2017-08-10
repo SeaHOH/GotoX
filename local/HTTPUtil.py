@@ -20,7 +20,7 @@ from .compat import (
     httplib,
     urlparse
     )
-from .common import cert_dir, NetWorkIOError, closed_errno, isip
+from .common import cert_dir, NetWorkIOError, closed_errno, LRUCache, isip
 from .common.dns import dns, dns_resolve
 from .common.proxy import parse_proxy
 
@@ -45,13 +45,9 @@ class BaseHTTPUtil:
 
     use_openssl = 0
     ssl_ciphers = ssl._RESTRICTED_SERVER_CIPHERS
+    wtimeout = 0
 
     def __init__(self, use_openssl=None, cacert=None, ssl_ciphers=None):
-        self.cacert = cacert
-        if ssl_ciphers:
-            self.ssl_ciphers = ssl_ciphers
-        self.gws = gws = self.ssl_ciphers is gws_ciphers
-        self.keeptime = gaekeeptime if gws else linkkeeptime
         if use_openssl:
             self.use_openssl = use_openssl
             self.set_ssl_option = self.set_openssl_option
@@ -59,9 +55,22 @@ class BaseHTTPUtil:
             self.get_peercert = self.get_openssl_peercert
             if GC.LINK_VERIFYG2PK:
                 self.google_verify = self.google_verify_g2
-        if not gws:
+        self.cacert = cacert
+        if ssl_ciphers:
+            self.ssl_ciphers = ssl_ciphers
+        self.gws = gws = self.ssl_ciphers is gws_ciphers
+        if gws:
+            self.keeptime = GC.GAE_KEEPTIME
+            self.wtimeout = GC.FINDER_MAXTIMEOUT * 1.2 / 1000
+        else:
+            self.keeptime = GC.LINK_KEEPTIME
             self.google_verify = lambda x: None
         self.set_ssl_option()
+        import collections
+        self.tcp_connection_cache = collections.defaultdict(collections.deque)
+        self.ssl_connection_cache = collections.defaultdict(collections.deque)
+        thread.start_new_thread(self.check_tcp_connection_cache, ())
+        thread.start_new_thread(self.check_ssl_connection_cache, ())
 
     def set_ssl_option(self):
         #强制 GWS 使用 TLSv1.2
@@ -130,83 +139,67 @@ class BaseHTTPUtil:
             raise ssl.SSLError('谷歌域名没有获取到正确的证书链：中级 CA 公钥不匹配。')
         return certs[0]
 
-linkkeeptime = GC.LINK_KEEPTIME
-gaekeeptime = GC.GAE_KEEPTIME
-cachetimeout = GC.FINDER_MAXTIMEOUT * 1.2 / 1000
-import collections
-from .common import LRUCache
-tcp_connection_time = LRUCache(256)
-ssl_connection_time = LRUCache(256)
-tcp_connection_cache = collections.defaultdict(collections.deque)
-ssl_connection_cache = collections.defaultdict(collections.deque)
-
-def check_connection_alive(keeptime, ctime, sock):
-    try:
+    @staticmethod
+    def check_connection_alive(keeptime, wtimeout, ctime, sock):
         if time() - ctime > keeptime:
             sock.close()
             return
-        rd, _, ed = select([sock], [], [sock], 0.01)
-        if rd or ed:
-            sock.close()
-            return
-        _, wd, ed = select([], [sock], [sock], cachetimeout)
-        if not wd or ed:
-            sock.close()
+        try:
+            rd, _, ed = select([sock], [], [sock], 0.01)
+            if rd or ed:
+                sock.close()
+                return
+            if wtimeout:
+                _, wd, ed = select([], [sock], [sock], wtimeout)
+                if not wd or ed:
+                    sock.close()
+                    return
+        except OSError:
             return
         return True
-    except OSError:
-        pass
 
-def check_tcp_connection_cache():
-    '''check and close unavailable connection continued forever'''
-    while True:
-        sleep(10)
-        #将键名放入元组
-        keys = tuple(tcp_connection_cache.keys())
-        for cache_key in keys:
-            cache = tcp_connection_cache[cache_key]
-            if not cache:
-                del tcp_connection_cache[cache_key]
-            keeptime = gaekeeptime if cache_key.startswith('google') else linkkeeptime
-            try:
-                while cache:
-                    ctime, sock = cachedsock = cache.popleft()
-                    if check_connection_alive(keeptime, ctime, sock):
-                        cache.appendleft(cachedsock)
-                        break
-            except IndexError:
-                pass
-            except Exception as e:
-                if e.args[0] == 9:
-                    pass
-                else:
-                    logging.error('链接池守护线程错误：%r', e)
+    def check_tcp_connection_cache(self):
+        check_connection_alive = self.check_connection_alive
+        tcp_connection_cache = self.tcp_connection_cache
+        keeptime = self.keeptime
+        wtimeout = self.wtimeout or 2.0
+        while True:
+            sleep(30)
+            #将键名放入元组
+            keys = tuple(tcp_connection_cache.keys())
+            for cache_key in keys:
+                cache = tcp_connection_cache[cache_key]
+                if not cache:
+                    del tcp_connection_cache[cache_key]
+                try:
+                    while cache:
+                        ctime, sock = cachedsock = cache.popleft()
+                        if check_connection_alive(keeptime, wtimeout, ctime, sock):
+                            cache.appendleft(cachedsock)
+                            break
+                except Exception as e:
+                    logging.error('check_tcp_connection_cache(%s) 错误：%r', cache_key, e)
 
-def check_ssl_connection_cache():
-    '''check and close unavailable connection continued forever'''
-    while True:
-        sleep(5)
-        keys = tuple(ssl_connection_cache.keys())
-        for cache_key in keys:
-            cache = ssl_connection_cache[cache_key]
-            if not cache:
-                del ssl_connection_cache[cache_key]
-            keeptime = gaekeeptime if cache_key.startswith('google') else linkkeeptime
-            try:
-                while cache:
-                    ctime, ssl_sock = cachedsock = cache.popleft()
-                    if check_connection_alive(keeptime, ctime, ssl_sock.sock):
-                        cache.appendleft(cachedsock)
-                        break
-            except OSError:
-                pass
-            except Exception as e:
-                if e.args[0] == 9:
-                    pass
-                else:
-                    logging.error('链接池守护线程错误：%r', e)
-thread.start_new_thread(check_tcp_connection_cache, ())
-thread.start_new_thread(check_ssl_connection_cache, ())
+    def check_ssl_connection_cache(self):
+        check_connection_alive = self.check_connection_alive
+        ssl_connection_cache = self.ssl_connection_cache
+        keeptime = self.keeptime
+        wtimeout = self.wtimeout or 2.0
+        while True:
+            sleep(30)
+            keys = tuple(ssl_connection_cache.keys())
+            for cache_key in keys:
+                cache = ssl_connection_cache[cache_key]
+                if not cache:
+                    del ssl_connection_cache[cache_key]
+                try:
+                    while cache:
+                        ctime, ssl_sock = cachedsock = cache.popleft()
+                        if check_connection_alive(keeptime, wtimeout, ctime, ssl_sock.sock):
+                            cache.appendleft(cachedsock)
+                            break
+                except Exception as e:
+                    logging.error('check_ssl_connection_cache(%s) 错误：%r', cache_key, e)
 
 connect_limiter = LRUCache(512)
 def set_connect_start(ip):
@@ -231,17 +224,17 @@ class HTTPUtil(BaseHTTPUtil):
         # http://www.openssl.org/docs/apps/ciphers.html
         # openssl s_server -accept 443 -key CA.crt -cert CA.crt
         # set_ciphers as Modern Browsers
+        BaseHTTPUtil.__init__(self, GC.LINK_OPENSSL, os.path.join(cert_dir, 'cacerts'), ssl_ciphers)
         self.max_window = max_window
         self.max_retry = max_retry
         self.timeout = timeout
         self.proxy = proxy
-        self.tcp_connection_time = tcp_connection_time
-        self.ssl_connection_time = ssl_connection_time
+        self.tcp_connection_time = LRUCache(512 if self.gws else 4096)
+        self.ssl_connection_time = LRUCache(512 if self.gws else 4096)
         #if self.proxy:
         #    dns_resolve = self.__dns_resolve_withproxy
         #    self.create_connection = self.__create_connection_withproxy
         #    self.create_ssl_connection = self.__create_ssl_connection_withproxy
-        BaseHTTPUtil.__init__(self, GC.LINK_OPENSSL, os.path.join(cert_dir, 'cacerts'), ssl_ciphers)
 
     def get_tcp_ssl_connection_time(self, addr):
         return self.tcp_connection_time.get(addr, False) or self.ssl_connection_time.get(addr, self.timeout)
@@ -301,9 +294,10 @@ class HTTPUtil(BaseHTTPUtil):
                     sock.close()
 
     def create_connection(self, address, hostname, cache_key, ssl=None, forward=None, **kwargs):
-        cache = tcp_connection_cache[cache_key]
+        cache = self.tcp_connection_cache[cache_key]
         newconn = forward and ssl
         keeptime = self.keeptime
+        wtimeout = self.wtimeout
         used_sock = []
         try:
             while cache:
@@ -311,7 +305,7 @@ class HTTPUtil(BaseHTTPUtil):
                 if newconn and hasattr(sock, 'used'):
                     used_sock.append(cachedsock)
                     continue
-                if check_connection_alive(keeptime, ctime, sock):
+                if self.check_connection_alive(keeptime, wtimeout, ctime, sock):
                     if forward:
                         sock.settimeout(forward)
                     return sock
@@ -410,7 +404,7 @@ class HTTPUtil(BaseHTTPUtil):
             ssl_sock.sock = sock
             ssl_sock.xip = ipaddr
             if test:
-                ssl_connection_cache[cache_key].append((time(), ssl_sock))
+                self.ssl_connection_cache[cache_key].append((time(), ssl_sock))
                 return queobj.put((ip, ssl_sock.ssl_time))
             # put ssl socket object to output queobj
             queobj.put(ssl_sock)
@@ -439,12 +433,13 @@ class HTTPUtil(BaseHTTPUtil):
                     ssl_sock.sock.close()
 
     def create_ssl_connection(self, address, hostname, cache_key, getfast=None, **kwargs):
-        cache = ssl_connection_cache[cache_key]
+        cache = self.ssl_connection_cache[cache_key]
         keeptime = self.keeptime
+        wtimeout = self.wtimeout
         try:
             while cache:
                 ctime, ssl_sock = cache.pop()
-                if check_connection_alive(keeptime, ctime, ssl_sock.sock):
+                if self.check_connection_alive(keeptime, wtimeout, ctime, ssl_sock.sock):
                     return ssl_sock
         except IndexError:
             pass
