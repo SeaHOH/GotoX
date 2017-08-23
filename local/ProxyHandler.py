@@ -465,27 +465,29 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             need_autorange = 1 if url_parts.path.endswith(GC.AUTORANGE_FAST_ENDSWITH) else 0
             request_range = request_headers.get('Range')
             if request_range is not None:
-                range_start, range_end, range_other = getbytes(request_range).group(1, 2, 3)
-                if not range_start or range_other:
-                    # autorange 无法处理未指定开始范围和不连续范围
-                    range_start = 0
-                    need_autorange = 0
-                else:
-                    range_start = int(range_start)
-                    if range_end:
-                        self.range_end = range_end = int(range_end)
-                        range_length = range_end + 1 - range_start
-                        #有明确范围时，根据阀值判断
-                        if need_autorange is 1:
-                            if range_length < self.rangesize:
-                                need_autorange = -1
-                        else:
-                            need_autorange = 2 if range_length > GC.AUTORANGE_BIG_ONSIZE else -1
+                request_range = getbytes(request_range)
+                if request_range:
+                    range_start, range_end, range_other = request_range.group(1, 2, 3)
+                    if not range_start or range_other:
+                        # autorange 无法处理未指定开始范围和不连续范围
+                        range_start = 0
+                        need_autorange = 0
                     else:
-                        self.range_end = range_end = 0
-                        #if need_autorange is 0:
-                        #    #非 autorange/fast 匹配
-                        #    need_autorange = 2
+                        range_start = int(range_start)
+                        if range_end:
+                            self.range_end = range_end = int(range_end)
+                            range_length = range_end + 1 - range_start
+                            #有明确范围时，根据阀值判断
+                            if need_autorange is 1:
+                                if range_length < self.rangesize:
+                                    need_autorange = -1
+                            else:
+                                need_autorange = 2 if range_length > GC.AUTORANGE_BIG_ONSIZE else -1
+                        else:
+                            self.range_end = range_end = 0
+                            #if need_autorange is 0:
+                            #    #非 autorange/fast 匹配
+                            #    need_autorange = 2
             if need_autorange is 1:
                 logging.info('发现[autorange/fast]匹配：%r', self.url)
                 range_end = range_start + GC.AUTORANGE_FAST_FIRSTSIZE - 1
@@ -624,19 +626,21 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if content_range:
                     #提取返回范围信息（Requested Range Not Satisfiable）
                     if response.status != 416:
-                        start, end, length = getrange(content_range).group(1, 2, 3)
-                        start = int(start)
-                        end = int(end)
-                        #长度未知时无法使用 autorange
-                        if length == '*':
-                            need_autorange = 0
-                        elif need_autorange is 0:
-                            if (    #不是原请求结束范围且长度等于服务端失败时的重试长度
-                                    (end != range_end and end - start == GC.GAE_MAXSIZE)
-                                    #长度超过指定大小时启用 autorange
-                                    or (content_length > GC.AUTORANGE_BIG_ONSIZE)):
-                                logging.info('发现[autorange/big]匹配：%r', self.url)
-                                need_autorange = 2
+                        content_range = getrange(content_range)
+                        if content_range:
+                            start, end, length = content_range.group(1, 2, 3)
+                            start = int(start)
+                            end = int(end)
+                            #长度未知时无法使用 autorange
+                            if length == '*':
+                                need_autorange = 0
+                            elif need_autorange is 0:
+                                if (    #不是原请求结束范围且长度等于服务端失败时的重试长度
+                                        (end != range_end and end - start == GC.GAE_MAXSIZE)
+                                        #长度超过指定大小时启用 autorange
+                                        or (content_length > GC.AUTORANGE_BIG_ONSIZE)):
+                                    logging.info('发现[autorange/big]匹配：%r', self.url)
+                                    need_autorange = 2
                 elif (  #重试中途失败的请求时返回错误
                         (headers_sent and start > 0) 
                         #服务器不支持 Range 且错误返回成功状态，直接放弃并断开链接
