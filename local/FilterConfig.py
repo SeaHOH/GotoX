@@ -7,7 +7,7 @@ from functools import partial
 from time import sleep
 from . import clogging as logging
 from .compat import thread, ConfigParser
-from .common import config_dir, isipv4, isipv6, classlist
+from .common import config_dir, isip, isipv4, isipv6, classlist
 from .GlobalConfig import GC
 
 BLOCK     = 1
@@ -53,14 +53,14 @@ actToNum = {
 isfiltername = re.compile(r'(?P<order>\d+)-(?P<action>\w+)').match
 isempty = re.compile(r'^\s*$').match
 if GC.LINK_PROFILE == 'ipv4':
-    pickip = re.compile(r'(?<=\s|\|)(?:\d+\.){3}\d+(?=$|\s|\|)').findall
+    pickip = lambda str: [ip.strip() for ip in str.split('|') if isipv4(ip.strip())]
     ipnotuse = isipv6
 elif GC.LINK_PROFILE == 'ipv46':
-    pickip = re.compile(r'(?<=\s|\|)((?:\d+\.){3}\d+|(?:(?:[a-f\d]{1,4}:){1,6}|:)(?:[a-f\d]{1,4})?(?::[a-f\d]{1,4}){1,6})(?=$|\s|\|)').findall
+    pickip = lambda str: [ip.strip() for ip in str.split('|') if isip(ip.strip())]
     #还要使用字符名称，所以不用验证
     ipnotuse = lambda x: False
 elif GC.LINK_PROFILE == 'ipv6':
-    pickip = re.compile(r'(?<=\s|\|)(?:(?:[a-f\d]{1,4}:){1,6}|:)(?:[a-f\d]{1,4})?(?::[a-f\d]{1,4}){1,6}(?=$|\s|\|)').findall
+    pickip = lambda str: [ip.strip() for ip in str.split('|') if isipv6(ip.strip())]
     ipnotuse = isipv4
 
 class actionfilterlist(list):
