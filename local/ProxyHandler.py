@@ -329,7 +329,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         #处理响应
         response_headers = dict((k.title(), v) for k, v in response.headers.items() if k.title() not in self.skip_response_headers)
         #明确设置 Accept-Ranges
-        if response_headers.get('Accept-Ranges', '') != 'bytes':
+        if response_headers.get('Accept-Ranges') != 'bytes':
             response_headers['Accept-Ranges'] = 'none'
         length = self.response_length
         if hasattr(response, 'data'):

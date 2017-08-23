@@ -71,6 +71,8 @@ def match_path_filter(filter, path):
                 return path.startswith(filter[1:])
             if filter[-1] == '$':
                 return path.endswith(filter[:-1])
+        else:
+            return True
         return filter in path
     return filter(path)
 

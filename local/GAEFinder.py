@@ -1,6 +1,4 @@
 # coding:utf-8
-#!/usr/bin/env python
-__author__ = 'seahoh@gamil.com'
 '''
 根据 checkgoogleip 代码重新编写整合到 GotoX
 从一个较大的可用 GAE IP 列表中快速筛选优质 IP
