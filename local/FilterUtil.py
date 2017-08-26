@@ -40,7 +40,7 @@ def get_redirect(target, url):
     '''Get the redirect target'''
     if isinstance(target, str) and target.find('://') < 9:
         return target, None
-    rule, unquote, mhost = target
+    rule, unquote, mhost, raction = target
     if isinstance(rule, partial):
         url = rule(url, 1)
     elif isinstance(rule, tuple):
@@ -48,7 +48,7 @@ def get_redirect(target, url):
     else:
         logging.error('%r 匹配重定向规则 %r，解析错误，请检查你的配置文件："%s/ActionFilter.ini"', url, target, config_dir)
         return
-    return urlparse.unquote(url) if unquote else url, mhost
+    return urlparse.unquote(url) if unquote else url, (mhost, raction)
 
 def match_host_filter(filter, host):
     if isinstance(filter, str):

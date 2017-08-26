@@ -123,6 +123,17 @@ class actionfilterlist(list):
                         patterns, _, replaces = v.partition('>>')
                         patterns = patterns.rstrip(' \t')
                         replaces = replaces.lstrip(' \t')
+                        if ' ' in replaces:
+                            raction, _, replaces = replaces.partition(' ')
+                            if raction in ('direct', 'gae'):
+                                raction = 'do_' + raction.upper()
+                            elif raction.startswith('proxy='):
+                                raction = 'do_PROXY', raction[6:]
+                            else:
+                                raction = None
+                            replaces = replaces.rstrip(' \t')
+                        else:
+                            raction = None
                         unquote = replaces[0] == '@'
                         if unquote:
                             replaces = replaces[1:].lstrip(' \t')
@@ -131,7 +142,7 @@ class actionfilterlist(list):
                             rule = partial(re.compile(patterns).sub, replaces)
                         else:
                             rule = patterns, replaces, 1
-                        v = rule, unquote, mhost
+                        v = rule, unquote, mhost, raction
                 filters.append((scheme.lower(), host, path, v))
             self.append(filters)
 

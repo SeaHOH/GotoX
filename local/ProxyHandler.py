@@ -805,7 +805,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_IREDIRECT(self):
         #直接返回重定向地址的内容
-        target, mhost = self.target
+        target, (mhost, raction) = self.target
         if target.startswith('file://'):
             filename = target.lstrip('file:').lstrip('/')
             logging.info('%s %r 匹配本地文件 %r', self.address_string(), self.url, filename)
@@ -847,7 +847,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             #重设路径
             self.path = target[target.find('/', target.find('//')+3):]
             #重设 action
-            self.action, self.target = get_action(url_parts.scheme, self.host, self.path[1:], url)
+            if raction:
+                if isinstance(raction, str):
+                    self.action, self.target = raction, None
+                else:
+                    self.action, self.target = raction
+            else:
+                self.action, self.target = get_action(url_parts.scheme, self.host, self.path[1:], url)
             #内部重定向到加密链接，相当于已伪造证书
             self.fakecert = self.ssl
             self.do_action()
