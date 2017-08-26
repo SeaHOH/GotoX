@@ -125,7 +125,7 @@ class actionfilterlist(list):
                         replaces = replaces.lstrip(' \t')
                         if ' ' in replaces:
                             raction, _, replaces = replaces.partition(' ')
-                            if raction in ('direct', 'gae'):
+                            if raction in ('forward', 'direct', 'gae'):
                                 raction = 'do_' + raction.upper()
                             elif raction.startswith('proxy='):
                                 raction = 'do_PROXY', raction[6:]
