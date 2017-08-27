@@ -222,13 +222,12 @@ func handler(rw http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	//deadline := DefaultDeadline
-	//if s, ok := params["deadline"]; ok && s != "" {
-	//	if n, err := strconv.Atoi(s); err == nil {
-	//		deadline = time.Duration(n) * time.Second
-	//	}
-	//}
-	deadline := 5
+	deadline := DefaultDeadline
+	if s, ok := params["deadline"]; ok && s != "" {
+		if n, err := strconv.Atoi(s); err == nil {
+			deadline = time.Duration(n) * time.Second
+		}
+	}
 
 	fetchMaxSize := DefaultFetchMaxSize
 	if s, ok := params["maxsize"]; ok && s != "" {
@@ -243,8 +242,7 @@ func handler(rw http.ResponseWriter, r *http.Request) {
 	for i := 0; i < 2; i++ {
 		t := &urlfetch.Transport{
 			Context:                       c,
-			// useless now, set in Context
-			//Deadline:                      deadline,
+			Deadline:                      deadline,
 			AllowInvalidServerCertificate: !sslVerify,
 		}
 
@@ -339,7 +337,7 @@ func handler(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	if debug > 1 {
-		c.Infof("Write Response=%#v\n", resp)
+		c.Infof("Write Response=%#v, chunked=%#v\n", resp, chunked)
 	}
 
 	if debug > 0 {
