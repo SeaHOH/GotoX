@@ -16,6 +16,7 @@ os.chdir(os.path.abspath(os.path.dirname(__file__)))
 
 import re
 import socket
+import traceback
 import ssl
 import mimetypes
 
@@ -190,4 +191,8 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except:
+        traceback.print_exc()
+        raw_input()
