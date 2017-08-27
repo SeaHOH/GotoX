@@ -12,20 +12,13 @@
 - **为防止被滥用，谷歌在 GAE 代理的用户代理字段中会包含了你使用的 AppID 和链接 GAE 服务器的 IP 信息，请慎记之。**
 
 # 部署服务端
-- 配置 GAE 路径为“**/_gh/**”可使用 GoProxy、XX-Net 及 GoAgent 3.2.X 服务端，“**/2**”使用 GoAgent 3.1.X 服务端。
-    - 推荐使用 GoProxy 服务端，现已包含于本项目发布页面。
+- 推荐使用[本项目 fork 的 GoProxy GAE 服务端分支](https://github.com/SeaHOH/GotoX/tree/gaeserver.goproxy)，包含一些小改动，可完全兼容 GoProxy 客户端。同时本项目不再兼容 GoProxy GAE 以外的服务端。
 - 申请 AppID 或部署服务端时，可尝试直接以默认配置运行本代理使用；如果无法顺利进行，请使用 VPN、Shadowsocks 等其它代理重新开始。
-- 如果你没有自己的 AppID，可以去 [XX-Net 配置](https://github.com/XX-net/XX-Net/blob/master/code/default/gae_proxy/local/proxy.ini) 中取用公共 AppID。
-    - 公共 AppID **不支持视频和下载**（以前是，现在没确认过）；
-    - 不建议填入过多公共 AppID，10 个左右就差不多，需要时请手动更换并重启 GotoX；
-    - **警告**：不建议使用未知来源的 AppID，它们**可能会记录你的各种信息，甚至更改你的流量**以达到更危险的目的，如果极端点，XX-Net 的公共 AppID 也是如此。
+    - **警告**：不建议使用未知来源的 AppID，它们**可能会记录你的各种信息，甚至更改你的流量**以达到更危险的目的。
 - **相关链接**
     - 简易教程 https://github.com/SeaHOH/goproxy/blob/wiki/SimpleGuide.md
     - 常见问题 https://github.com/SeaHOH/goproxy/blob/wiki/FAQ.md
     - 新版谷歌云部署问题 https://github.com/XX-net/XX-Net/issues/4720
-    - GoProxy 服务端 https://github.com/SeaHOH/GotoX/tree/gaeserver.goproxy
-    - XX-Net 服务端 https://github.com/jzp820927/Deploy_XXNET_Server
-    - XX-Net 公共 AppID https://github.com/XX-net/XX-Net/blob/master/code/default/gae_proxy/local/proxy.ini
 
 # 使用
 - **主要配置：**
@@ -104,6 +97,7 @@
     - pyOpenSSL 16.0.0 及以上
     - dnslib 0.8.3 及以上
     - PySocks 1.5.4 及以上
+    - brotlipy 0.5.0 及以上
 - 发布将提供包含 Windows CPython 3.5 环境的便携版本。
 - IPv6 未测试，欢迎反馈。
 - 由于自己只使用 Windows，所以其它系统不保证能正常使用。如果有需求作者会尽量修改，但这需要有人帮助测试反馈。

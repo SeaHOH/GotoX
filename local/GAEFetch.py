@@ -1,8 +1,9 @@
 # coding:utf-8
 
 import zlib
-import io
 import struct
+from io import BytesIO
+from gzip import GzipFile
 from . import clogging as logging
 from .compat import Queue, httplib
 from .GlobalConfig import GC
@@ -13,30 +14,34 @@ qGAE = Queue.LifoQueue()
 for _ in range(GC.GAE_MAXREQUESTS * len(GC.GAE_APPIDS)):
     qGAE.put(True)
 
-gae_kwargs = {}
+gae_options = []
 if GC.GAE_DEBUG:
-    gae_kwargs['Debug'] = 1
+    gae_options.append('debug=%d' % GC.GAE_DEBUG)
 if GC.GAE_PASSWORD:
-    gae_kwargs['Password'] = GC.GAE_PASSWORD
+    gae_options.append('password=' +  GC.GAE_PASSWORD)
 if GC.GAE_SSLVERIFY:
-    if GC.GAE_PATH == '/2':
-        gae_kwargs['Validate'] = 1
-    else:
-        gae_kwargs['SSLVerify'] = 1
+    gae_options.append('sslverify')
 if GC.GAE_MAXSIZE and GC.GAE_MAXSIZE != 1024 * 1024 * 4:
-    if GC.GAE_PATH == '/2':
-        gae_kwargs['FetchMaxSize'] = GC.GAE_MAXSIZE
-    else:
-        gae_kwargs['MaxSize'] = GC.GAE_MAXSIZE
+    gae_options.append('maxsize=%d' % GC.GAE_MAXSIZE)
+gae_options = ','.join(gae_options)
+if gae_options:
+    gae_options = 'X-UrlFetch-Options: %s\r\n' % gae_options
 
 def make_errinfo(response, htmltxt):
     del response.headers['Content-Type']
     del response.headers['Connection']
     response.headers['Content-Type'] = 'text/plain; charset=UTF-8'
     response.headers['Content-Length'] = len(htmltxt)
-    response.fp = io.BytesIO(htmltxt)
+    response.fp = BytesIO(htmltxt)
     response.read = response.fp.read
     return response
+
+class fakesock:
+    def __init__(self, fileobj):
+        self.fileobj = fileobj
+
+    def makefile(self, mode):
+        return GzipFile(mode=mode, fileobj=self.fileobj)
 
 class gae_params:
     port = 443
@@ -54,27 +59,12 @@ class gae_params:
         self.url = self.fetchserver % appid
 
 def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
-    kwargs.update(gae_kwargs)
     # GAE 代理请求不允许设置 Host 头域
     if 'Host' in headers:
         del headers['Host']
-    #if payload:
-        #if not isinstance(payload, bytes):
-        #    payload = payload.encode()
-        #服务器不支持 deflate 编码会出错
-        #if len(payload) < 10 * 1024 * 1024 and 'Content-Encoding' not in headers:
-        #    zpayload = zlib.compress(payload)[2:-4]
-        #    if len(zpayload) < len(payload):
-        #        payload = zpayload
-        #        headers['Content-Encoding'] = 'deflate'
-        #headers['Content-Length'] = str(len(payload))
-    if GC.GAE_PATH == '/2':
-        metadata = 'G-Method:%s\nG-Url:%s\n%s' % (method, url, ''.join('G-%s:%s\n' % (k, v) for k, v in kwargs.items() if v))
-        metadata += ''.join('%s:%s\n' % (k.title(), v) for k, v in headers.items())
-    else:
-        metadata = '%s %s HTTP/1.1\r\n' % (method, url)
-        metadata += ''.join('%s: %s\r\n' % (k, v) for k, v in headers.items())
-        metadata += ''.join('X-UrlFetch-%s: %s\r\n' % (k, v) for k, v in kwargs.items() if v)
+    metadata = '%s %s HTTP/1.1\r\n' % (method, url)
+    metadata += ''.join('%s: %s\r\n' % (k, v) for k, v in headers.items())
+    metadata += gae_options
     if not isinstance(metadata, bytes):
         metadata = metadata.encode()
     metadata = zlib.compress(metadata)[2:-4]
@@ -84,8 +74,11 @@ def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
         payload = struct.pack('!h', len(metadata)) + metadata + payload
     else:
         payload = struct.pack('!h', len(metadata)) + metadata
-    request_headers = {'User-Agent': 'a', 'Content-Length': str(len(payload))}
-    # post data
+    request_headers = {
+        'User-Agent': 'Mozilla/5.0', 
+        'Accept-Encoding': 'gzip',
+        'Content-Length': str(len(payload))
+        }
     request_params = gae_params(appid)
     realurl = 'GAE-' + url
     qGAE.get() # get start from Queue
@@ -101,46 +94,44 @@ def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
     response.app_status = response.status
     if response.status != 200:
         return response
-    #读取 GAE 头部
-    if GC.GAE_PATH == '/2':
-        data = response.read(4)
-        if len(data) < 4:
-            response.status = 502
-            return make_errinfo(response, b'connection aborted. too short leadtype data=' + data)
-        response.status, headers_length = struct.unpack('!hh', data)
-    else:
-        data = response.read(2)
-        if len(data) < 2:
-            response.status = 502
-            return make_errinfo(response, b'connection aborted. too short leadtype data=' + data)
-        headers_length, = struct.unpack('!h', data)
+    #解压并解析 chunked & gziped 响应
+    if 'Transfer-Encoding' in response.headers:
+        responseg = httplib.HTTPResponse(fakesock(response), method=method)
+        responseg.begin()
+        responseg.app_status = 200
+        responseg.xip =  response.xip
+        responseg.sock = response.sock
+        return responseg
+    #读取压缩头部
+    data = response.read(2)
+    if len(data) < 2:
+        response.status = 502
+        return make_errinfo(response, b'connection aborted. too short leadtype data=' + data)
+    headers_length, = struct.unpack('!h', data)
     data = response.read(headers_length)
     if len(data) < headers_length:
         response.status = 502
         return make_errinfo(response, b'connection aborted. too short headers data=' + data)
-    #读取实际的头部
-    if GC.GAE_PATH == '/2':
-        headers_data= zlib.decompress(data, -zlib.MAX_WBITS)
-    else:
-        raw_response_line, headers_data = zlib.decompress(data, -zlib.MAX_WBITS).split(b'\r\n', 1)
-        raw_response_line = str(raw_response_line, 'iso-8859-1')
-        raw_response_list = raw_response_line.split(None, 2)
-        raw_response_length = len(raw_response_list)
-        if raw_response_length == 3:
-            _, status, reason = raw_response_list
-            response.status = int(status)
-            response.reason = reason.strip()
-        elif raw_response_length == 2:
-            _, status = raw_response_list
-            status = int(status)
-            #标记 GoProxy 错误信息
-            if status in (400, 403, 502):
-                response.app_status = response.status = status
-                response.reason = 'debug error'
-            else:
-                response.status = status
-                response.reason = ''
+    #解压缩并解析头部
+    raw_response_line, headers_data = zlib.decompress(data, -zlib.MAX_WBITS).split(b'\r\n', 1)
+    raw_response_line = str(raw_response_line, 'iso-8859-1')
+    raw_response_list = raw_response_line.split(None, 2)
+    raw_response_length = len(raw_response_list)
+    if raw_response_length == 3:
+        _, status, reason = raw_response_list
+        response.status = int(status)
+        response.reason = reason.strip()
+    elif raw_response_length == 2:
+        _, status = raw_response_list
+        status = int(status)
+        #标记 GoProxy 错误信息
+        if status in (400, 403, 502):
+            response.app_status = response.status = status
+            response.reason = 'debug error'
         else:
-            return
-    response.headers = response.msg = httplib.parse_headers(io.BytesIO(headers_data))
+            response.status = status
+            response.reason = ''
+    else:
+        return
+    response.headers = response.msg = httplib.parse_headers(BytesIO(headers_data))
     return response

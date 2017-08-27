@@ -38,12 +38,8 @@
 #      s2marine0         <s2marine0@gmail.com>
 #      Toshio Xiang      <snachx@gmail.com>
 # Compatible:
-#      GoAgent 3.1.5 - 3.2.x GAE Server
 #      phuslu's GoProxy GAE Server
 #          https://github.com/phuslu/goproxy/tree/server.gae
-#      Michael.X's XX-Net GAE Server
-#          https://github.com/XX-net/XX-Net/tree/master/code/default/gae_proxy/server
-#          https://github.com/jzp820927/Deploy_XXNET_Server
 
 from . import __version__
 

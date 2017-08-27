@@ -10,11 +10,11 @@ import socket
 import random
 import socks
 import threading
-from . import CertUtil
-from . import clogging as logging
 from select import select
 from time import time, sleep
 from functools import partial
+from . import CertUtil
+from . import clogging as logging
 from .compat import BaseHTTPServer, urlparse, thread
 from .common import (
     web_dir,
@@ -27,6 +27,7 @@ from .common import (
     message_html,
     isip
     )
+from .common.brotli import BrotliReader
 from .common.dns import set_dns, dns_resolve
 from .common.proxy import parse_proxy
 from .common.region import isdirect
@@ -43,7 +44,6 @@ from .FilterUtil import (
     get_connect_action
     )
 
-normcookie = partial(re.compile(r',(?= [^ =]+(?:=|$))').sub, r'\r\nSet-Cookie:')
 normattachment = partial(re.compile(r'(?<=filename=)([^"\']+)').sub, r'"\1"')
 getbytes = re.compile(r'bytes=(\d*)-(\d*)(,..)?').search
 getrange = re.compile(r'bytes (\d+)-(\d+)/(\d+|\*)').search
@@ -262,12 +262,16 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         wrote = 0
         err = None
         write = self.write
+        if hasattr(response, 'decompressed'):
+            readinto = response.decompressed.readinto
+        else:
+            readinto = response.readinto
         buf = memoryview(bytearray(self.bufsize))
         try:
             if ndata:
                 buf[:ndata] = data
             else:
-                ndata = response.readinto(buf)
+                ndata = readinto(buf)
             while ndata:
                 if need_chunked:
                     write(hex(ndata)[2:])
@@ -280,7 +284,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     wrote += ndata
                     if wrote >= length:
                         break
-                ndata = response.readinto(buf)
+                ndata = readinto(buf)
         except Exception as e:
             err = e
         finally:
@@ -331,11 +335,22 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         #明确设置 Accept-Ranges
         if response_headers.get('Accept-Ranges') != 'bytes':
             response_headers['Accept-Ranges'] = 'none'
+        #不支持 Brotli 则先解压缩
+        ae = self.request_headers.get('Accept-Encoding', '')
+        if response_headers.get('Content-Encoding') == 'br' and 'br' not in ae:
+            decompressed = BrotliReader(response)
+            response.decompressed = decompressed
+            del response_headers['Content-Encoding']
+            response_headers.pop('Content-Length', None)
+            self.response_length = 0
+            print('sssssssss')
         length = self.response_length
         if hasattr(response, 'data'):
             # goproxy 服务端错误信息处理预读数据
             data = response.data
             response_headers['Content-Type'] = 'text/html; charset=' + self.enc
+        elif hasattr(response, 'decompressed'):
+            data = decompressed.read(self.bufsize)
         else:
             data = response.read(self.bufsize)
         need_chunked = data and not length # response 中的数据已经正确解码
@@ -351,10 +366,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             response_headers['Content-Length'] = length
         cookies = response.headers.get_all('Set-Cookie')
         if cookies:
-            if self.action == 'do_GAE' and len(cookies) == 1:
-                response_headers['Set-Cookie'] = normcookie(cookies[0])
-            else:
-                response_headers['Set-Cookie'] = '\r\nSet-Cookie: '.join(cookies)
+            response_headers['Set-Cookie'] = '\r\nSet-Cookie: '.join(cookies)
         if 'Content-Disposition' in response_headers:
             response_headers['Content-Disposition'] = normattachment(response_headers['Content-Disposition'])
         if not self.close_connection:
