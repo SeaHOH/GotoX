@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"compress/flate"
+	"compress/gzip"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -324,15 +325,49 @@ func handler(rw http.ResponseWriter, r *http.Request) {
 	if oCE == "" &&
 		IsTextContentType(resp.Header.Get("Content-Type")) {
 		content := reflect.ValueOf(resp.Body).Elem().FieldByName("content").Bytes()
-		if IsBinary(content) {
+		switch {
+		case IsBinary(content):
 			// urlfetch will remove "Content-Encoding: deflate" when "Accept-Encoding" contains "gzip"
 			ext := filepath.Ext(req.URL.Path)
 			if ext == "" || IsTextContentType(mime.TypeByExtension(ext)) {
 				// ignore wrong "Content-Type"
 				resp.Header.Set("Content-Encoding", "deflate")
 			}
-		} else {
-			chunked = true
+		case len(content) > 512:
+			// we got plain text here, try compress it
+			var bb bytes.Buffer
+			var w io.WriteCloser
+			var ce string
+
+			switch {
+			case r.Header.Get("User-Agent") == "Mozilla/5.0":
+				// let App Engine automatically compress it
+				chunked = true
+			case strings.Contains(oAE, "deflate"):
+				w, err = flate.NewWriter(&bb, flate.BestCompression)
+				ce = "deflate"
+			case strings.Contains(oAE, "gzip"):
+				w, err = gzip.NewWriterLevel(&bb, gzip.BestCompression)
+				ce = "gzip"
+			}
+
+			if err != nil {
+				handlerError(c, rw, err, http.StatusBadGateway)
+				return
+			}
+
+			if w != nil {
+				w.Write(content)
+				w.Close()
+
+				bbLen := int64(bb.Len())
+				if bbLen < resp.ContentLength {
+					resp.Body = ioutil.NopCloser(&bb)
+					resp.ContentLength = bbLen
+					resp.Header.Set("Content-Length", strconv.FormatInt(resp.ContentLength, 10))
+					resp.Header.Set("Content-Encoding", ce)
+				}
+			}
 		}
 	}
 
