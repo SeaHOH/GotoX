@@ -15,7 +15,7 @@ from time import time, sleep
 from functools import partial
 from . import CertUtil
 from . import clogging as logging
-from .compat import BaseHTTPServer, urlparse, thread
+from .compat import BaseHTTPServer, urlparse, thread, hasattr
 from .common import (
     web_dir,
     NetWorkIOError,
@@ -262,10 +262,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         wrote = 0
         err = None
         write = self.write
-        if hasattr(response, 'decompressed'):
-            readinto = response.decompressed.readinto
-        else:
-            readinto = response.readinto
+        readinto = response.readinto
         buf = memoryview(bytearray(self.bufsize))
         try:
             if ndata:
@@ -338,19 +335,15 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         #不支持 Brotli 则先解压缩
         ae = self.request_headers.get('Accept-Encoding', '')
         if response_headers.get('Content-Encoding') == 'br' and 'br' not in ae:
-            decompressed = BrotliReader(response)
-            response.decompressed = decompressed
+            response = BrotliReader(response)
             del response_headers['Content-Encoding']
             response_headers.pop('Content-Length', None)
             self.response_length = 0
-            print('sssssssss')
         length = self.response_length
         if hasattr(response, 'data'):
             # goproxy 服务端错误信息处理预读数据
             data = response.data
             response_headers['Content-Type'] = 'text/html; charset=' + self.enc
-        elif hasattr(response, 'decompressed'):
-            data = decompressed.read(self.bufsize)
         else:
             data = response.read(self.bufsize)
         need_chunked = data and not length # response 中的数据已经正确解码
