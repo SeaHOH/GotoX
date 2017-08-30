@@ -373,7 +373,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             logging.test('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), self.action[3:], self.command, self.url, response.status, length or '-')
         else:
             logging.info('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), self.action[3:], self.command, self.url, response.status, length or '-')
-        return data, need_chunked
+        return response, data, need_chunked
 
     def check_useragent(self):
         #修复某些软件无法正确处理 206 Partial Content 响应的持久链接
@@ -417,7 +417,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             #修复某些软件无法正确处理持久链接（停用）
             self.check_useragent()
             self.get_response_length(response)
-            data, need_chunked = self.handle_response_headers(response)
+            response, data, need_chunked = self.handle_response_headers(response)
             _, err = self.write_response_content(data, response, need_chunked)
             if err:
                 raise err
@@ -621,7 +621,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 #输出服务端返回的错误信息
                 if response.app_status != 200:
                     if not headers_sent:
-                        data, need_chunked = self.handle_response_headers(response)
+                        response, data, need_chunked = self.handle_response_headers(response)
                         self.write_response_content(data, response, need_chunked)
                     self.close_connection = True
                     return
@@ -666,7 +666,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         rangefetch = RangeFetchs[need_autorange](self, request_headers, payload, response)
                         response = None
                         return rangefetch.fetch()
-                    data, need_chunked = self.handle_response_headers(response)
+                    response, data, need_chunked = self.handle_response_headers(response)
                     headers_sent = True
                 wrote, err = self.write_response_content(data, response, need_chunked)
                 start += wrote

@@ -9,7 +9,7 @@ class BrotliReader:
         self.fp = fileobj
         self.decompressor = Decompressor(fileobj)
         self.decompressor.send(None)
-        self.data = None
+        self.tmpdata = None
 
     def __getattr__(self, attr):
         return getattr(self.fp, attr)
@@ -40,7 +40,7 @@ class BrotliReader:
             return 0
         l = 0
 
-        data = self.data
+        data = self.tmpdata
         if data:
             dsize = len(data)
             p = self.p
@@ -51,7 +51,7 @@ class BrotliReader:
                 return bsize
             else:
                 b[:l] = data[p:]
-                self.data = None
+                self.tmpdata = None
 
         size = max(bsize // 5, 1)
         while True:
@@ -64,7 +64,7 @@ class BrotliReader:
             dsize = len(data)
             e = l + dsize
             if e > bsize:
-                self.data = data
+                self.tmpdata = data
                 self.p = p = dsize + bsize - e
                 b[l:] = data[:p]
                 return bsize
