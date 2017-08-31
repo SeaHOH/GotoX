@@ -518,20 +518,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.write('HTTP/1.1 504 Gateway Timeout\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n' % len(c))
                     self.write(c)
                 return
-            with self.nLock:
-                nappid = self.__class__.nappid
-                while True:
-                    nappid += 1
-                    if nappid >= len(GC.GAE_APPIDS):
-                        nappid = 0
-                    appid = GC.GAE_APPIDS[nappid]
-                    contains, expired, _ = self.badappids.getstate(appid)
-                    if contains and expired:
-                        for _ in range(GC.GAE_MAXREQUESTS):
-                            qGAE.put(True)
-                    if not contains or expired:
-                        break
-                self.__class__.nappid = nappid
+            appid = self.get_appid()
             noerror = True
             data = None
             response = None
@@ -1146,6 +1133,23 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             host, _, port = host.partition(':')
         return host.lower(), port
+
+    def get_appid(self):
+        with self.nLock:
+            nappid = self.__class__.nappid
+            while True:
+                nappid += 1
+                if nappid >= len(GC.GAE_APPIDS):
+                    nappid = 0
+                appid = GC.GAE_APPIDS[nappid]
+                contains, expired, _ = self.badappids.getstate(appid)
+                if contains and expired:
+                    for _ in range(GC.GAE_MAXREQUESTS):
+                        qGAE.put(True)
+                if not contains or expired:
+                    break
+            self.__class__.nappid = nappid
+            return appid
 
     def mark_badappid(self, appid):
         if appid not in self.badappids:
