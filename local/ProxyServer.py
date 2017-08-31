@@ -252,7 +252,7 @@ class LocalProxyServer(SocketServer.ThreadingTCPServer):
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind(self.orig_server_address)
         #本机关闭监听端口接收缓冲
-        if server_listen_ip in ('127.0.0.1', '::1'):
+        if sys.platform != 'darwin' and server_listen_ip in ('127.0.0.1', '::1'):
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 0)
         #关闭 nagle's algorithm 算法
         sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
