@@ -27,7 +27,7 @@ from .common import (
     message_html,
     isip
     )
-from .common.brotli import BrotliReader
+from .common.decompress import decompress_readers
 from .common.dns import set_dns, dns_resolve
 from .common.proxy import parse_proxy
 from .common.region import isdirect
@@ -308,6 +308,17 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             except NetWorkIOError as e:
                 logging.error('%s "%s %s" 附加请求内容读取失败：%r', self.address_string(), self.command, self.url, e)
                 raise
+        # 强制请求压缩内容，之后会自动判断解压缩
+        r = request_headers.get('Range')
+        if not r or not r.startswith('bytes='):
+            ae = request_headers.get('Accept-Encoding')
+            if ae:
+                if 'gzip' not in ae:
+                    request_headers['Accept-Encoding'] += ', gzip'
+                if 'br' not in ae:
+                    request_headers['Accept-Encoding'] += ', br'
+            else:
+                request_headers['Accept-Encoding'] = 'gzip, br'
         self.request_headers = request_headers
         self.payload = payload
         self.reread_req = True
@@ -333,12 +344,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if response_headers.get('Accept-Ranges') != 'bytes':
             response_headers['Accept-Ranges'] = 'none'
         #不支持 Brotli 则先解压缩
-        ae = self.request_headers.get('Accept-Encoding', '')
-        if response_headers.get('Content-Encoding') == 'br' and 'br' not in ae:
-            response = BrotliReader(response)
+        ce = response_headers.get('Content-Encoding')
+        if ce and ce not in self.headers.get('Accept-Encoding', ''):
+            response = decompress_readers[ce](response)
             del response_headers['Content-Encoding']
             response_headers.pop('Content-Length', None)
             self.response_length = 0
+            logging.debug('正在以 %r 格式解压缩 %s', ce, self.url)
         length = self.response_length
         if hasattr(response, 'data'):
             # goproxy 服务端错误信息处理预读数据

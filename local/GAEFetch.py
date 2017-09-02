@@ -3,12 +3,12 @@
 import zlib
 import struct
 from io import BytesIO
-from gzip import GzipFile
 from . import clogging as logging
 from .compat import Queue, httplib
 from .GlobalConfig import GC
 from .GAEUpdate import testipuseable
 from .HTTPUtil import http_gws
+from .common.decompress import GzipSock
 
 qGAE = Queue.LifoQueue()
 for _ in range(GC.GAE_MAXREQUESTS * len(GC.GAE_APPIDS)):
@@ -35,13 +35,6 @@ def make_errinfo(response, htmltxt):
     response.fp = BytesIO(htmltxt)
     response.read = response.fp.read
     return response
-
-class fakesock:
-    def __init__(self, fileobj):
-        self.fileobj = fileobj
-
-    def makefile(self, mode):
-        return GzipFile(mode=mode, fileobj=self.fileobj)
 
 class gae_params:
     port = 443
@@ -96,7 +89,7 @@ def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
         return response
     #解压并解析 chunked & gziped 响应
     if 'Transfer-Encoding' in response.headers:
-        responseg = httplib.HTTPResponse(fakesock(response), method=method)
+        responseg = httplib.HTTPResponse(GzipSock(response), method=method)
         responseg.begin()
         responseg.app_status = 200
         responseg.xip =  response.xip
