@@ -1,4 +1,5 @@
 # coding:utf-8
+# Use for HTTPResponse stream decompress.
 
 import zlib
 from _compression import DecompressReader
@@ -16,10 +17,13 @@ class DeflateReader(BufferedReader):
 
 class _DeflateReader(DecompressReader):
     def __init__(self, fp):
+        self.fp = fp
         magic = fp.read(2)
+        # This is a compatible, some streams has no magic.
         if magic != b'\170\234':
             fp = _PaddedFile(fp, magic)
         super().__init__(fp, zlib.decompressobj, wbits=-zlib.MAX_WBITS)
+        self._buffer = None
         self._length = 0
         self._read = 0
 
@@ -30,24 +34,29 @@ class _DeflateReader(DecompressReader):
             return b''
 
         while True:
-            if self._decompressor.eof:
-                return b''
-
-            if self._decompressor.unconsumed_tail:
+            if self._buffer:
                 if self._read + size < self._length:
                     read = self._read
                     self._read += size
-                    uncompress = self._decompressor.unconsumed_tail[read:self._read]
+                    uncompress = self._buffer[read:self._read].tobytes()
                 else:
-                    uncompress = self._decompressor.unconsumed_tail[self._read:]
+                    uncompress = self._buffer[self._read:].tobytes()
+                    self._buffer = None
                     self._read = 0
-                    self._decompressor.flush()
                 break
+
+            if self._decompressor.eof:
+                # No stream will be appended. If stream has a magic,
+                # in little probability a few bytes will be remained.
+                self.fp.read()
+                self._eof = True
+                return b''
 
             buf = self._fp.read(DEFAULT_BUFFER_SIZE)
             uncompress = self._decompressor.decompress(buf, size)
             if self._decompressor.unconsumed_tail:
-                self._length = len(self._decompressor.unconsumed_tail)
+                self._buffer = memoryview(self._decompressor.flush())
+                self._length = len(self._buffer)
             if uncompress != b'':
                 break
             if buf == b'':
@@ -73,13 +82,16 @@ class GzipReader(BufferedReader):
         return getattr(self.fp, attr)
 
 class BrotliReader:
-    # IOReader-like object wrapper for brotlipy decompress
+    # A wrapper for brotlipy.
+    # This code does not require class Inheritance of BufferedReader.
     # https://github.com/python-hyper/brotlipy
     def __init__(self, fileobj):
         self.fp = fileobj
         self.decompressor = BrotliDecompressor(fileobj)
         self.decompressor.send(None)
-        self.tmpdata = None
+        self._buffer = None
+        self._length = 0
+        self._read = 0
 
     def __getattr__(self, attr):
         return getattr(self.fp, attr)
@@ -105,43 +117,43 @@ class BrotliReader:
     read1 = read
 
     def readinto(self, b):
-        bsize = len(b)
-        if self.decompressor is None or bsize == 0:
+        size = len(b)
+        if self.decompressor is None or size == 0:
             return 0
 
-        l = 0
-        data = self.tmpdata
-        if data:
-            dsize = len(data)
-            p = self.p
-            l += dsize - p
-            if l > bsize:
-                self.p += bsize
-                b[:] = data[p:self.p]
-                return bsize
+        read = 0
+        if self._buffer:
+            if self._read + size < self._length:
+                read = self._read
+                self._read += size
+                b[:] = self._buffer[read:self._read]
+                return size
             else:
-                b[:l] = data[p:]
-                self.tmpdata = None
+                read = self._length - self._read
+                b[:read] = self._buffer[self._read:]
+                self._buffer = None
+                self._read = 0
 
-        size = max(bsize // 5, 1)
+        rsize = max(size // 5, 1)
         while True:
             try:
-                data = self.decompressor.send(size)
+                data = self.decompressor.send(rsize)
             except StopIteration:
                 self.decompressor = None
                 break
             data = memoryview(data)
             dsize = len(data)
-            e = l + dsize
-            if e > bsize:
-                self.tmpdata = data
-                self.p = p = dsize + bsize - e
-                b[l:] = data[:p]
-                return bsize
+            if read + dsize > size:
+                self._buffer = data
+                self._length = dsize
+                self._read = size - read
+                b[read:] = data[:self._read]
+                return size
             else:
-                b[l:e] = data #data[:]
-                l = e
-        return l
+                _read = read
+                read += dsize
+                b[_read:read] = data #data[:]
+        return read
 
     def close(self):
         if self.decompressor:
@@ -153,6 +165,7 @@ class BrotliError(Exception):
     pass
 
 def BrotliDecompressor(fileobj):
+    # Almost copy from brotlipy's brotli.brotli.Decompressor class.
     dec = lib.BrotliDecoderCreateInstance(ffi.NULL, ffi.NULL, ffi.NULL)
     decoder = ffi.gc(dec, lib.BrotliDecoderDestroyInstance)
     need_input = True
@@ -165,7 +178,8 @@ def BrotliDecompressor(fileobj):
             else:
                 data = fileobj.read()
             if not data:
-                raise BrotliError('Decompression error: incomplete compressed stream')
+                raise BrotliError('Decompression error: '
+                                  'incomplete compressed stream')
             available_in = ffi.new('size_t *', len(data))
             in_buffer = ffi.new('uint8_t[]', data)
             next_in = ffi.new('uint8_t **', in_buffer)
@@ -186,7 +200,8 @@ def BrotliDecompressor(fileobj):
         if rc == lib.BROTLI_DECODER_RESULT_ERROR:
             error_code = lib.BrotliDecoderGetErrorCode(decoder)
             error_message = lib.BrotliDecoderErrorString(error_code)
-            raise BrotliError('Decompression error: %s' % ffi.string(error_message))
+            raise BrotliError('Decompression error: %s'
+                              % ffi.string(error_message))
 
         size = yield ffi.buffer(out_buffer, buffer_size - available_out[0])[:]
 
