@@ -343,14 +343,22 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         #明确设置 Accept-Ranges
         if response_headers.get('Accept-Ranges') != 'bytes':
             response_headers['Accept-Ranges'] = 'none'
-        #不支持 Brotli 则先解压缩
+        #解压缩请求不支持的编码
         ce = response_headers.get('Content-Encoding')
-        if ce and ce not in self.headers.get('Accept-Encoding', ''):
-            response = decompress_readers[ce](response)
-            del response_headers['Content-Encoding']
-            response_headers.pop('Content-Length', None)
-            self.response_length = 0
-            logging.debug('正在以 %r 格式解压缩 %s', ce, self.url)
+        if ce:
+            if ce.startswith('none'):
+                #某些服务器压缩模块会产生多余的 'none'
+                ce = ce[4:].strip(', ')
+                if ce:
+                    response_headers['Content-Encoding'] = ce
+                else:
+                    del response_headers['Content-Encoding']
+            if ce and ce not in self.headers.get('Accept-Encoding', '') and ce in decompress_readers:
+                response = decompress_readers[ce](response)
+                del response_headers['Content-Encoding']
+                response_headers.pop('Content-Length', None)
+                self.response_length = 0
+                logging.debug('正在以 %r 格式解压缩 %s', ce, self.url)
         length = self.response_length
         if hasattr(response, 'data'):
             # goproxy 服务端错误信息处理预读数据
