@@ -134,7 +134,7 @@ class BrotliReader:
                 self._buffer = None
                 self._read = 0
 
-        rsize = max(size // 5, 1)
+        rsize = max(size // 5, 1024)
         while True:
             try:
                 data = self.decompressor.send(rsize)
@@ -203,8 +203,9 @@ def BrotliDecompressor(fileobj):
             raise BrotliError('Decompression error: %s'
                               % ffi.string(error_message))
 
-        size = yield ffi.buffer(out_buffer, buffer_size - available_out[0])[:]
-
+        result = buffer_size - available_out[0]
+        if result:
+            size = yield ffi.buffer(out_buffer, result)[:]
         if rc == lib.BROTLI_DECODER_RESULT_NEEDS_MORE_INPUT:
             assert available_in[0] == 0
             need_input = True
