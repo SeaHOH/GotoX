@@ -73,7 +73,6 @@ def main():
                 return process_list
             import ctypes
             import collections
-            encoding = sys.getfilesystemencoding()
             Process = collections.namedtuple('Process', 'filename name')
             PROCESS_QUERY_INFORMATION = 0x0400
             PROCESS_VM_READ = 0x0010
@@ -93,7 +92,7 @@ def main():
                         ctypes.windll.kernel32.QueryFullProcessImageNameA(hProcess, 0, ctypes.byref(modname), ctypes.byref(count))
                     else:
                         ctypes.windll.psapi.GetModuleFileNameExA(hProcess, 0, ctypes.byref(modname), ctypes.byref(count))
-                    path = modname.value.decode(encoding)
+                    path = modname.value.decode('mbcs')
                     filename = os.path.basename(path)
                     name, ext = os.path.splitext(filename)
                     process_list.append(Process(filename=filename, name=name))
