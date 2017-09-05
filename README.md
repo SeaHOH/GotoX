@@ -9,7 +9,7 @@
 - GotoX 使用 sha256 算法生成证书，只要你不把生成的私钥文件泄露出去，就不会有第三方能通过它们对你进行中间人攻击。
 - 默认配置时，GotoX 会验证 GAE 服务器的中级证书是否为谷歌 [GIAG2](https://pki.google.com/GIAG2.crt)，同时会在 AppID 请求 https 网址时验证其证书有效性。
 - 使用 GAE 代理也就意味着：你需要**信任谷歌和你所使用的 AppID 服务端的权限者**，他们能够窥探和修改通过 GAE 代理的流量信息。
-- **为防止被滥用，谷歌在 GAE 代理的用户代理字段中会包含了你使用的 AppID 和链接 GAE 服务器的 IP 信息，请慎记之。**
+- **为防止被滥用，谷歌在 GAE 代理的头字段中会包含了你使用的 AppID 和原始请求的 TraceID 信息，请慎记之。**
 
 # 部署服务端
 - 推荐使用[本项目 fork 的 GoProxy GAE 服务端分支](https://github.com/SeaHOH/GotoX/tree/gaeserver.goproxy)，包含一些小改动，可完全兼容 GoProxy 客户端。同时本项目不再兼容 GoProxy GAE 以外的服务端。
@@ -30,6 +30,7 @@
         - `ipex.txt` 文件会在修改后大约二至十小时内被删除，其 IP 优先使用也同时失效；
         - 从列表载入 IP 时，会根据 `ip_bad.txt` 记录判断生成永久屏蔽 IP，并放入 `ip_del.txt`；
         - 如果新加 IP 包含永久屏蔽 IP，会自动从 `ip_del.txt` 删除重置。
+        - **注意**：首次使用或长时间未运行时，请在启动后等待 1-5 分钟，让 GotoX 完成 IP 筛选。
     - 也可以在 **［gae/iplist］** 配置中指定使用固定的 GAE IP 列表，不再持续进行 IP 检查筛选。
 - **自动化：**
     - 自动代理规则和 IP 列表文件可以在运行时替换，无需重启 GotoX。
