@@ -535,7 +535,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.close_connection = True
                 if not headers_sent:
                     c = message_html('504 GAE 响应超时', '从本地上传到 GAE-%r 超时，请稍后重试。' % self.url, str(errors)).encode()
-                    self.write('HTTP/1.1 504 Gateway Timeout\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n' % len(c))
+                    self.write(b'HTTP/1.1 504 Gateway Timeout\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
                     self.write(c)
                 return
             appid = self.get_appid()
