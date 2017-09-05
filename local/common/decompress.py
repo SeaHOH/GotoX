@@ -3,7 +3,7 @@
 
 import zlib
 from _compression import DecompressReader
-from io import DEFAULT_BUFFER_SIZE, BufferedReader
+from io import DEFAULT_BUFFER_SIZE, RawIOBase, BufferedReader
 from gzip import _PaddedFile, _GzipReader
 from brotli._brotli import ffi, lib
 
@@ -22,7 +22,10 @@ class _DeflateReader(DecompressReader):
         # This is a compatible, some streams has no magic.
         if magic != b'\170\234':
             fp = _PaddedFile(fp, magic)
-        super().__init__(fp, zlib.decompressobj, wbits=-zlib.MAX_WBITS)
+        DecompressReader.__init__(self,
+                                  fp,
+                                  zlib.decompressobj,
+                                  wbits=-zlib.MAX_WBITS)
         self._buffer = None
         self._length = 0
         self._read = 0
@@ -81,7 +84,7 @@ class GzipReader(BufferedReader):
     def __getattr__(self, attr):
         return getattr(self.fp, attr)
 
-class BrotliReader:
+class BrotliReader(RawIOBase):
     # A wrapper for brotlipy.
     # This code does not require class Inheritance of BufferedReader.
     # https://github.com/python-hyper/brotlipy
@@ -105,15 +108,7 @@ class BrotliReader:
             n = self.readinto(b)
             return memoryview(b)[:n].tobytes()
         else:
-            chunks =[]
-            while True:
-                try:
-                    data = self.decompressor.send(32768) #32KB
-                except StopIteration:
-                    self.decompressor = None
-                    break
-                chunks.append(data)
-            return b''.join(chunks)
+            return self.readall()
     read1 = read
 
     def readinto(self, b):
@@ -141,18 +136,17 @@ class BrotliReader:
             except StopIteration:
                 self.decompressor = None
                 break
-            data = memoryview(data)
             dsize = len(data)
             if read + dsize > size:
-                self._buffer = data
+                self._buffer = memoryview(data)
                 self._length = dsize
                 self._read = size - read
-                b[read:] = data[:self._read]
+                b[read:] = self._buffer[:self._read]
                 return size
             else:
                 _read = read
                 read += dsize
-                b[_read:read] = data #data[:]
+                b[_read:read] = data
         return read
 
     def close(self):
@@ -160,6 +154,7 @@ class BrotliReader:
             self.decompressor.close()
             self.decompressor = None
         self.fp.close()
+        return RawIOBase.close(self)
 
 class BrotliError(Exception):
     pass
