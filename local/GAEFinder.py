@@ -612,7 +612,11 @@ def getgaeip(nowgaelist, needgwscnt, needcomcnt):
     g.testok = max(needgwscnt * 8, g.needcomcnt * 16)
     g.maxhandletimeout = g_maxhandletimeout + timeToDelay[strftime('%H')]
     PRINT('==================== 开始查找 GAE IP ====================')
-    PRINT('需要查找 IP 数：%d/%d，待检测 IP 数：%d', needcomcnt, max(needgwscnt, needcomcnt), len(g.goodlist)+len(g.ipexlist)+len(g.iplist)+len(g.weaklist))
+    PRINT('需要查找 IP 数：%d/%d，待检测 IP 数：%d + %d',
+          needcomcnt,
+          max(needgwscnt, needcomcnt),
+          len(g.ipexlist) + len(g.iplist) + len(g.weaklist),
+          len(g.goodlist))
     #多线程搜索
     threadiplist = []
     for i in range(threads):
@@ -651,9 +655,13 @@ def getgaeip(nowgaelist, needgwscnt, needcomcnt):
         if ip[2]:
             gaelist['google_com'].append(ip[0])
     if m > 0 or n > 0:
-        PRINT('未找到足够的优质 GAE IP，添加 %d 个备选 IP：\n %s', m + n, ' | '.join(gaelist['google_gws']))
+        PRINT('未找到足够的优质 GAE IP，添加 %d 个备选 IP：\n %s',
+              m + n,
+              ' | '.join(gaelist['google_gws']))
     else:
-        PRINT('已经找到 %d 个新的优质 GAE IP：\n %s', len(gaelist['google_gws']), ' | '.join(gaelist['google_gws']))
+        PRINT('已经找到 %d 个新的优质 GAE IP：\n %s',
+              len(gaelist['google_gws']),
+              ' | '.join(gaelist['google_gws']))
     PRINT('==================== GAE IP 查找完毕 ====================')
     g.running = False
 

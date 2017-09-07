@@ -93,7 +93,7 @@
 # 兼容性
 - CPython 3.4/3.5 已测试。
 - **不支持** Python 2，保持兼容比较麻烦，已放弃。
-- 必须组件（可放入 `python/site-packages` 目录，支持 `.egg`）：
+- 必须组件：
     - gevent 1.1.2 及以上
     - pyOpenSSL 16.0.0 及以上
     - dnslib 0.8.3 及以上
