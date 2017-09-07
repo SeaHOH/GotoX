@@ -84,6 +84,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     fwd_timeout = GC.LINK_FWDTIMEOUT
     fwd_keeptime = GC.LINK_FWDKEEPTIME
     listen_port = GC.LISTEN_GAE_PORT, GC.LISTEN_AUTO_PORT
+    request_compress = GC.LINK_REQUESTCOMPRESS
 
     #可修改
     context_cache = LRUCache(32)
@@ -309,16 +310,17 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 logging.error('%s "%s %s" 附加请求内容读取失败：%r', self.address_string(), self.command, self.url, e)
                 raise
         # 强制请求压缩内容，之后会自动判断解压缩
-        r = request_headers.get('Range')
-        if not r or not r.startswith('bytes='):
-            ae = request_headers.get('Accept-Encoding')
-            if ae:
-                if 'gzip' not in ae:
-                    request_headers['Accept-Encoding'] += ', gzip'
-                if 'br' not in ae:
-                    request_headers['Accept-Encoding'] += ', br'
-            else:
-                request_headers['Accept-Encoding'] = 'gzip, br'
+        if self.request_compress:
+            r = request_headers.get('Range')
+            if not r or not r.startswith('bytes='):
+                ae = request_headers.get('Accept-Encoding')
+                if ae:
+                    if 'gzip' not in ae:
+                        request_headers['Accept-Encoding'] += ', gzip'
+                    if 'br' not in ae:
+                        request_headers['Accept-Encoding'] += ', br'
+                else:
+                    request_headers['Accept-Encoding'] = 'gzip, br'
         self.request_headers = request_headers
         self.payload = payload
         self.reread_req = True
