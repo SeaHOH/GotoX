@@ -19,6 +19,7 @@ import socket
 import traceback
 import ssl
 import mimetypes
+import time
 
 mimetypes._winreg = None
 
@@ -103,7 +104,7 @@ if hasattr(ssl, '_create_unverified_context'):
     setattr(ssl, '_create_default_https_context', ssl._create_unverified_context)
 
 println(u'Loading Google Appengine SDK...')
-from google_appengine.google.appengine.tools import appcfg
+from google_appengine.google.appengine.tools import appengine_rpc, appcfg
 
 def escaped(str):
     str_e = '"'
@@ -132,15 +133,38 @@ def set_app_info(filename, option, value):
         println(u'set_app_info(%s) error: %s' % (filename, e))
 
 def upload(dirname, appid):
-    assert isinstance(dirname, basestring) and isinstance(appid, basestring)
-    file_yaml = os.path.join(dirname, 'app.yaml')
-    set_app_info(file_yaml, 'application:', appid)
-    if os.name == 'nt':
-        appcfg.main(['appcfg', 'rollback', dirname])
-        appcfg.main(['appcfg', 'update', dirname])
+    try:
+        assert isinstance(dirname, basestring) and isinstance(appid, basestring)
+        file_yaml = os.path.join(dirname, 'app.yaml')
+        set_app_info(file_yaml, 'application:', appid)
+        if os.name == 'nt':
+            args_r = ['appcfg', 'rollback', dirname]
+            args_u = ['appcfg', 'update', dirname]
+        else:
+            args_r = ['appcfg', 'rollback', '--noauth_local_webserver', dirname]
+            args_u = ['appcfg', 'update', '--noauth_local_webserver', dirname]
+        max_retry = 1
+        for i in range(max_retry + 1):
+            try:
+                if appcfg.AppCfgApp(args_r).Run() != 0:
+                    continue
+                if appcfg.AppCfgApp(args_u).Run() != 0:
+                    continue
+                return True
+            except appengine_rpc.ClientLoginError as e:
+                return False
+            except Exception as e:
+                fail = i + 1
+                if i < max_retry:
+                    println(u'上传 (%s) 失败 %d 次，重试……' % (appid, fail))
+                    time.sleep(fail)
+                else:
+                    raise e
     else:
-        appcfg.main(['appcfg', 'rollback', '--noauth_local_webserver', dirname])
-        appcfg.main(['appcfg', 'update', '--noauth_local_webserver', dirname])
+        println(u'上传 (%s) 失败', appid)
+    except Exception as e:
+        println(u'上传 (%s) 失败：%r', (appid, e))
+        traceback.print_exc()
 
 def input_password():
     println(os.linesep + u'请设定 App 使用密码，如果您不想设定，请直接按回车键。')
@@ -183,16 +207,39 @@ def main():
 特别提醒：AppID 请勿包含 ID/Email 等个人信息!''')
     appids = input_appids()
     input_password()
+    fail_appids = []
+    retry = False
+
     for appid in appids:
-        upload('gae', appid)
-    println(os.linesep + u'上传成功，请不要忘记编辑 Config.user.ini 把你的 '
-                         u'AppID 填进去，谢谢。按回车键退出程序。')
+        result = upload('gae', appid)
+        if result is False:
+            break
+        if result is None:
+            fail_appids.append(appid)
+
+    if result is False:
+        println(os.linesep +
+                u'认证失败，请确保你已经登录正在上传的 AppID 的谷歌帐号。')
+        retry = True
+    elif fail_appids:
+        println(os.linesep + u'以下 AppID 上传失败：')
+        println(u'|'.join(fail_appids))
+        retry = True
+    else:
+        println(os.linesep +
+                u'上传成功，请不要忘记编辑 Config.user.ini 把你的 AppID '
+                u'填进去，谢谢。按回车键退出程序。')
+
+    if retry:
+        println(os.linesep + u'按回车键开始重新上传……')
     raw_input()
+    return retry
 
 
 if __name__ == '__main__':
     try:
-        main()
+        while main():
+            pass
     except:
         traceback.print_exc()
         raw_input()
