@@ -188,7 +188,7 @@ def download_cniplist(ipdb, parse_cniplist):
         #更新一般在月初几天，由于内容不包含日期信息，故记录为获取时的日期信息
         update = '17mon-' + time.strftime('%Y%m%d', time.localtime(time.time()))
         name = '17mon'
-    req.headers.pop('Range', None)
+    req.headers['Range'] = 'bytes=0-'
     read = 0
     l = None
     while read != l:
