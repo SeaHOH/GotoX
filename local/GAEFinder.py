@@ -540,23 +540,24 @@ def _randomip(iplist):
     n = int(random.random() * (cnt - 0.1))
     ip = iplist[n]
     del iplist[n]
-    g.pingcnt += 1
     return ip
 
 def randomip():
     with gLock:
         g.getgood += 1
+        g.pingcnt += 1
         if g.goodlist and g.getgood >= 5:
             g.getgood = 0
             return g.goodlist.pop()
-        elif g.ipexlist:
+        if g.ipexlist:
             return _randomip(g.ipexlist)
-        elif g.iplist:
+        if g.iplist:
             return _randomip(g.iplist)
-        elif g.goodlist:
+        if g.goodlist:
             return g.goodlist.pop()
-        elif g.weaklist:
+        if g.weaklist:
             return _randomip(g.weaklist)
+        g.pingcnt -= 1
 
 def getgaeip(nowgaelist, needgwscnt, needcomcnt):
     if g.running or needgwscnt == needcomcnt == 0:
