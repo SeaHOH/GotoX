@@ -24,18 +24,40 @@ from .common import cert_dir, NetWorkIOError, closed_errno, LRUCache, isip
 from .common.dns import dns, dns_resolve
 from .common.proxy import parse_proxy
 
+GoogleG23PKP = set((
 # https://pki.google.com/GIAG2.crt
-GoogleG2PKP = (
-b'-----BEGIN PUBLIC KEY-----\n'
-b'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnCoEd1zYUJE6BqOC4NhQ\n'
-b'SLyJP/EZcBqIRn7gj8Xxic4h7lr+YQ23MkSJoHQLU09VpM6CYpXu61lfxuEFgBLE\n'
-b'XpQ/vFtIOPRT9yTm+5HpFcTP9FMN9Er8n1Tefb6ga2+HwNBQHygwA0DaCHNRbH//\n'
-b'OjynNwaOvUsRBOt9JN7m+fwxcfuU1WDzLkqvQtLL6sRqGrLMU90VS4sfyBlhH82d\n'
-b'qD5jK4Q1aWWEyBnFRiL4U5W+44BKEMYq7LqXIBHHOZkQBKDwYXqVJYxOUnXitu0I\n'
-b'yhT8ziJqs07PRgOXlwN+wLHee69FM8+6PnG33vQlJcINNYmdnfsOEXmJHjfFr45y\n'
-b'aQIDAQAB\n'
-b'-----END PUBLIC KEY-----\n'
-)
+b'''\
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnCoEd1zYUJE6BqOC4NhQ
+SLyJP/EZcBqIRn7gj8Xxic4h7lr+YQ23MkSJoHQLU09VpM6CYpXu61lfxuEFgBLE
+XpQ/vFtIOPRT9yTm+5HpFcTP9FMN9Er8n1Tefb6ga2+HwNBQHygwA0DaCHNRbH//
+OjynNwaOvUsRBOt9JN7m+fwxcfuU1WDzLkqvQtLL6sRqGrLMU90VS4sfyBlhH82d
+qD5jK4Q1aWWEyBnFRiL4U5W+44BKEMYq7LqXIBHHOZkQBKDwYXqVJYxOUnXitu0I
+yhT8ziJqs07PRgOXlwN+wLHee69FM8+6PnG33vQlJcINNYmdnfsOEXmJHjfFr45y
+aQIDAQAB
+-----END PUBLIC KEY-----
+''',
+# https://pki.goog/gsr2/GIAG3.crt
+# https://pki.goog/gsr2/GTSGIAG3.crt
+b'''\
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAylJL6h7/ziRrqNpyGGjV
+Vl0OSFotNQl2Ws+kyByxqf5TifutNP+IW5+75+gAAdw1c3UDrbOxuaR9KyZ5zhVA
+Cu9RuJ8yjHxwhlJLFv5qJ2vmNnpiUNjfmonMCSnrTykUiIALjzgegGoYfB29lzt4
+fUVJNk9BzaLgdlc8aDF5ZMlu11EeZsOiZCx5wOdlw1aEU1pDbcuaAiDS7xpp0bCd
+c6LgKmBlUDHP+7MvvxGIQC61SRAPCm7cl/q/LJ8FOQtYVK8GlujFjgEWvKgaTUHF
+k5GiHqGL8v7BiCRJo0dLxRMB3adXEmliK+v+IO9p+zql8H4p7u2WFvexH6DkkCXg
+MwIDAQAB
+-----END PUBLIC KEY-----
+''',
+# https://pki.goog/gsr4/GIAG3ECC.crt
+b'''\
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEG4ANKJrwlpAPXThRcA3Z4XbkwQvW
+hj5J/kicXpbBQclS4uyuQ5iSOGKcuCRt8ralqREJXuRsnLZo0sIT680+VQ==
+-----END PUBLIC KEY-----
+'''))
+
 gws_servername = GC.GAE_SERVERNAME
 gae_testgwsiplist = GC.GAE_TESTGWSIPLIST
 autorange_threads = GC.AUTORANGE_FAST_THREADS
@@ -135,7 +157,7 @@ class BaseHTTPUtil:
         certs = sock.get_peer_cert_chain()
         if len(certs) < 3:
             raise ssl.SSLError('谷歌域名没有获取到正确的证书链：缺少中级 CA。')
-        if GoogleG2PKP != OpenSSL.crypto.dump_publickey(OpenSSL.crypto.FILETYPE_PEM, certs[1].get_pubkey()):
+        if OpenSSL.crypto.dump_publickey(OpenSSL.crypto.FILETYPE_PEM, certs[1].get_pubkey()) not in GoogleG23PKP:
             raise ssl.SSLError('谷歌域名没有获取到正确的证书链：中级 CA 公钥不匹配。')
         return certs[0]
 
@@ -632,6 +654,7 @@ gws_ciphers = (
     'RSA+SHA384+TLSv1.2:'
     'ECDHE+SHA256+TLSv1.2:'
     'RSA+SHA256+TLSv1.2:'
+    'TLSv1.2:'
     '!ECDHE-RSA-AES128-GCM-SHA256:'
     '!AES128-GCM-SHA256:'
     '!aNULL:!eNULL:!MD5:!DSS:!RC4:!3DES'
