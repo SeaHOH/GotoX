@@ -359,6 +359,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 response = decompress_readers[ce](response)
                 del response_headers['Content-Encoding']
                 response_headers.pop('Content-Length', None)
+                response_headers.pop('Accept-Ranges', None)
                 self.response_length = 0
                 logging.debug('正在以 %r 格式解压缩 %s', ce, self.url)
         length = self.response_length
