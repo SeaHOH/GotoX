@@ -247,7 +247,7 @@ def check_ca():
     ca = crypto.load_certificate(crypto.FILETYPE_PEM, content)
     ca_key = crypto.load_privatekey(crypto.FILETYPE_PEM, content)
     ca_subject = ca.get_subject()
-    ca_thumbprint = ca.digest(ca_digest)
+    ca_thumbprint = ca.digest('sha1')
     ca_certerror = False
     if os.path.exists(ca_certfile):
         with open(ca_certfile, 'rb') as fp:
