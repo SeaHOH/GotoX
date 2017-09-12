@@ -1,1 +1,1 @@
-@python27.exe uploader.py
+@"%~dp0python27.exe" "%~dp0uploader.py"

@@ -12,11 +12,44 @@ sys.dont_write_bytecode = True
 if sys.version > '3.':
     sys.exit(sys.stderr.write('Please run uploader.py by python2\n'))
 
+def println(s, file=sys.stderr):
+    assert type(s) is type(u'')
+    file.write(s.encode(sys.getfilesystemencoding(), 'replace') + os.linesep)
+
+_real_raw_input = raw_input
+def raw_input(s='', file=sys.stderr):
+    if type(s) is type(u''):
+        file.write(s.encode(sys.getfilesystemencoding(), 'replace'))
+        return _real_raw_input()
+    else:
+        return _real_raw_input(s)
+
+MAX_RETRIES = 1
 os.chdir(os.path.abspath(os.path.dirname(__file__)))
+GAE = {'dirname': 'gae'}
+_file_yaml = os.path.join(GAE['dirname'], 'app.yaml')
+_file_app = os.path.join(GAE['dirname'], 'gae.go')
+try:
+    with open(_file_yaml, 'rb') as fp:
+        GAE['app.yaml'] = fp.read()
+    with open(_file_app, 'rb') as fp:
+        GAE['gae.go'] = fp.read()
+except:
+    println(u'无法加载 App 文件，上传程序终止……')
+    raw_input()
+    sys.exit(1)
+CACHE_DIR = 'cache'
+if os.path.exists(CACHE_DIR):
+    if not os.path.isdir(CACHE_DIR):
+        os.remove(CACHE_DIR)
+        os.mkdir(CACHE_DIR)
+else:
+    os.mkdir(CACHE_DIR)
 
 import re
 import socket
 import traceback
+import shutil
 import ssl
 import mimetypes
 import time
@@ -28,10 +61,6 @@ def clear():
         os.system('cls')
     else:
         sys.stderr.write("\x1b[2J\x1b[H")
-
-def println(s, file=sys.stderr):
-    assert type(s) is type(u'')
-    file.write(s.encode(sys.getfilesystemencoding(), 'replace') + os.linesep)
 
 try:
     socket.create_connection(('127.0.0.1', 8087), timeout=0.5).close()
@@ -104,7 +133,8 @@ if hasattr(ssl, '_create_unverified_context'):
     setattr(ssl, '_create_default_https_context', ssl._create_unverified_context)
 
 println(u'Loading Google Appengine SDK...')
-from google_appengine.google.appengine.tools import appengine_rpc, appcfg
+from google_appengine.google.appengine.tools.appcfg import main as appcfg
+from google_appengine.google.appengine.tools.appengine_rpc import ClientLoginError
 
 def escaped(str):
     str_e = '"'
@@ -119,62 +149,70 @@ def escaped(str):
     str_e += '"'
     return str_e
 
-def set_app_info(filename, option, value):
+def set_app_info(filename, option, value, cache=None):
     old = option + '.*'
     new = option + ' ' + value
     try:
-        with open(filename, 'rb') as fp:
-            text = fp.read()
+        if cache is None:
+            with open(filename, 'rb') as fp:
+                text = fp.read()
+        else:
+            text = cache
         text_new = re.sub(old, new, text, 1)
-        if text_new != text:
+        if filename is None:
+            return text_new
+        if cache is not None or text_new != text:
             with open(filename, 'wb') as fp:
                 fp.write(text_new)
     except Exception as e:
         println(u'set_app_info(%s) error: %s' % (filename, e))
 
 def upload(dirname, appid):
-    try:
-        assert isinstance(dirname, basestring) and isinstance(appid, basestring)
-        file_yaml = os.path.join(dirname, 'app.yaml')
-        set_app_info(file_yaml, 'application:', appid)
-        if os.name == 'nt':
-            args_r = ['appcfg', 'rollback', dirname]
-            args_u = ['appcfg', 'update', dirname]
-        else:
-            args_r = ['appcfg', 'rollback', '--noauth_local_webserver', dirname]
-            args_u = ['appcfg', 'update', '--noauth_local_webserver', dirname]
-        max_retry = 1
-        for i in range(max_retry + 1):
-            try:
-                if appcfg.AppCfgApp(args_r).Run() != 0:
-                    continue
-                if appcfg.AppCfgApp(args_u).Run() != 0:
-                    continue
-                return True
-            except appengine_rpc.ClientLoginError as e:
-                return False
-            except Exception as e:
-                fail = i + 1
-                if i < max_retry:
-                    println(u'上传 (%s) 失败 %d 次，重试……' % (appid, fail))
-                    time.sleep(fail)
-                else:
-                    raise e
+    assert isinstance(dirname, basestring) and isinstance(appid, basestring)
+    dirname = os.path.join(CACHE_DIR, '%s-%s' % (dirname, appid))
+    if os.path.exists(dirname):
+        shutil.rmtree(dirname)
+    os.mkdir(dirname)
+    file_yaml = os.path.join(dirname, 'app.yaml')
+    file_app = os.path.join(dirname, 'gae.go')
+    set_app_info(file_yaml, 'application:', appid, GAE['app.yaml'])
+    with open(file_app, 'wb') as fp:
+        fp.write(GAE['new.gae.go'])
+    if os.name == 'nt':
+        appcfg(['appcfg', 'rollback', dirname])
+        appcfg(['appcfg', 'update', dirname])
     else:
-        println(u'上传 (%s) 失败', appid)
-    except Exception as e:
-        println(u'上传 (%s) 失败：%r', (appid, e))
-        traceback.print_exc()
+        appcfg(['appcfg', 'rollback', '--noauth_local_webserver', dirname])
+        appcfg(['appcfg', 'update', '--noauth_local_webserver', dirname])
+
+def retry_upload(max_retries, dirname, appid):
+    for i in xrange(max_retries + 1):
+        try:
+            upload(dirname, appid)
+            return True, None
+        except ClientLoginError as e:
+            return False, u'(%s) 登录失败：%r' % (appid, e)
+        except (Exception, SystemExit) as e:
+            fail = i + 1
+            if i < max_retries:
+                println(u'上传 (%s) 失败 %d 次，重试……' % (appid, fail))
+                time.sleep(fail)
+            else:
+                println(u'上传 (%s) 失败 %d 次：%r' % (appid, fail, e))
+                traceback.print_exc()
+    return None, None
 
 def input_password():
-    println(os.linesep + u'请设定 App 使用密码，如果您不想设定，请直接按回车键。')
-    password = escaped(raw_input('App PassWord:'))
-    file_app = os.path.join('gae', 'gae.go')
-    set_app_info(file_app, 'Password =', password)
+    println(os.linesep + u'如果您不想设定使用密码，请直接按回车键。')
+    password = escaped(raw_input(u'请输入 App 使用密码：'))
+    GAE['new.gae.go'] = set_app_info(None, 'Password =', password, GAE['gae.go'])
 
 def input_appids():
+    println(u'''
+输入多个 AppID 时需要使用字符“|”隔开。
+特别提醒：AppID 请勿包含 ID/Email 等个人信息!''')
     while True:
-        appids = raw_input('AppID:').lower()
+        appids = raw_input(u'请输入 AppID：').lower()
         if appids:
             appids = [x.strip() for x in appids.split('|')]
         else:
@@ -184,34 +222,42 @@ def input_appids():
             if not re.match(r'^[a-z\d\-]+$', appid):
                 println(u'''\
 AppID (%s) 格式错误，
-请登录 https://console.cloud.google.com/appengine 查看您的 AppID!''' % appid)
+请登录 https://console.cloud.google.com/appengine 查看您的 AppID!'''
+                        % appid)
                 ok = False
             if any(x in appid for x in ('ios', 'android', 'mobile')):
                 println(u'''\
 AppID 不能包含 ios/android/mobile 字样，
-请登录 https://console.cloud.google.com/appengine 删除 AppID (%s) 重建!''' % appid)
+请登录 https://console.cloud.google.com/appengine 删除 AppID (%s) 重建!'''
+                        % appid)
                 ok = False
         if ok:
             return appids
         else:
             println(os.linesep + u'请重新输入 AppID。')
 
+def check_oauth_tokens(tokens='.appcfg_oauth2_tokens'):
+    if os.path.exists(tokens):
+        delete = raw_input(os.linesep + 
+                 u'发现旧的登录凭证，是（Y）否（回车）删除：').lower() == 'y'
+        if delete:
+            os.remove(tokens)
+
 def main():
     clear()
     println(u'''\
 ===============================================================
  GoProxy GAE 服务端部署程序，开始上传 gae 应用文件夹。
-===============================================================
-
-请输入您的 AppID，多个 AppID 需要使用字符“|”隔开。
-特别提醒：AppID 请勿包含 ID/Email 等个人信息!''')
+===============================================================''')
+    check_oauth_tokens()
     appids = input_appids()
     input_password()
     fail_appids = []
     retry = False
 
+    println(os.linesep + u'开始上传……')
     for appid in appids:
-        result = upload('gae', appid)
+        result, msg = retry_upload(MAX_RETRIES, GAE['dirname'], appid)
         if result is False:
             break
         if result is None:
@@ -219,13 +265,16 @@ def main():
 
     if result is False:
         println(os.linesep +
-                u'认证失败，请确保你已经登录正在上传的 AppID 的谷歌帐号。')
+                u'认证失败，请确保你已经登录正在上传的 AppID 所属的谷歌帐号。'
+                u'如果你拥有多个谷歌帐号的 AppID，请分别登录后再上传。')
+        println(msg)
         retry = True
     elif fail_appids:
         println(os.linesep + u'以下 AppID 上传失败：')
         println(u'|'.join(fail_appids))
         retry = True
     else:
+        shutil.rmtree(CACHE_DIR)
         println(os.linesep +
                 u'上传成功，请不要忘记编辑 Config.user.ini 把你的 AppID '
                 u'填进去，谢谢。按回车键退出程序。')
