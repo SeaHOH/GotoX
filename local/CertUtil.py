@@ -11,21 +11,27 @@ import OpenSSL
 from OpenSSL import crypto
 from . import clogging as logging
 from time import time
+from datetime import datetime, timedelta
 from .common import cert_dir
 
 ca_vendor = 'GotoX'
 ca_certfile = os.path.join(cert_dir, 'CA.crt')
 ca_keyfile = os.path.join(cert_dir, 'CAkey.pem')
-ca_certdir = os.path.join(cert_dir, 'certs')
 ca_thumbprint = ''
 ca_key = None
 ca_subject = None
 ca_digest = 'sha256'
+ca_years = 20
+ca_time_b = -3600 * 24
+ca_time_a = 3600 * 24 * (365 * ca_years + ca_years // 4) + ca_time_b
 sub_keyfile = os.path.join(cert_dir, 'subkey.pem')
+sub_certdir = os.path.join(cert_dir, 'certs')
 sub_key = None
 sub_lock = threading.Lock()
-sub_serial = 3600*24*365*46
-sub_time = 3600*24*(365*10+10//4-1)
+sub_serial = 3600 * 24 * 365 * 46
+sub_years = 2
+sub_time_b = -3600
+sub_time_a = 3600 * 24 * (365 * sub_years + sub_years // 4) + sub_time_b
 
 def create_ca():
     pkey = crypto.PKey()
@@ -41,8 +47,8 @@ def create_ca():
     subject.organizationalUnitName = '%s Root' % ca_vendor
     subject.commonName = '%s CA' % ca_vendor
     #某些认证机制会检查签署时间与当前时间之差
-    ca.gmtime_adj_notBefore(-3600*24)
-    ca.gmtime_adj_notAfter(3600*24*(365*30+30//4-24))
+    ca.gmtime_adj_notBefore(ca_time_b)
+    ca.gmtime_adj_notAfter(ca_time_a)
     ca.set_issuer(subject)
     ca.set_pubkey(pkey)
     ca.add_extensions([
@@ -75,7 +81,7 @@ def create_subcert(certfile, commonname, ip=False, sans=None):
     sans = sans or []
     cert = crypto.X509()
     cert.set_version(2)
-    cert.set_serial_number(int((int(time()-sub_serial)+random.random())*100)) #setting the only number
+    cert.set_serial_number(int((int(time()-sub_serial)+random.random()) * 100)) #setting the only number
     subject = cert.get_subject()
     subject.countryName = 'CN'
     subject.stateOrProvinceName = 'Internet'
@@ -91,8 +97,8 @@ def create_subcert(certfile, commonname, ip=False, sans=None):
     if not isinstance(sans, bytes):
         sans = sans.encode()
     #某些认证机制会检查签署时间与当前时间之差
-    cert.gmtime_adj_notBefore(-3600)
-    cert.gmtime_adj_notAfter(sub_time)
+    cert.gmtime_adj_notBefore(sub_time_b)
+    cert.gmtime_adj_notAfter(sub_time_a)
     cert.set_issuer(ca_subject)
     cert.set_pubkey(sub_key)
     cert.add_extensions([crypto.X509Extension(b'subjectAltName', True, sans)])
@@ -103,16 +109,25 @@ def create_subcert(certfile, commonname, ip=False, sans=None):
 
 def get_cert(commonname, ip=False, sans=None):
     sans = sans or []
-    #if commonname.count('.') >= 2 and [len(x) for x in reversed(commonname.split('.'))] > [2, 4]:
-    #    commonname = '.'+commonname.partition('.')[-1]
     if ip:
-        certfile = os.path.join(ca_certdir, commonname.replace(':', '.') + '.crt')
+        certfile = os.path.join(sub_certdir, commonname.replace(':', '.') + '.crt')
     else:
         rcommonname = '.'.join(reversed(commonname.split('.')))
-        certfile = os.path.join(ca_certdir, rcommonname + '.crt')
+        certfile = os.path.join(sub_certdir, rcommonname + '.crt')
     with sub_lock:
         if os.path.exists(certfile):
-            return certfile, sub_keyfile
+            with open(certfile, 'rb') as fp:
+                cert = crypto.load_certificate(crypto.FILETYPE_PEM, fp.read())
+            # 最早在过期 30 天前更新证书
+            if datetime.strptime(cert.get_notAfter().decode(), '%Y%m%d%H%M%SZ') < datetime.utcnow() + timedelta(days=30):
+                try:
+                    os.remove(certfile)
+                except OSError as e:
+                    logging.warning('CertUtil.get_cert：旧证书删除失败：%r', e)
+                else:
+                    cert = None
+            if cert:
+                return certfile, sub_keyfile
     create_subcert(certfile, commonname, ip, sans)
     return certfile, sub_keyfile
 
@@ -204,7 +219,7 @@ def remove_cert(name):
         return 0
     return -1
 
-def verify_ca(ca, cert):
+def verify_certificate(ca, cert):
     store = crypto.X509Store()
     store.add_cert(ca)
     try:
@@ -226,13 +241,13 @@ def check_ca():
         if not OpenSSL:
             logging.critical('CAkey.pem is not exist and OpenSSL is disabled, ABORT!')
             sys.exit(-1)
-        if os.path.exists(ca_certdir):
-            if os.path.isdir(ca_certdir):
+        if os.path.exists(sub_certdir):
+            if os.path.isdir(sub_certdir):
                 logging.error('CAkey.pem 不存在，清空 Certs 文件夹。')
-                any(os.remove(x) for x in glob.glob(os.path.join(ca_certdir, '*.crt')))
+                any(os.remove(x) for x in glob.glob(os.path.join(sub_certdir, '*.crt')))
             else:
-                os.remove(ca_certdir)
-                os.mkdir(ca_certdir)
+                os.remove(sub_certdir)
+                os.mkdir(sub_certdir)
         try:
             if remove_cert('%s CA' % ca_vendor) == 0:
                 logging.error('CAkey.pem 不存在，从系统证书中删除。')
@@ -265,13 +280,13 @@ def check_ca():
     else:
         sub_keystr = dump_subkey()
     #Check Certs
-    certfiles = glob.glob(os.path.join(ca_certdir, '*.crt'))
+    certfiles = glob.glob(os.path.join(sub_certdir, '*.crt'))
     if certfiles:
         filename = random.choice(certfiles)
         with open(filename, 'rb') as fp:
             content = fp.read()
         cert = crypto.load_certificate(crypto.FILETYPE_PEM, content)
-        if not verify_ca(ca, cert) or (sub_keystr !=
+        if not verify_certificate(ca, cert) or (sub_keystr !=
                 crypto.dump_publickey(crypto.FILETYPE_PEM, cert.get_pubkey())):
             logging.error('Certs mismatch, delete Certs.')
             any(os.remove(x) for x in certfiles)
@@ -282,12 +297,12 @@ def check_ca():
     #if import_cert(ca_keyfile) != 0:
     #    logging.warning('install root certificate failed, Please run as administrator/root/sudo')
     #Check Certs Dir
-    if os.path.exists(ca_certdir):
-        if not os.path.isdir(ca_certdir):
-            os.remove(ca_certdir)
-            os.mkdir(ca_certdir)
+    if os.path.exists(sub_certdir):
+        if not os.path.isdir(sub_certdir):
+            os.remove(sub_certdir)
+            os.mkdir(sub_certdir)
     else:
-        os.mkdir(ca_certdir)
+        os.mkdir(sub_certdir)
 
 if __name__ == '__main__':
     check_ca()
