@@ -39,7 +39,7 @@ def check_reset():
 def get_redirect(target, url):
     '''Get the redirect target'''
     if isinstance(target, str) and target.find('://') < 9:
-        return target, None
+        return target, (None, None)
     rule, unquote, mhost, raction = target
     if isinstance(rule, partial):
         url = rule(url, 1)
@@ -109,11 +109,11 @@ def get_action(scheme, host, path, url):
                 #计算重定向网址
                 if action in REDIRECTS:
                     target = get_redirect(target, url)
-                    durl, mhost = target
-                    if durl and durl != url:
-                        return action, target
-                    else:
-                        continue
+                    if target is not None:
+                        durl, mhost = target
+                        if durl and durl != url:
+                            return action, target
+                    continue
                 #是否临时规则
                 if action == 'TEMPGAE':
                     expire, origfilter = target
@@ -149,9 +149,10 @@ def get_action(scheme, host, path, url):
                         #计算重定向网址
                         if action in REDIRECTS:
                             target = get_redirect(target, url)
-                            durl, mhost = target
-                            if durl and durl != url:
-                                filter = action, target
+                            if target is not None:
+                                durl, mhost = target
+                                if durl and durl != url:
+                                    filter = action, target
                         else:
                             filter = action, target
         #添加默认规则
