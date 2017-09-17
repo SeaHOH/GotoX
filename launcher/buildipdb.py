@@ -2,6 +2,7 @@
 # coding: utf-8
 
 import os
+import time
 import urllib.request
 from _functools import reduce
 
@@ -154,21 +155,31 @@ def download(req):
         context.load_verify_locations(ca1)
         context.load_verify_locations(ca2)
     retry_delay = 2
+    max_retries = 10
+    retry_times = 0
     timeout = 8
     l = 0
     while l is 0:
         fd = None
+        err = None
         try:
             fd = urllib.request.urlopen(req, timeout=timeout, context=context)
             l = int(fd.headers.get('Content-Length', 0))
-        except:
-            pass
+        except Exception as e:
+            err = e
         if l is 0:
             if fd:
                 fd.close()
+            retry_times += 1
+            if retry_times > max_retries:
+                logging.warning('请求网址 %r 时，重试 %d 次后仍然失败。'
+                                % (req.full_url, max_retries))
+                logging.warning('请忽略下面这个错误跟踪，并检查是否需要'
+                                '更改自动代理规则（ActionFilter.ini）。')
+                #利用错误抛出终止线程
+                raise OSError('链接失败', 0) if err is None else err
             logging.debug('链接直连 IP 库网址失败，%d 秒后重试' % retry_delay)
-            from time import sleep
-            sleep(retry_delay)
+            time.sleep(retry_delay)
     return fd, l
 
 def download_cniplist(ipdb, parse_cniplist):
@@ -184,7 +195,6 @@ def download_cniplist(ipdb, parse_cniplist):
         if Req_17MON is None:
             Req_17MON = urllib.request.Request(Url_17MON)
         req = Req_17MON
-        import time
         #更新一般在月初几天，由于内容不包含日期信息，故记录为获取时的日期信息
         update = '17mon-' + time.strftime('%Y%m%d', time.localtime(time.time()))
         name = '17mon'
@@ -278,7 +288,7 @@ def test(ipdb):
 if __name__ == '__main__':
     import socket
     class logging:
-        info = debug = print
+        warning = info = debug = print
 
     set_proxy = input('是否设置代理（Y/N）：')
     set_proxy = set_proxy.upper() == 'Y'
