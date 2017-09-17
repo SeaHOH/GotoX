@@ -580,19 +580,13 @@ def getgaeip(nowgaelist, needgwscnt, needcomcnt):
             g.ipset.clear()
     else:
         logging.error('未发现 IP 列表文件 "%s"，请创建！', g_ipfile)
-    now = time()
     if exists(g_ipexfile):
         ipexmtime = os.path.getmtime(g_ipexfile)
-        passtime = now - ipexmtime
-        #最快两小时，最慢十小时后删除
-        if passtime > 36000 or len(g.ipexlist) == 0 and passtime > 7200:
-            os.remove(g_ipexfile)
-            ipexmtime = now
         if ipexmtime > g.ipexmtime:
-            if exists(g_ipexfile):
-                copyfile(g_ipexfile, g_ipexfilebak)
+            copyfile(g_ipexfile, g_ipexfilebak)
             g.source_ipexset.clear()
             g.ipexset.clear()
+    now = time()
     if ipmtime > g.ipmtime or ipexmtime > g.ipexmtime:
         # 更新过 IP 列表
         g.ipmtime = ipmtime
@@ -603,6 +597,12 @@ def getgaeip(nowgaelist, needgwscnt, needcomcnt):
              #g.reloadlist or
              len(g.ipexlist) == len(g.iplist) == len(g.weaklist) == 0):
         g.ipexlist, g.iplist, g.weaklist = readiplist(nowgaeset)
+    if ipexmtime:
+        passtime = now - ipexmtime
+        #最快两小时，最慢十二小时后删除
+        if passtime > 43200 or len(g.ipexlist) == 0 and passtime > 7200:
+            os.remove(g_ipexfile)
+            ipexmtime = now
     g.getgood = 0
     g.gaelist = []
     g.gaelistbak = gaelistbak = []
