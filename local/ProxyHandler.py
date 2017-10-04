@@ -45,16 +45,10 @@ from .FilterUtil import (
     )
 
 normattachment = partial(re.compile(r'(?<=filename=)([^"\']+)').sub, r'"\1"')
-getbytes = re.compile(r'bytes=(\d*)-(\d*)(,..)?').search
-getrange = re.compile(r'bytes (\d+)-(\d+)/(\d+|\*)').search
+getbytes = re.compile(r'^bytes=(\d*)-(\d*)(,..)?').search
+getrange = re.compile(r'^bytes (\d+)-(\d+)/(\d+|\*)').search
 
 class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
-
-    # Win NT 不需要编码
-    enc = None if os.name == 'nt' else sys.getfilesystemencoding()
-    #设置为 str.encode 的默认值 UTF-8
-    enc = enc or 'UTF-8'
-
     protocol_version = 'HTTP/1.1'
     nLock = threading.Lock()
     nappid = 0
@@ -366,7 +360,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if hasattr(response, 'data'):
             # goproxy 服务端错误信息处理预读数据
             data = response.data
-            response_headers['Content-Type'] = 'text/html; charset=' + self.enc
+            response_headers['Content-Type'] = 'text/html; charset=utf-8'
         else:
             data = response.read(self.bufsize)
         need_chunked = data and not length # response 中的数据已经正确解码
@@ -423,8 +417,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     logging.warn('%s do_DIRECT "%s %s" 失败，返回 404', self.address_string(), self.command, self.url)
                     c = '404 无法找到给定的网址'.encode()
                     self.write('HTTP/1.1 404 Not Found\r\n'
-                               'Content-Type: text/plain; charset=%s\r\n'
-                               'Content-Length: %d\r\n\r\n' % (self.enc, len(c)))
+                               'Content-Type: text/plain; charset=utf-8\r\n'
+                               'Content-Length: %d\r\n\r\n' % len(c))
                     self.write(c)
                     return
                 else:
@@ -900,6 +894,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def list_dir(self, path, displaypath):
         #列表目录后将内容写入 html
         #改自 http.server.SimpleHTTPRequestHandler.list_directory
+        #统一使用 UTF-8 编码
         try:
             namelist = os.listdir(path)
         except OSError as e:
@@ -907,15 +902,14 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         namelist.sort(key=lambda a: a.lower())
         r = []
         displaypath = html.escape(displaypath)
-        enc = self.enc
         title = 'GotoX web 目录列表 - %s' % displaypath
         r.append('<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" '
                  '"http://www.w3.org/TR/html4/strict.dtd">\n'
                  '<html>\n<head>\n'
                  '<meta http-equiv="Content-Type" '
-                 'content="text/html; charset=%s">\n'
+                 'content="text/html; charset=utf-8">\n'
                  '<title>%s</title>\n'
-                 '</head>\n<body>' % (enc, title))
+                 '</head>\n<body>' % title)
         if displaypath == '/':
             r.append('<h2>\n'
                      '&diams;<a href="%s">点击安装 GotoX CA 证书到浏览器</a>\n'
@@ -939,12 +933,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                      % (urlparse.quote(linkname, errors='surrogatepass'),
                         html.escape(displayname)))
         r.append('</ul>\n<hr>\n</body>\n</html>\n')
-        content = '\n'.join(r).encode(enc, 'surrogateescape')
+        content = '\n'.join(r).encode(errors='surrogateescape')
         l = len(content)
         self.write('HTTP/1.1 200 Ok\r\n'
                    'Content-Length: %s\r\n'
-                   'Content-Type: text/html; charset=%s\r\n\r\n'
-                   % (l, enc))
+                   'Content-Type: text/html; charset=utf-8\r\n\r\n' % l)
         self.write(content)
         return l
 
@@ -999,8 +992,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                      '<h2><li>%s</li></h2>\n'
                      % (filename, e)).encode()
                 self.write('HTTP/1.1 403 Forbidden\r\n'
-                           'Content-Type: text/html; charset=%s\r\n'
-                           'Content-Length: %d\r\n\r\n' % (self.enc, len(c)))
+                           'Content-Type: text/html; charset=utf-8\r\n'
+                           'Content-Length: %d\r\n\r\n' % len(c))
                 self.write(c)
         else:
             logging.warning('%s "%s %s HTTP/1.1" 404 -，无法找到本地文件：%r',
@@ -1009,8 +1002,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                  '<h1>404 无法找到本地文件：</h1><hr>\n'
                  '<h2><li>%s</li></h2>\n' % filename).encode()
             self.write('HTTP/1.1 404 Not Found\r\n'
-                       'Content-Type: text/html; charset=%s\r\n'
-                       'Content-Length: %d\r\n\r\n' % (self.enc, len(c)))
+                       'Content-Type: text/html; charset=utf-8\r\n'
+                       'Content-Length: %d\r\n\r\n' % len(c))
             self.write(c)
 
     def do_BLOCK(self):

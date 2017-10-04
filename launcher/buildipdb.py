@@ -3,20 +3,25 @@
 
 import os
 import time
+import struct
+import socket
 import urllib.request
-from _functools import reduce
+#from _functools import reduce
 
-def ip2int(ip):
+def ip2int(ip, unpack=struct.unpack, inet_aton=socket.inet_aton):
     '''将 IPv4 地址转换为整数'''
-    return reduce(lambda a, b: a << 8 | b, map(int, ip.split('.')))
+    return unpack('>I', inet_aton(ip))[0]
+    #return reduce(lambda a, b: a << 8 | b, map(int, ip.split('.')))
 
-def int2bytes2(n):
+def int2bytes2(n, pack=struct.pack):
     '''将整数转换为大端序字节'''
-    return bytes(map(lambda b: (n >> b & 255), (8, 0)))
+    return pack('>H', n)
+    #return bytes(map(lambda b: (-1 >> b & 255), (8, 0)))
 
-def int2bytes4(n):
+def int2bytes4(n, pack=struct.pack):
     '''将整数转换为大端序字节'''
-    return bytes(map(lambda b: (n >> b & 255), (24, 16, 8, 0)))
+    return pack('>I', n)
+    #return bytes(map(lambda b: (n >> b & 255), (24, 16, 8, 0)))
 
 Url_APNIC = 'https://ftp.apnic.net/apnic/stats/apnic/delegated-apnic-latest'
 Url_17MON = 'https://raw.githubusercontent.com/17mon/china_ip_list/master/china_ip_list.txt'
@@ -43,12 +48,8 @@ for iprange in keeprange:
     ip, mask = iprange.split('/')
     keeplist.append((ip2int(ip), 32 - int(mask)))
 update = None
-g_iplist_apnic = []
-g_iplist_17mon = []
-g_index = {}
-g_padding = int2bytes2(-1)
 
-def save_iplist_as_db(ipdb, iplist):
+def save_iplist_as_db(ipdb, iplist, padding=b'\xff\xff'):
     #    +---------+
     #    | 4 bytes |                     <- data length
     #    +---------------+
@@ -60,7 +61,7 @@ def save_iplist_as_db(ipdb, iplist):
     #    +------------------------+
     lastip_s = 0
     lastip_e = 0
-    index = g_index
+    index = {}
     index_n = 0
     index_fip = -1
     offset = 0
@@ -111,7 +112,6 @@ def save_iplist_as_db(ipdb, iplist):
     #写入文件
     fd = open(ipdb, 'wb', buffering)
     fd.write(int2bytes4(offset))
-    padding = g_padding
     for i in range(224 * 2):
         fd.write(index.get(i, padding))
     fd.write(buffer[:offset])
@@ -121,10 +121,6 @@ def save_iplist_as_db(ipdb, iplist):
     count = str(index_n // 2)
     fd.write(count.encode('ascii'))
     fd.close()
-    #清空缓存
-    g_iplist_apnic.clear()
-    g_iplist_17mon.clear()
-    g_index.clear()
     logging.debug('更新信息：%s' % update)
     logging.debug('包含 IP 范围条目数：%s' % count)
     logging.debug('保存地址：%s' % ipdb)
@@ -223,7 +219,7 @@ def download_cniplist(ipdb, parse_cniplist):
 def parse_apnic_cniplist(fd):
     global update
     _update = update
-    iplist = g_iplist_apnic
+    iplist = []
     read = 0
     try:
         for line in fd:
@@ -244,7 +240,7 @@ def parse_apnic_cniplist(fd):
     return iplist, read
 
 def parse_17mon_cniplist(fd):
-    iplist = g_iplist_17mon
+    iplist = []
     read = 0
     try:
         for line in fd:
@@ -286,7 +282,6 @@ def test(ipdb):
     print('keeep IP 已保存完毕')
 
 if __name__ == '__main__':
-    import socket
     class logging:
         warning = info = debug = print
 

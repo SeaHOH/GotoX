@@ -9,7 +9,6 @@ import sys
 import threading
 import socket
 import ssl
-import struct
 import select
 import random
 import OpenSSL
@@ -410,7 +409,7 @@ class GAE_Finder:
         try:
             sock = socket.socket(socket.AF_INET if ':' not in ip else socket.AF_INET6)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, http_gws.offlinger_val)
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
             ssl_sock = http_gws.get_ssl_socket(sock, g_servername)
             ssl_sock.settimeout(conntimeout)

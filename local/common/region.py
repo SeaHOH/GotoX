@@ -1,9 +1,9 @@
 # coding:utf-8
 
 import os
+import socket
 import _thread as thread
 from time import sleep
-from socket import inet_aton
 from . import logging, data_dir, launcher_dir, LRUCache, isip, isipv4
 from local.GlobalConfig import GC
 
@@ -51,7 +51,7 @@ class DirectIPv4Database:
         #每 8 字节对应一段直连 IP 范围和一段非直连 IP 范围
         self.data = unpack('4s' * (data_len // 4), data)
 
-    def __contains__(self, ip):
+    def __contains__(self, ip, inet_aton=socket.inet_aton):
         #转换 IP 为 BE Uint32，实际类型 bytes
         nip = inet_aton(ip)
         #确定索引范围

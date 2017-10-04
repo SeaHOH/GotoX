@@ -51,6 +51,10 @@ class gae_params:
         self.host = self.fetchhost % appid
         self.url = self.fetchserver % appid
 
+gae_params_dict = {}
+for appid in GC.GAE_APPIDS:
+    gae_params_dict[appid] = gae_params(appid)
+
 def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
     # GAE 代理请求不允许设置 Host 头域
     if 'Host' in headers:
@@ -68,11 +72,11 @@ def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
     else:
         payload = struct.pack('!h', len(metadata)) + metadata
     request_headers = {
-        'User-Agent': 'Mozilla/5.0', 
+        'User-Agent': 'Mozilla/5.0',
         'Accept-Encoding': 'gzip',
         'Content-Length': str(len(payload))
         }
-    request_params = gae_params(appid)
+    request_params = gae_params_dict[appid]
     realurl = 'GAE-' + url
     qGAE.get() # get start from Queue
     while True:
