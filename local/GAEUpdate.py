@@ -238,7 +238,7 @@ def testipserver():
     #启动时全部测一遍
     iplist = GC.IPLIST_MAP['google_gws']
     testallgaeip()
-    looptime = max(90, GC.GAE_KEEPTIME) + min(10, GC.FINDER_MINIPCNT) * 6
+    looptime = max(90, GC.GAE_KEEPTIME) + min(10, GC.FINDER_MINIPCNT) * 20
     while True:
         now = time()
         lasttest = now - testip.lasttest
