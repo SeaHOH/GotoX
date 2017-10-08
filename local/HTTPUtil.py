@@ -246,8 +246,7 @@ class HTTPUtil(BaseHTTPUtil):
         # http://www.openssl.org/docs/apps/ciphers.html
         # openssl s_server -accept 443 -key CA.crt -cert CA.crt
         # set_ciphers as Modern Browsers
-        #BaseHTTPUtil.__init__(self, GC.LINK_OPENSSL, os.path.join(cert_dir, 'cacerts'), ssl_ciphers)
-        BaseHTTPUtil.__init__(self, 1, os.path.join(cert_dir, 'cacerts'), ssl_ciphers)
+        BaseHTTPUtil.__init__(self, GC.LINK_OPENSSL, os.path.join(cert_dir, 'cacerts'), ssl_ciphers)
         self.max_window = max_window
         self.max_retry = max_retry
         self.timeout = timeout
@@ -663,7 +662,8 @@ gws_ciphers = (
     '!ECDHE-RSA-AES128-GCM-SHA256:'
     '!AES128-SHA:'
     '!ECDHE-RSA-AES128-SHA:'
-    '!aNULL:!eNULL:!MD5:!DSS:!RC4:!3DES'
+    #'!aNULL:!eNULL:!MD5:!DSS:!RC4:!3DES'
+    '!aNULL:!eNULL:!EXPORT:!EXPORT40:!EXPORT56:!LOW:!RC4'
     )
 
 def_ciphers = ssl._DEFAULT_CIPHERS

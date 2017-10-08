@@ -80,6 +80,7 @@ class GC:
     LINK_WINDOW = min(CONFIG.getint('link', 'window'), 2)
     LINK_REQUESTCOMPRESS = CONFIG.getboolean('link', 'requestcompress')
     #LINK_OPENSSL = CONFIG.getboolean('link', 'openssl')
+    LINK_OPENSSL = 1
     LINK_VERIFYG2PK = CONFIG.getboolean('link', 'verifyg2pk')
     LINK_LOCALSSLTXT = CONFIG.get('link', 'localssl') or 'TLS'
     LINK_REMOTESSLTXT = CONFIG.get('link', 'remotessl') or 'TLSv1.2'
