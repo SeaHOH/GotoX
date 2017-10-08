@@ -246,7 +246,8 @@ class HTTPUtil(BaseHTTPUtil):
         # http://www.openssl.org/docs/apps/ciphers.html
         # openssl s_server -accept 443 -key CA.crt -cert CA.crt
         # set_ciphers as Modern Browsers
-        BaseHTTPUtil.__init__(self, GC.LINK_OPENSSL, os.path.join(cert_dir, 'cacerts'), ssl_ciphers)
+        #BaseHTTPUtil.__init__(self, GC.LINK_OPENSSL, os.path.join(cert_dir, 'cacerts'), ssl_ciphers)
+        BaseHTTPUtil.__init__(self, 1, os.path.join(cert_dir, 'cacerts'), ssl_ciphers)
         self.max_window = max_window
         self.max_retry = max_retry
         self.timeout = timeout
@@ -396,7 +397,7 @@ class HTTPUtil(BaseHTTPUtil):
             if self.gws and gws_servername is not None:
                 server_hostname = random.choice(gws_servername)
             elif cache_key == 'google_gws:443':
-                server_hostname = b'www.google.com'
+                server_hostname = b'update.googleapis.com'
             else:
                 server_hostname = None if isip(host) else host.encode()
             ssl_sock = self.get_ssl_socket(sock, server_hostname)
@@ -646,17 +647,22 @@ class HTTPUtil(BaseHTTPUtil):
 # http://docs.python.org/dev/library/ssl.html
 # https://www.openssl.org/docs/manmaster/man1/ciphers.html
 gws_ciphers = (
-    'ECDHE+AES256+AESGCM:'
-    'RSA+AES256+AESGCM:'
-    'ECDHE+AESGCM:'
-    'RSA+AESGCM:'
-    'ECDHE+SHA384+TLSv1.2:'
-    'RSA+SHA384+TLSv1.2:'
-    'ECDHE+SHA256+TLSv1.2:'
-    'RSA+SHA256+TLSv1.2:'
-    'TLSv1.2:'
-    '!ECDHE-RSA-AES128-GCM-SHA256:'
+    #'ECDHE+AES256+AESGCM:'
+    #'RSA+AES256+AESGCM:'
+    #'ECDHE+AESGCM:'
+    #'RSA+AESGCM:'
+    #'ECDHE+SHA384+TLSv1.2:'
+    #'RSA+SHA384+TLSv1.2:'
+    #'ECDHE+SHA256+TLSv1.2:'
+    #'RSA+SHA256+TLSv1.2:'
+    #'TLSv1.2:'
+    'ALL:'
+    '!RC4-SHA:'
     '!AES128-GCM-SHA256:'
+    '!ECDHE-RSA-RC4-SHA:'
+    '!ECDHE-RSA-AES128-GCM-SHA256:'
+    '!AES128-SHA:'
+    '!ECDHE-RSA-AES128-SHA:'
     '!aNULL:!eNULL:!MD5:!DSS:!RC4:!3DES'
     )
 
