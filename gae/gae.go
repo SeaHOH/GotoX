@@ -326,7 +326,7 @@ func handler(rw http.ResponseWriter, r *http.Request) {
 		IsTextContentType(resp.Header.Get("Content-Type")) {
 		content := reflect.ValueOf(resp.Body).Elem().FieldByName("content").Bytes()
 		switch {
-		case IsBinary(content):
+		case strings.Contains(oAE, "gzip") && IsBinary(content):
 			// urlfetch will remove "Content-Encoding: deflate" when "Accept-Encoding" contains "gzip"
 			ext := filepath.Ext(req.URL.Path)
 			if ext == "" || IsTextContentType(mime.TypeByExtension(ext)) {
