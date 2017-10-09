@@ -311,10 +311,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         elif self.request_compress:
             r = request_headers.get('Range')
             if not r or not r.startswith('bytes='):
-                if 'gzip' not in ae:
-                    request_headers['Accept-Encoding'] += ', gzip'
-                if 'br' not in ae:
-                    request_headers['Accept-Encoding'] += ', br'
+                if ae is '':
+                    request_headers['Accept-Encoding'] = 'gzip, br'
+                else:
+                    if 'gzip' not in ae:
+                        request_headers['Accept-Encoding'] += ', gzip'
+                    if 'br' not in ae:
+                        request_headers['Accept-Encoding'] += ', br'
         self.request_headers = request_headers
         self.payload = payload
         self.reread_req = True
