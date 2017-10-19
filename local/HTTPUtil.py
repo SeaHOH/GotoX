@@ -8,6 +8,7 @@ import socket
 import ssl
 import struct
 import random
+import socks
 import OpenSSL
 from . import clogging as logging
 from select import select
@@ -238,6 +239,7 @@ class HTTPUtil(BaseHTTPUtil):
 
     protocol_version = 'HTTP/1.1'
     offlinger_val = struct.pack('ii', 1, 0)
+    gae_front = False
 
     def __init__(self, max_window=4, timeout=8, proxy='', ssl_ciphers=None, max_retry=2):
         # http://docs.python.org/dev/library/ssl.html
@@ -253,6 +255,12 @@ class HTTPUtil(BaseHTTPUtil):
         self.proxy = proxy
         self.tcp_connection_time = LRUCache(512 if self.gws else 4096)
         self.ssl_connection_time = LRUCache(512 if self.gws else 4096)
+
+        if self.gws and GC.GAE_ENABLEPROXY:
+            self.gae_front_connection_time = LRUCache(128)
+            self.gae_front_connection_time.set('ip', LRUCache(128), noexpire=True)
+            self.gae_front = True
+
         #if self.proxy:
         #    dns_resolve = self.__dns_resolve_withproxy
         #    self.create_connection = self.__create_connection_withproxy
@@ -507,49 +515,106 @@ class HTTPUtil(BaseHTTPUtil):
         if result:
             raise result
 
-    def __create_connection_withproxy(self, address, timeout=None, source_address=None, **kwargs):
-        host, port = address
-        logging.debug('__create_connection_withproxy connect (%r, %r)', host, port)
-        _, proxyuser, proxypass, proxyaddress = parse_proxy(self.proxy)
-        try:
-            try:
-                dns_resolve(host)
-            except (socket.error, OSError):
-                pass
-            proxyhost, _, proxyport = proxyaddress.rpartition(':')
-            sock = socket.create_connection((proxyhost, int(proxyport)))
-            if host in dns:
-                hostname = random.choice(dns[host])
-            elif host.endswith('.appspot.com'):
-                hostname = 'www.google.com'
-            else:
-                hostname = host
-            request_data = 'CONNECT %s:%s HTTP/1.1\r\n' % (hostname, port)
-            if proxyuser and proxypass:
-                request_data += 'Proxy-authorization: Basic %s\r\n' % base64.b64encode(('%s:%s' % (proxyuser, proxypass)).encode()).decode().strip()
-            request_data += '\r\n'
-            sock.sendall(request_data)
-            response = httplib.HTTPResponse(sock)
-            response.begin()
-            if response.status >= 400:
-                logging.error('__create_connection_withproxy return http error code %s', response.status)
-                sock = None
-            return sock
-        except Exception as e:
-            logging.error('__create_connection_withproxy error %s', e)
-            raise
+#    def __create_connection_withproxy(self, address, timeout=None, source_address=None, **kwargs):
+#        host, port = address
+#        logging.debug('__create_connection_withproxy connect (%r, %r)', host, port)
+#        _, proxyuser, proxypass, proxyaddress = parse_proxy(self.proxy)
+#        try:
+#            try:
+#                dns_resolve(host)
+#            except (socket.error, OSError):
+#                pass
+#            proxyhost, _, proxyport = proxyaddress.rpartition(':')
+#            sock = socket.create_connection((proxyhost, int(proxyport)))
+#            if host in dns:
+#                hostname = random.choice(dns[host])
+#            elif host.endswith('.appspot.com'):
+#                hostname = 'www.google.com'
+#            else:
+#                hostname = host
+#            request_data = 'CONNECT %s:%s HTTP/1.1\r\n' % (hostname, port)
+#            if proxyuser and proxypass:
+#                request_data += 'Proxy-authorization: Basic %s\r\n' % base64.b64encode(('%s:%s' % (proxyuser, proxypass)).encode()).decode().strip()
+#            request_data += '\r\n'
+#            sock.sendall(request_data)
+#            response = httplib.HTTPResponse(sock)
+#            response.begin()
+#            if response.status >= 400:
+#                logging.error('__create_connection_withproxy return http error code %s', response.status)
+#                sock = None
+#            return sock
+#        except Exception as e:
+#            logging.error('__create_connection_withproxy error %s', e)
+#            raise
 
-    def __create_ssl_connection_withproxy(self, address, timeout=None, source_address=None, **kwargs):
-        host, port = address
-        logging.debug('__create_ssl_connection_withproxy connect (%r, %r)', host, port)
-        try:
-            sock = self.__create_connection_withproxy(address, timeout, source_address)
-            ssl_sock = self.get_ssl_socket(sock)
-            ssl_sock.sock = sock
-            return ssl_sock
-        except Exception as e:
-            logging.error('__create_ssl_connection_withproxy error %s', e)
-            raise
+#    def __create_ssl_connection_withproxy(self, address, timeout=None, source_address=None, **kwargs):
+#        host, port = address
+#        logging.debug('__create_ssl_connection_withproxy connect (%r, %r)', host, port)
+#        try:
+#            sock = self.__create_connection_withproxy(address, timeout, source_address)
+#            ssl_sock = self.get_ssl_socket(sock)
+#            ssl_sock.sock = sock
+#            return ssl_sock
+#        except Exception as e:
+#            logging.error('__create_ssl_connection_withproxy error %s', e)
+#            raise
+
+    if GC.GAE_ENABLEPROXY:
+        def get_gae_front(self, getfast=None):
+            proxy_list = GC.GAE_PROXYLIST.copy()
+            proxy_list.sort(key=self.get_gae_front_connection_time)
+            if getfast:
+                return proxy_list[0]
+            else:
+                return random.choice((proxy_list[0], random.choice(proxy_list[1:])))
+
+        def get_gae_front_connection_time(self, addr):
+            return self.gae_front_connection_time.get(addr, self.timeout)
+
+        def get_gae_front_connection_time_ip(self, addr):
+            return self.gae_front_connection_time['ip'].get(addr, 0)
+
+        def create_gae_connection_withproxy(self, address, hostname, cache_key, getfast=None, **kwargs):
+            proxy = self.get_gae_front(getfast)
+            proxytype, proxyuser, proxypass, proxyaddress = parse_proxy(proxy)
+            proxyhost, _, proxyport = proxyaddress.rpartition(':')
+            ips = dns_resolve(proxyhost)
+            if ips:
+                ipcnt = len(ips) 
+            else:
+                logging.error('create_gae_connection_withproxy 代理地址无法解析：%r', proxy)
+                return
+            if ipcnt > 1:
+                #优先使用未使用 IP，之后按链接速度排序
+                ips.sort(key=self.get_gae_front_connection_time_ip)
+            proxyport = int(proxyport)
+            while ips:
+                proxyhost = ips.pop(0)
+                if proxytype:
+                    proxytype = proxytype.upper()
+                if proxytype not in socks.PROXY_TYPES:
+                    proxytype = 'HTTP'
+                proxy_sock = socks.socksocket()
+                proxy_sock.set_proxy(socks.PROXY_TYPES[proxytype], proxyhost, proxyport, True, proxyuser, proxypass)
+                start_time = time()
+                try:
+                    proxy_sock = self.get_ssl_socket(proxy_sock, address[1].encode())
+                    proxy_sock.settimeout(self.timeout)
+                    proxy_sock.connect(address)
+                    proxy_sock.do_handshake()
+                except:
+                    cost_time = self.timeout + 1 + random.random()
+                    if ipcnt > 1:
+                        self.gae_front_connection_time[proxyhost] = cost_time
+                    self.gae_front_connection_time[proxy] = cost_time
+                    logging.error('create_gae_connection_withproxy 链接代理失败：%r', proxy)
+                    continue
+                else:
+                    cost_time = time() - start_time
+                    if ipcnt > 1:
+                        self.gae_front_connection_time[proxyhost] = cost_time
+                    self.gae_front_connection_time[proxy] = cost_time
+                return proxy_sock
 
     def _request(self, sock, method, path, protocol_version, headers, payload, bufsize=8192):
         request_data = '%s %s %s\r\n' % (method, path, protocol_version)
@@ -606,7 +671,9 @@ class HTTPUtil(BaseHTTPUtil):
             ssl_sock = None
             ip = ''
             try:
-                if ssl:
+                if realurl and self.gae_front:
+                    ssl_sock = self.create_gae_connection_withproxy(address, hostname, connection_cache_key, getfast=getfast)
+                elif ssl:
                     ssl_sock = self.create_ssl_connection(address, hostname, connection_cache_key, getfast=getfast)
                 else:
                     sock = self.create_connection(address, hostname, connection_cache_key)

@@ -779,34 +779,35 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if ipcnt > 1:
             #优先使用未使用 IP，之后按链接速度排序
             ips.sort(key=lambda ip: self.proxy_connection_time.get(ip, 0))
-        proxyhost = ips[0]
         proxyport = int(proxyport)
-        if proxytype:
-            proxytype = proxytype.upper()
-        if proxytype not in socks.PROXY_TYPES:
-            proxytype = 'HTTP'
-        proxy = socks.socksocket()
-        proxy.set_proxy(socks.PROXY_TYPES[proxytype], proxyhost, proxyport, True, proxyuser, proxypass)
-        if ipcnt > 1:
-            start_time = time()
-        try:
-            if self.fakecert:
-                proxy = http_nor.get_ssl_socket(proxy, self.host.encode())
-            proxy.connect((self.host, self.port))
-            if self.fakecert:
-                proxy.do_handshake()
-        except:
+        while ips:
+            proxyhost = ips.pop(0)
+            if proxytype:
+                proxytype = proxytype.upper()
+            if proxytype not in socks.PROXY_TYPES:
+                proxytype = 'HTTP'
+            proxy = socks.socksocket()
+            proxy.set_proxy(socks.PROXY_TYPES[proxytype], proxyhost, proxyport, True, proxyuser, proxypass)
             if ipcnt > 1:
-                self.proxy_connection_time[proxyhost] = self.fwd_timeout + 1 + random.random()
-            logging.error('%s%s:%d 转发 "%s %s" 到 [%s] 代理失败：%s',
-                          self.address_string(), proxyhost, proxyport, self.command, self.url or self.path, proxytype, self.target)
-            return
-        else:
-            if ipcnt > 1:
-                self.proxy_connection_time[proxyhost] = time() - start_time
-        logging.info('%s%s:%d 转发 "%s %s" 到 [%s] 代理：%s',
-                     self.address_string(), proxyhost, proxyport, self.command, self.url or self.path, proxytype, self.target)
-        self.forward_socket(proxy)
+                start_time = time()
+            try:
+                if self.fakecert:
+                    proxy = http_nor.get_ssl_socket(proxy, self.host.encode())
+                proxy.connect((self.host, self.port))
+                if self.fakecert:
+                    proxy.do_handshake()
+            except:
+                if ipcnt > 1:
+                    self.proxy_connection_time[proxyhost] = self.fwd_timeout + 1 + random.random()
+                logging.error('%s%s:%d 转发 "%s %s" 到 [%s] 代理失败：%s',
+                              self.address_string(), proxyhost, proxyport, self.command, self.url or self.path, proxytype, self.target)
+                continue
+            else:
+                if ipcnt > 1:
+                    self.proxy_connection_time[proxyhost] = time() - start_time
+            logging.info('%s%s:%d 转发 "%s %s" 到 [%s] 代理：%s',
+                         self.address_string(), proxyhost, proxyport, self.command, self.url or self.path, proxytype, self.target)
+            self.forward_socket(proxy)
 
     def do_REDIRECT(self):
         #重定向到目标地址

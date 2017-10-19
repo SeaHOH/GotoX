@@ -2,9 +2,17 @@
 '''ProxyUtil module, based on urllib2'''
 
 import socket
+from . import LRUCache
 from local.compat import urllib2
 
-parse_proxy = urllib2._parse_proxy
+parse_proxy_cache = LRUCache(128)
+
+def parse_proxy(proxy):
+    if proxy in parse_proxy_cache:
+        return parse_proxy_cache[proxy]
+    else:
+        parse_proxy_cache[proxy] = proxy_tuple = urllib2._parse_proxy(proxy)
+        return proxy_tuple
 
 def get_system_proxy():
     proxies = urllib2.getproxies()

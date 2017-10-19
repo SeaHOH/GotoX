@@ -73,6 +73,11 @@ class GC:
     GAE_IPLIST = CONFIG.get('gae', 'iplist')
     GAE_SERVERNAME = CONFIG.get('gae', 'servername').encode()
     GAE_SERVERNAME = tuple(GAE_SERVERNAME.split(b'|')) if GAE_SERVERNAME else None
+    GAE_ENABLEPROXY = CONFIG.getboolean('gae', 'enableproxy')
+    GAE_PROXYLIST = CONFIG.get('gae', 'proxylist')
+    GAE_PROXYLIST = tuple(GAE_PROXYLIST.split('|')) if GAE_PROXYLIST else None
+    if not GAE_PROXYLIST:
+        GAE_ENABLEPROXY = False
 
     LINK_PROFILE = CONFIG.get('link', 'profile')
     if LINK_PROFILE not in ('ipv4', 'ipv6', 'ipv46'):
@@ -119,6 +124,8 @@ class GC:
             logging.warning('没有找到列表 [%s]，使用默认查找 IP 模式。', GAE_IPLIST)
     else:
         GAE_TESTGWSIPLIST = True
+    if GAE_ENABLEPROXY:
+        GAE_TESTGWSIPLIST = False
 
     FILTER_ACTION = CONFIG.getint('filter', 'action')
     FILTER_ACTION = FILTER_ACTION if FILTER_ACTION in (1, 2, 3, 4) else 3
