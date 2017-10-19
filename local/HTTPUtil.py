@@ -605,14 +605,14 @@ class HTTPUtil(BaseHTTPUtil):
                 except:
                     cost_time = self.timeout + 1 + random.random()
                     if ipcnt > 1:
-                        self.gae_front_connection_time[proxyhost] = cost_time
+                        self.gae_front_connection_time['ip'][proxyhost] = cost_time
                     self.gae_front_connection_time[proxy] = cost_time
                     logging.error('create_gae_connection_withproxy 链接代理失败：%r', proxy)
                     continue
                 else:
                     cost_time = time() - start_time
                     if ipcnt > 1:
-                        self.gae_front_connection_time[proxyhost] = cost_time
+                        self.gae_front_connection_time['ip'][proxyhost] = cost_time
                     self.gae_front_connection_time[proxy] = cost_time
                 return proxy_sock
 
