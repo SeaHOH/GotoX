@@ -75,7 +75,7 @@ class GC:
     GAE_SERVERNAME = tuple(GAE_SERVERNAME.split(b'|')) if GAE_SERVERNAME else None
     GAE_ENABLEPROXY = CONFIG.getboolean('gae', 'enableproxy')
     GAE_PROXYLIST = CONFIG.get('gae', 'proxylist')
-    GAE_PROXYLIST = tuple(GAE_PROXYLIST.split('|')) if GAE_PROXYLIST else None
+    GAE_PROXYLIST = GAE_PROXYLIST.split('|') if GAE_PROXYLIST else None
     if not GAE_PROXYLIST:
         GAE_ENABLEPROXY = False
 

@@ -67,7 +67,7 @@ def _dns_resolve(host):
 
 def dns_resolve(host):
     if isip(host):
-        dns[host] = iplist = host,
+        dns[host] = iplist = [host]
         return iplist
     if host in dns:
         iplist = dns[host]

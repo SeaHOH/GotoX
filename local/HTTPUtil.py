@@ -23,7 +23,7 @@ from .compat import (
     )
 from .common import cert_dir, NetWorkIOError, closed_errno, LRUCache, isip
 from .common.dns import dns, dns_resolve
-from .common.proxy import parse_proxy
+from .common.proxy import parse_proxy, proxy_no_rdns
 
 GoogleG23PKP = set((
 # https://pki.google.com/GIAG2.crt
@@ -588,8 +588,10 @@ class HTTPUtil(BaseHTTPUtil):
                 #优先使用未使用 IP，之后按链接速度排序
                 ips.sort(key=self.get_gae_front_connection_time_ip)
             proxyport = int(proxyport)
+            ohost, port = address
             while ips:
                 proxyhost = ips.pop(0)
+                host = dns_resolve(ohost)[0] if proxy in proxy_no_rdns else ohost
                 if proxytype:
                     proxytype = proxytype.upper()
                 if proxytype not in socks.PROXY_TYPES:
@@ -598,16 +600,20 @@ class HTTPUtil(BaseHTTPUtil):
                 proxy_sock.set_proxy(socks.PROXY_TYPES[proxytype], proxyhost, proxyport, True, proxyuser, proxypass)
                 start_time = time()
                 try:
-                    proxy_sock = self.get_ssl_socket(proxy_sock, address[1].encode())
+                    proxy_sock = self.get_ssl_socket(proxy_sock, None if isip(ohost) else ohost.encode())
                     proxy_sock.settimeout(self.timeout)
-                    proxy_sock.connect(address)
+                    proxy_sock.connect((host, port))
                     proxy_sock.do_handshake()
-                except:
-                    cost_time = self.timeout + 1 + random.random()
-                    if ipcnt > 1:
-                        self.gae_front_connection_time['ip'][proxyhost] = cost_time
-                    self.gae_front_connection_time[proxy] = cost_time
-                    logging.error('create_gae_connection_withproxy 链接代理失败：%r', proxy)
+                except Exception as e:
+                    if '0x5b' in e.msg and not isip(host):
+                        proxy_no_rdns.add(proxy)
+                        ips.insert(0, proxyhost)
+                    else:
+                        cost_time = self.timeout + 1 + random.random()
+                        if ipcnt > 1:
+                            self.gae_front_connection_time['ip'][proxyhost] = cost_time
+                        self.gae_front_connection_time[proxy] = cost_time
+                        logging.error('create_gae_connection_withproxy 链接代理失败：%r', proxy)
                     continue
                 else:
                     cost_time = time() - start_time

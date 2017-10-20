@@ -782,6 +782,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         proxyport = int(proxyport)
         while ips:
             proxyhost = ips.pop(0)
+            host = dns_resolve(self.host)[0] if self.target in proxy_no_rdns else self.host
             if proxytype:
                 proxytype = proxytype.upper()
             if proxytype not in socks.PROXY_TYPES:
@@ -792,15 +793,19 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 start_time = time()
             try:
                 if self.fakecert:
-                    proxy = http_nor.get_ssl_socket(proxy, self.host.encode())
-                proxy.connect((self.host, self.port))
+                    proxy = http_nor.get_ssl_socket(proxy, None if isip(self.host) else self.host.encode())
+                proxy.connect((host, self.port))
                 if self.fakecert:
                     proxy.do_handshake()
-            except:
-                if ipcnt > 1:
-                    self.proxy_connection_time[proxyhost] = self.fwd_timeout + 1 + random.random()
-                logging.error('%s%s:%d 转发 "%s %s" 到 [%s] 代理失败：%s',
-                              self.address_string(), proxyhost, proxyport, self.command, self.url or self.path, proxytype, self.target)
+            except Exception as e:
+                if '0x5b' in e.msg and not isip(host):
+                    proxy_no_rdns.add(self.target)
+                    ips.insert(0, proxyhost)
+                else:
+                    if ipcnt > 1:
+                        self.proxy_connection_time[proxyhost] = self.fwd_timeout + 1 + random.random()
+                    logging.error('%s%s:%d 转发 "%s %s" 到 [%s] 代理失败：%s',
+                                  self.address_string(), proxyhost, proxyport, self.command, self.url or self.path, proxytype, self.target)
                 continue
             else:
                 if ipcnt > 1:
