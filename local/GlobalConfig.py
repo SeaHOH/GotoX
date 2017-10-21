@@ -71,6 +71,7 @@ class GC:
     #在服务端，这个数值代表的范围大小会增加 1
     GAE_MAXSIZE = min(int(CONFIG.get('gae', 'maxsize') or 1024 * 1024 * 4), 1024 * 1024 * 32 - 1)
     GAE_IPLIST = CONFIG.get('gae', 'iplist')
+    GAE_IPLIST2P = CONFIG.get('gae', 'iplist2p') or 'google_2p'
     GAE_SERVERNAME = CONFIG.get('gae', 'servername').encode()
     GAE_SERVERNAME = tuple(GAE_SERVERNAME.split(b'|')) if GAE_SERVERNAME else None
     GAE_ENABLEPROXY = CONFIG.getboolean('gae', 'enableproxy')
@@ -78,6 +79,8 @@ class GC:
     GAE_PROXYLIST = GAE_PROXYLIST.split('|') if GAE_PROXYLIST else None
     if not GAE_PROXYLIST:
         GAE_ENABLEPROXY = False
+    if GAE_ENABLEPROXY:
+        GAE_IPLIST = GAE_IPLIST2P
 
     LINK_PROFILE = CONFIG.get('link', 'profile')
     if LINK_PROFILE not in ('ipv4', 'ipv6', 'ipv46'):
