@@ -603,11 +603,11 @@ class HTTPUtil(BaseHTTPUtil):
                 start_time = time()
                 try:
                     proxy_sock = self.get_ssl_socket(proxy_sock, None if isip(ohost) else ohost.encode())
-                    proxy_sock.settimeout(self.timeout)
+                    proxy_sock._timeout = self.timeout
                     proxy_sock.connect((host, port))
                     proxy_sock.do_handshake()
                 except Exception as e:
-                    if '0x5b' in e.msg and not isip(host):
+                    if '0x5b' in str(e) and not isip(host):
                         proxy_no_rdns.add(proxy)
                         ips.insert(0, proxyhost)
                     else:
@@ -622,6 +622,7 @@ class HTTPUtil(BaseHTTPUtil):
                     if ipcnt > 1:
                         self.gae_front_connection_time['ip'][proxyhost] = cost_time
                     self.gae_front_connection_time[proxy] = cost_time
+                proxy_sock.xip = proxyhost, proxyport
                 return proxy_sock
 
     def _request(self, sock, method, path, protocol_version, headers, payload, bufsize=8192):
