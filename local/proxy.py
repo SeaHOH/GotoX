@@ -268,12 +268,12 @@ def main():
         from .GAEUpdate import testipserver
         testipserver()
     else:
-        if GC.GAE_IPLIST:
-            logging.warning('正在使用固定的 GAE IP 列表 [%s]，除了启动时，将不再进行 IP 检查。', GC.GAE_IPLIST)
         if GC.GAE_ENABLEPROXY:
             logging.warning('正在通过前置代理使用 GAE：%s。', GC.GAE_PROXYLIST)
-        from .GAEUpdate import checkgooglecom
-        threading._start_new_thread(checkgooglecom, ())
+        if GC.GAE_IPLIST:
+            logging.warning('正在使用固定的 GAE IP 列表 [%s]，除了启动时，将不再进行 IP 检查。', GC.GAE_IPLIST)
+            from .GAEUpdate import checkgooglecom
+            threading._start_new_thread(checkgooglecom, ())
         from time import sleep
         while True:
             sleep(10)

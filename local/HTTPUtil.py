@@ -561,6 +561,8 @@ class HTTPUtil(BaseHTTPUtil):
 
     if GC.GAE_ENABLEPROXY:
         def get_gae_front(self, getfast=None):
+            if len(GC.GAE_PROXYLIST) == 1:
+                return GC.GAE_PROXYLIST[0]
             proxy_list = GC.GAE_PROXYLIST.copy()
             proxy_list.sort(key=self.get_gae_front_connection_time)
             if getfast:
