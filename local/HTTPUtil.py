@@ -593,7 +593,7 @@ class HTTPUtil(BaseHTTPUtil):
             ohost, port = address
             while ips:
                 proxyhost = ips.pop(0)
-                host = dns_resolve(ohost)[0] if proxy in proxy_no_rdns else ohost
+                host = random.choice(dns_resolve(ohost))
                 if proxytype:
                     proxytype = proxytype.upper()
                 if proxytype not in socks.PROXY_TYPES:
@@ -602,28 +602,25 @@ class HTTPUtil(BaseHTTPUtil):
                 proxy_sock.set_proxy(socks.PROXY_TYPES[proxytype], proxyhost, proxyport, True, proxyuser, proxypass)
                 start_time = time()
                 try:
-                    proxy_sock = self.get_ssl_socket(proxy_sock, None if isip(ohost) else ohost.encode())
-                    proxy_sock._timeout = self.timeout
-                    proxy_sock.connect((host, port))
-                    proxy_sock.do_handshake()
+                    proxy_ssl_sock = self.get_ssl_socket(proxy_sock, ohost.encode())
+                    proxy_ssl_sock._timeout = self.timeout
+                    proxy_ssl_sock.connect((host, port))
+                    proxy_ssl_sock.do_handshake()
                 except Exception as e:
-                    if '0x5b' in str(e) and not isip(host):
-                        proxy_no_rdns.add(proxy)
-                        ips.insert(0, proxyhost)
-                    else:
-                        cost_time = self.timeout + 1 + random.random()
-                        if ipcnt > 1:
-                            self.gae_front_connection_time['ip'][proxyhost] = cost_time
-                        self.gae_front_connection_time[proxy] = cost_time
-                        logging.error('create_gae_connection_withproxy 链接代理失败：%r', proxy)
+                    cost_time = self.timeout + 1 + random.random()
+                    if ipcnt > 1:
+                        self.gae_front_connection_time['ip'][proxyhost] = cost_time
+                    self.gae_front_connection_time[proxy] = cost_time
+                    logging.error('create_gae_connection_withproxy 链接代理 [%s] 失败：%r', proxy, e)
                     continue
                 else:
                     cost_time = time() - start_time
                     if ipcnt > 1:
                         self.gae_front_connection_time['ip'][proxyhost] = cost_time
                     self.gae_front_connection_time[proxy] = cost_time
-                proxy_sock.xip = proxyhost, proxyport
-                return proxy_sock
+                proxy_ssl_sock.sock = proxy_sock
+                proxy_ssl_sock.xip = proxyhost, proxyport
+                return proxy_ssl_sock
 
     def _request(self, sock, method, path, protocol_version, headers, payload, bufsize=8192):
         request_data = '%s %s %s\r\n' % (method, path, protocol_version)

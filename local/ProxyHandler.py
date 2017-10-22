@@ -29,7 +29,7 @@ from .common import (
     )
 from .common.decompress import decompress_readers
 from .common.dns import set_dns, dns_resolve
-from .common.proxy import parse_proxy
+from .common.proxy import parse_proxy, proxy_no_rdns
 from .common.region import isdirect
 from .GlobalConfig import GC
 from .GAEUpdate import testip
