@@ -84,10 +84,14 @@ def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
         if response is None:
             return
         app_server = response.headers.get('Server')
-        if app_server == 'Google Frontend' or testipuseable(response.xip[0]):
+        if app_server == 'Google Frontend':
             break
-        else:
-            logging.warning('发现并移除非 GAE IP：%s，Server：%s', response.xip[0], app_server)
+        if GC.GAE_ENABLEPROXY:
+            logging.warning('GAE 前置代理 [%s:%d] 无法正常工作', *response.xip)
+            continue
+        if testipuseable(response.xip[0]):
+            break
+        logging.warning('发现并移除非 GAE IP：%s，Server：%s', response.xip[0], app_server)
     response.app_status = response.status
     if response.status != 200:
         return response

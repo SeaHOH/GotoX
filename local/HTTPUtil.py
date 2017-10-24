@@ -593,7 +593,7 @@ class HTTPUtil(BaseHTTPUtil):
             ohost, port = address
             while ips:
                 proxyhost = ips.pop(0)
-                host = random.choice(dns_resolve(ohost))
+                host = random.choice(GC.IPLIST_MAP['google_2p'])
                 if proxytype:
                     proxytype = proxytype.upper()
                 if proxytype not in socks.PROXY_TYPES:
