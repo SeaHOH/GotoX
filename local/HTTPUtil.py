@@ -239,7 +239,6 @@ class HTTPUtil(BaseHTTPUtil):
 
     protocol_version = 'HTTP/1.1'
     offlinger_val = struct.pack('ii', 1, 0)
-    gae_front = False
 
     def __init__(self, max_window=4, timeout=8, proxy='', ssl_ciphers=None, max_retry=2):
         # http://docs.python.org/dev/library/ssl.html
@@ -257,9 +256,9 @@ class HTTPUtil(BaseHTTPUtil):
         self.ssl_connection_time = LRUCache(512 if self.gws else 4096)
 
         if self.gws and GC.GAE_ENABLEPROXY:
-            self.gae_front_connection_time = LRUCache(128)
-            self.gae_front_connection_time.set('ip', LRUCache(128), noexpire=True)
-            self.gae_front = True
+            self.gws_front_connection_time = LRUCache(128)
+            self.gws_front_connection_time.set('ip', LRUCache(128), noexpire=True)
+            self.create_ssl_connection = self.create_gws_connection_withproxy
 
         #if self.proxy:
         #    dns_resolve = self.__dns_resolve_withproxy
@@ -560,40 +559,40 @@ class HTTPUtil(BaseHTTPUtil):
 #            raise
 
     if GC.GAE_ENABLEPROXY:
-        def get_gae_front(self, getfast=None):
+        def get_gws_front(self, getfast=None):
             if len(GC.GAE_PROXYLIST) == 1:
                 return GC.GAE_PROXYLIST[0]
             proxy_list = GC.GAE_PROXYLIST.copy()
-            proxy_list.sort(key=self.get_gae_front_connection_time)
+            proxy_list.sort(key=self.get_gws_front_connection_time)
             if getfast:
                 return proxy_list[0]
             else:
                 return random.choice((proxy_list[0], random.choice(proxy_list[1:])))
 
-        def get_gae_front_connection_time(self, addr):
-            return self.gae_front_connection_time.get(addr, self.timeout)
+        def get_gws_front_connection_time(self, addr):
+            return self.gws_front_connection_time.get(addr, self.timeout)
 
-        def get_gae_front_connection_time_ip(self, addr):
-            return self.gae_front_connection_time['ip'].get(addr, 0)
+        def get_gws_front_connection_time_ip(self, addr):
+            return self.gws_front_connection_time['ip'].get(addr, 0)
 
-        def create_gae_connection_withproxy(self, address, hostname, cache_key, getfast=None, **kwargs):
-            proxy = self.get_gae_front(getfast)
+        def create_gws_connection_withproxy(self, address, hostname, cache_key, getfast=None, **kwargs):
+            proxy = self.get_gws_front(getfast)
             proxytype, proxyuser, proxypass, proxyaddress = parse_proxy(proxy)
             proxyhost, _, proxyport = proxyaddress.rpartition(':')
             ips = dns_resolve(proxyhost)
             if ips:
                 ipcnt = len(ips) 
             else:
-                logging.error('create_gae_connection_withproxy 代理地址无法解析：%r', proxy)
+                logging.error('create_gws_connection_withproxy 代理地址无法解析：%r', proxy)
                 return
             if ipcnt > 1:
                 #优先使用未使用 IP，之后按链接速度排序
-                ips.sort(key=self.get_gae_front_connection_time_ip)
+                ips.sort(key=self.get_gws_front_connection_time_ip)
             proxyport = int(proxyport)
             ohost, port = address
             while ips:
                 proxyhost = ips.pop(0)
-                host = random.choice(GC.IPLIST_MAP['google_2p'])
+                host = random.choice(dns[hostname])
                 if proxytype:
                     proxytype = proxytype.upper()
                 if proxytype not in socks.PROXY_TYPES:
@@ -609,15 +608,15 @@ class HTTPUtil(BaseHTTPUtil):
                 except Exception as e:
                     cost_time = self.timeout + 1 + random.random()
                     if ipcnt > 1:
-                        self.gae_front_connection_time['ip'][proxyhost] = cost_time
-                    self.gae_front_connection_time[proxy] = cost_time
-                    logging.error('create_gae_connection_withproxy 链接代理 [%s] 失败：%r', proxy, e)
+                        self.gws_front_connection_time['ip'][proxyhost] = cost_time
+                    self.gws_front_connection_time[proxy] = cost_time
+                    logging.error('create_gws_connection_withproxy 链接代理 [%s] 失败：%r', proxy, e)
                     continue
                 else:
                     cost_time = time() - start_time
                     if ipcnt > 1:
-                        self.gae_front_connection_time['ip'][proxyhost] = cost_time
-                    self.gae_front_connection_time[proxy] = cost_time
+                        self.gws_front_connection_time['ip'][proxyhost] = cost_time
+                    self.gws_front_connection_time[proxy] = cost_time
                 proxy_ssl_sock.sock = proxy_sock
                 proxy_ssl_sock.xip = proxyhost, proxyport
                 return proxy_ssl_sock
@@ -677,9 +676,7 @@ class HTTPUtil(BaseHTTPUtil):
             ssl_sock = None
             ip = ''
             try:
-                if realurl and self.gae_front:
-                    ssl_sock = self.create_gae_connection_withproxy(address, hostname, connection_cache_key, getfast=getfast)
-                elif ssl:
+                if ssl:
                     ssl_sock = self.create_ssl_connection(address, hostname, connection_cache_key, getfast=getfast)
                 else:
                     sock = self.create_connection(address, hostname, connection_cache_key)

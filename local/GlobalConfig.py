@@ -81,6 +81,7 @@ class GC:
         GAE_ENABLEPROXY = False
     if GAE_ENABLEPROXY:
         GAE_IPLIST = GAE_IPLIST2P
+        GAE_TIMEOUT = max(GAE_TIMEOUT, 10)
 
     LINK_PROFILE = CONFIG.get('link', 'profile')
     if LINK_PROFILE not in ('ipv4', 'ipv6', 'ipv46'):
