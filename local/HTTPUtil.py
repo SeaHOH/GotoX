@@ -602,7 +602,7 @@ class HTTPUtil(BaseHTTPUtil):
                 start_time = time()
                 try:
                     proxy_ssl_sock = self.get_ssl_socket(proxy_sock, ohost.encode())
-                    proxy_ssl_sock._timeout = self.timeout
+                    proxy_ssl_sock.settimeout(self.timeout)
                     proxy_ssl_sock.connect((host, port))
                     proxy_ssl_sock.do_handshake()
                 except Exception as e:
