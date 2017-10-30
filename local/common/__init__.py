@@ -61,6 +61,7 @@ def get_refreshtime():
     refreshtime = mktime(strptime(refreshtime, '%y %j'))
     return refreshtime - now
 
+NONEKEY = object()
 class LRUCache:
     # Modified from http://pypi.python.org/pypi/lru/
     #最近最少使用缓存，支持过期时间设置
@@ -141,9 +142,9 @@ class LRUCache:
             expired = key not in self.cache
             return contains, expired, value
 
-    def pop(self, key=False):
+    def pop(self, key=NONEKEY):
         with self.lock:
-            if key:
+            if key is not NONEKEY:
                 self._expire_check(key)
                 if key in self.cache:
                     self._mark(key)
@@ -270,13 +271,32 @@ def message_html(title, banner, detail=''):
 #    return int(time())+random.random()
 
 def isip(ip):
-    return isipv4(ip) or isipv6(ip)
+    if ':' in ip:
+        return isipv6(ip)
+    else:
+        return isipv4(ip)
 
-isipv4 = re.compile(r'^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$').match
-isipv6 = re.compile(r'^(?!:[^:]|.*::.*::)'
-                    r'(?:[0-9a-f]{0,4}(?:(?<=::)|(?<!::):)){7}'
-                    r'([0-9a-f]{1,4}'
-                    r'|(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})$', re.I).match
+def isipv4(ip, inet_aton=socket.inet_aton):
+    try:
+        inet_aton(ip)
+    except:
+        return False
+    else:
+        return True
+
+def isipv6(ip, AF_INET6=socket.AF_INET6, inet_pton=socket.inet_pton):
+    try:
+        inet_pton(AF_INET6, ip)
+    except:
+        return False
+    else:
+        return True
+
+#isipv4 = re.compile(r'^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$').match
+#isipv6 = re.compile(r'^(?!:[^:]|.*::.*::)'
+#                    r'(?:[0-9a-f]{0,4}(?:(?<=::)|(?<!::):)){7}'
+#                    r'([0-9a-f]{1,4}'
+#                    r'|(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})$', re.I).match
 
 class classlist(list): pass
 
