@@ -161,9 +161,11 @@ def https_resolve(qname, qtype, queobj):
         if iplist: break
     queobj.put(iplist)
 
+A = 1
+AAAA = 28
+ANY = 255
+
 def _dns_over_https_resolve(qname):
-    A = 1
-    AAAA = 28
     n = 0
     xips = []
     iplist = classlist()
@@ -189,7 +191,13 @@ def _dns_remote_resolve(qname, dnsservers, blacklist, timeout):
     http://zh.wikipedia.org/wiki/域名服务器缓存污染
     http://support.microsoft.com/kb/241352
     '''
-    query = dnslib.DNSRecord(q=dnslib.DNSQuestion(qname))
+    if '46' in GC.LINK_PROFILE:
+        qtype = ANY
+    elif '4' in GC.LINK_PROFILE:
+        qtype = A
+    elif '6' in GC.LINK_PROFILE:
+        qtype = AAAA
+    query = dnslib.DNSRecord(q=dnslib.DNSQuestion(qname, qtype))
     query_data = query.pack()
     dns_v4_servers = [x for x in dnsservers if isipv4(x)]
     dns_v6_servers = [x for x in dnsservers if isipv6(x)]
@@ -214,7 +222,7 @@ def _dns_remote_resolve(qname, dnsservers, blacklist, timeout):
                     for sock in ins:
                         reply_data, xip = sock.recvfrom(512)
                         reply = dnslib.DNSRecord.parse(reply_data)
-                        iplist = classlist(str(x.rdata) for x in reply.rr if x.rtype == 1)
+                        iplist = classlist(str(x.rdata) for x in reply.rr if x.rtype in (A, AAAA))
                         if any(x in blacklist for x in iplist):
                             logging.warning('query qname=%r reply bad iplist=%r', qname, iplist)
                         else:
@@ -229,10 +237,11 @@ def _dns_remote_resolve(qname, dnsservers, blacklist, timeout):
 
 def dns_system_resolve(host):
     now = time()
-    try:
-        iplist = list(set(socket.gethostbyname_ex(host)[-1]) - GC.DNS_BLACKLIST)
-    except:
-        iplist = None
+    #try:
+    #    iplist = list(set(socket.gethostbyname_ex(host)[-1]) - GC.DNS_BLACKLIST)
+    #except:
+    #    iplist = None
+    iplist = _dns_remote_resolve(host, ['127.0.0.1'], GC.DNS_BLACKLIST, timeout=2)
     cost = int((time() - now) * 1000)
     logging.test('dns_system_resolve 已缓存：%s/%s，耗时：%s 毫秒，%s = %s',
                  len(dns), dns.max_items, cost, host, iplist or '查询失败')
