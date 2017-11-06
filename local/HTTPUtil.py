@@ -597,12 +597,22 @@ class HTTPUtil(BaseHTTPUtil):
                     proxytype = proxytype.upper()
                 if proxytype not in socks.PROXY_TYPES:
                     proxytype = 'HTTP'
-                proxy_sock = socks.socksocket()
+                proxy_sock = socks.socksocket(socket.AF_INET if ':' not in proxyhost else socket.AF_INET6)
+                # set reuseaddr option to avoid 10048 socket error
+                proxy_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                # set struct linger{l_onoff=1,l_linger=0} to avoid 10048 socket error
+                proxy_sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, self.offlinger_val)
+                # resize socket recv buffer 8K->1M to improve browser releated application performance
+                proxy_sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1048576)
+                proxy_sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32768)
+                # disable nagle algorithm to send http request quickly.
+                proxy_sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
                 proxy_sock.set_proxy(socks.PROXY_TYPES[proxytype], proxyhost, proxyport, True, proxyuser, proxypass)
                 start_time = time()
                 try:
                     proxy_ssl_sock = self.get_ssl_socket(proxy_sock, ohost.encode())
                     proxy_ssl_sock.settimeout(self.timeout)
+                    #proxy_ssl_sock.set_connect_state()
                     proxy_ssl_sock.connect((host, port))
                     proxy_ssl_sock.do_handshake()
                 except Exception as e:
