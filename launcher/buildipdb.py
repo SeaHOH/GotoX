@@ -25,6 +25,7 @@ def int2bytes4(n, pack=struct.pack):
 
 Url_APNIC = 'https://ftp.apnic.net/apnic/stats/apnic/delegated-apnic-latest'
 Url_17MON = 'https://raw.githubusercontent.com/17mon/china_ip_list/master/china_ip_list.txt'
+URL_GAOYIFAN = 'https://raw.githubusercontent.com/gaoyifan/china-operator-ip/ip-lists/china.txt'
 mask_dict = dict((str(2**i), i) for i in range(8, 25))
 keeprange = (    '0.0.0.0/8',  #本地网络
                 '10.0.0.0/8',  #私有网络
@@ -138,6 +139,10 @@ ca2 = os.path.join(root_dir, 'cert', 'cacert-get-iprange.pem')
 context = None
 Req_APNIC = None
 Req_17MON = None
+Req_GAOYIFAN = None
+p_APNIC = 1
+p_17MON = 1 << 1
+p_GAOYIFAN = 1 << 2
 
 def download(req):
     #显式加载 CA，确保正常使用
@@ -178,22 +183,30 @@ def download(req):
             time.sleep(retry_delay)
     return fd, l
 
-def download_cniplist(ipdb, parse_cniplist):
+def download_cniplist(ipdb, parse_cniplist, url):
     #支持断点续传
-    global Req_APNIC, Req_17MON, update
-    if parse_cniplist is parse_apnic_cniplist:
+    global Req_APNIC, Req_17MON, Req_GAOYIFAN, update
+    if url is Url_APNIC:
         if Req_APNIC is None:
-            Req_APNIC = urllib.request.Request(Url_APNIC)
+            Req_APNIC = urllib.request.Request(url)
         req = Req_APNIC
         update = None
         name = 'APNIC'
-    elif parse_cniplist is parse_17mon_cniplist:
+    elif url is Url_17MON:
         if Req_17MON is None:
-            Req_17MON = urllib.request.Request(Url_17MON)
+            Req_17MON = urllib.request.Request(url)
         req = Req_17MON
         #更新一般在月初几天，由于内容不包含日期信息，故记录为获取时的日期信息
         update = '17mon-' + time.strftime('%Y%m%d', time.localtime(time.time()))
         name = '17mon'
+    elif url is URL_GAOYIFAN:
+        if Req_GAOYIFAN is None:
+            Req_GAOYIFAN = urllib.request.Request(url)
+        req = Req_GAOYIFAN
+        #每日 3:00 之后更新
+        update = 'gaoyifan-' + time.strftime('%Y%m%d', time.localtime(time.time()))
+        name = 'gaoyifan'
+    logging.info('开始下载 %s IP' % name)
     req.headers['Range'] = 'bytes=0-'
     read = 0
     l = None
@@ -213,7 +226,7 @@ def download_cniplist(ipdb, parse_cniplist):
             read = max(read - 100, 0)
             req.headers['Range'] = 'bytes=%d-' % read
             logging.debug('%s IP 下载中断，续传：%d/%d' % (name, read, l))
-    logging.debug(name + ' IP 下载完毕')
+    logging.info(name + ' IP 下载完毕')
     return iplist
 
 def parse_apnic_cniplist(fd):
@@ -239,7 +252,7 @@ def parse_apnic_cniplist(fd):
         pass
     return iplist, read
 
-def parse_17mon_cniplist(fd):
+def parse_CIDR_cniplist(fd):
     iplist = []
     read = 0
     try:
@@ -252,28 +265,31 @@ def parse_17mon_cniplist(fd):
         pass
     return iplist, read
 
-def download_apnic_cniplist_as_db(ipdb):
-    logging.info('开始下载 APNIC IP')
-    iplist = download_cniplist(ipdb, parse_apnic_cniplist)
-    save_iplist_as_db(ipdb, iplist)
-    logging.info('APNIC IP 已保存完毕')
-
-def download_17mon_cniplist_as_db(ipdb):
-    logging.info('开始下载 17mon IP')
-    iplist = download_cniplist(ipdb, parse_17mon_cniplist)
-    save_iplist_as_db(ipdb, iplist)
-    logging.info('17mon IP 已保存完毕')
-
-def download_both_cniplist_as_db(ipdb):
-    logging.info('开始下载 APNIC 和 17mon IP')
+def download_cniplist_as_db(ipdb, p=p_APNIC):
     global update
-    _iplist = download_cniplist(ipdb, parse_apnic_cniplist)
-    _update = update
-    iplist = download_cniplist(ipdb, parse_17mon_cniplist)
-    iplist.extend(_iplist)
-    update = '%s and %s' % (_update, update)
+    _update = []
+    iplist = []
+
+    if p & p_APNIC:
+        _iplist = download_cniplist(ipdb, parse_apnic_cniplist, Url_APNIC)
+        iplist.extend(_iplist)
+        _update.append(update)
+
+
+    if p & p_17MON:
+        _iplist = download_cniplist(ipdb, parse_CIDR_cniplist, Url_17MON)
+        iplist.extend(_iplist)
+        _update.append(update)
+
+
+    if p & p_GAOYIFAN:
+        _iplist = download_cniplist(ipdb, parse_CIDR_cniplist, URL_GAOYIFAN)
+        iplist.extend(_iplist)
+        _update.append(update)
+
+    update = ' and '.join(_update)
     save_iplist_as_db(ipdb, iplist)
-    logging.info('APNIC 和 17mon IP 已保存完毕')
+    logging.info('CN IP 已保存完毕')
 
 def test(ipdb):
     global update
@@ -307,16 +323,18 @@ if __name__ == '__main__':
     ipdb1 = os.path.join(root_dir, 'data', 'directip.db')
     ipdb2 = os.path.join(file_dir, 'directip.db')
     Tips = '''
-********************************************
-*   从 APNIC 下载，放入数据目录 --- 按 1   *
-*                      当前目录 --- 按 2   *
-*   从 17mon 下载，放入数据目录 --- 按 3   *
-*                      当前目录 --- 按 4   *
-*    全部下载合并，放入数据目录 --- 按 5   *
-*                      当前目录 --- 按 6   *
-*   使用保留地址测试 -------------- 按 7   *
-*   退出 -------------------------- 按 0   *
-********************************************
+***********************************************
+*      从 APNIC 下载，放入数据目录 --- 按 1   *
+*                         当前目录 --- 按 2   *
+*      从 17mon 下载，放入数据目录 --- 按 3   *
+*                         当前目录 --- 按 4   *
+*   从 gaoyifan 下载，放入数据目录 --- 按 5   *
+*                         当前目录 --- 按 6   *
+*       全部下载合并，放入数据目录 --- 按 7   *
+*                         当前目录 --- 按 8   *
+*   使用保留地址测试 ----------------- 按 9   *
+*   退出 ----------------------------- 按 0   *
+***********************************************
 '''
 
     while True:
@@ -328,18 +346,22 @@ if __name__ == '__main__':
         if n == 0:
             break
         elif n == 1:
-            download_apnic_cniplist_as_db(ipdb1)
+            download_cniplist_as_db(ipdb1, p_APNIC)
         elif n == 2:
-            download_apnic_cniplist_as_db(ipdb2)
+            download_cniplist_as_db(ipdb2, p_APNIC)
         elif n == 3:
-            download_17mon_cniplist_as_db(ipdb1)
+            download_cniplist_as_db(ipdb1, p_17MON)
         elif n == 4:
-            download_17mon_cniplist_as_db(ipdb2)
+            download_cniplist_as_db(ipdb2, p_17MON)
         elif n == 5:
-            download_both_cniplist_as_db(ipdb1)
+            download_cniplist_as_db(ipdb1, p_GAOYIFAN)
         elif n == 6:
-            download_both_cniplist_as_db(ipdb2)
+            download_cniplist_as_db(ipdb2, p_GAOYIFAN)
         elif n == 7:
+            download_cniplist_as_db(ipdb1, p_APNIC | p_17MON | p_GAOYIFAN)
+        elif n == 8:
+            download_cniplist_as_db(ipdb2, p_APNIC | p_17MON | p_GAOYIFAN)
+        elif n == 9:
             test(ipdb2)
         else:
             print('输入错误！')

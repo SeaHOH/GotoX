@@ -283,9 +283,13 @@ sub_menu1 = (('打开默认配置', lambda x: Popen(CONFIG_FILENAME, shell=True)
              ('打开自动规则配置', lambda x: Popen(CONFIG_AUTO_FILENAME, shell=True)))
 sub_menu2 = (('建议更新频率：10～30 天一次', 'pass', MFS_DISABLED),
              (None, '-'),
-             ('从 APNIC 下载（每日更新）', lambda x: buildipdb.download_apnic_cniplist_as_db(ipdb_direct)),
-             ('从 17mon 下载（每月初更新）', lambda x: buildipdb.download_17mon_cniplist_as_db(ipdb_direct)),
-             ('从以上两者下载后合并', lambda x: buildipdb.download_both_cniplist_as_db(ipdb_direct)))
+             ('Ⅰ 从 APNIC 下载（每日更新）', lambda x: buildipdb.download_cniplist_as_db(ipdb_direct, buildipdb.p_APNIC)),
+             ('Ⅱ 从 17mon 下载（每月初更新）', lambda x: buildipdb.download_cniplist_as_db(ipdb_direct, buildipdb.p_17MON)),
+             ('Ⅲ 从 gaoyifan 下载（每日更新）', lambda x: buildipdb.download_cniplist_as_db(ipdb_direct, buildipdb.p_GAOYIFAN)),
+             ('从 Ⅰ、Ⅱ 下载后合并', lambda x: buildipdb.download_cniplist_as_db(ipdb_direct, buildipdb.p_APNIC | buildipdb.p_17MON)),
+             ('从 Ⅰ、Ⅲ 下载后合并', lambda x: buildipdb.download_cniplist_as_db(ipdb_direct, buildipdb.p_APNIC | buildipdb.p_GAOYIFAN)),
+             ('从 Ⅱ、Ⅲ 下载后合并', lambda x: buildipdb.download_cniplist_as_db(ipdb_direct, buildipdb.p_17MON | buildipdb.p_GAOYIFAN)),
+             ('全部下载后合并', lambda x: buildipdb.download_cniplist_as_db(ipdb_direct, buildipdb.p_APNIC | buildipdb.p_17MON | buildipdb.p_GAOYIFAN)))
 
 def build_menu(systray):
     global proxy_state_menu, last_main_menu
