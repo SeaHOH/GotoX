@@ -161,9 +161,8 @@ def https_resolve(qname, qtype, queobj):
         if iplist: break
     queobj.put(iplist)
 
-A = 1
-AAAA = 28
-ANY = 255
+A = dnslib.QTYPE.A
+AAAA = dnslib.QTYPE.AAAA
 
 def _dns_over_https_resolve(qname):
     n = 0
@@ -185,23 +184,24 @@ def _dns_over_https_resolve(qname):
         iplist.xip = '｜'.join(xips), None
     return iplist
 
-def _dns_remote_resolve(qname, dnsservers, blacklist, timeout):
+qtypes = []
+if '4' in GC.LINK_PROFILE:
+    qtypes.append(A)
+if '6' in GC.LINK_PROFILE:
+    qtypes.append(AAAA)
+
+def _dns_remote_resolve(qname, dnsservers, blacklist, timeout, qtypes=qtypes):
     '''
     http://gfwrev.blogspot.com/2009/11/gfwdns.html
     http://zh.wikipedia.org/wiki/域名服务器缓存污染
     http://support.microsoft.com/kb/241352
     '''
-    if '46' in GC.LINK_PROFILE:
-        qtype = ANY
-    elif '4' in GC.LINK_PROFILE:
-        qtype = A
-    elif '6' in GC.LINK_PROFILE:
-        qtype = AAAA
-    query = dnslib.DNSRecord(q=dnslib.DNSQuestion(qname, qtype))
-    query_data = query.pack()
+    query_datas = []
+    for qtype in qtypes:
+        query = dnslib.DNSRecord(q=dnslib.DNSQuestion(qname, qtype))
+        query_datas.append(query.pack())
     dns_v4_servers = [x for x in dnsservers if isipv4(x)]
     dns_v6_servers = [x for x in dnsservers if isipv6(x)]
-    sock_v4 = sock_v6 = None
     socks = []
     if dns_v4_servers:
         sock_v4 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -214,15 +214,18 @@ def _dns_remote_resolve(qname, dnsservers, blacklist, timeout):
         for _ in range(2):
             try:
                 for dnsserver in dns_v4_servers:
-                    sock_v4.sendto(query_data, (dnsserver, 53))
+                    for query_data in query_datas:
+                        sock_v4.sendto(query_data, (dnsserver, 53))
                 for dnsserver in dns_v6_servers:
-                    sock_v6.sendto(query_data, (dnsserver, 53))
+                    for query_data in query_datas:
+                        sock_v6.sendto(query_data, (dnsserver, 53))
                 while time() < timeout_at:
                     ins, _, _ = select(socks, [], [], 0.1)
                     for sock in ins:
                         reply_data, xip = sock.recvfrom(512)
                         reply = dnslib.DNSRecord.parse(reply_data)
-                        iplist = classlist(str(x.rdata) for x in reply.rr if x.rtype in (A, AAAA))
+                        #未处理 qtypes 包含 ANY 的情况
+                        iplist = classlist(str(x.rdata) for x in reply.rr if x.rtype in qtypes)
                         if any(x in blacklist for x in iplist):
                             logging.warning('query qname=%r reply bad iplist=%r', qname, iplist)
                         else:
