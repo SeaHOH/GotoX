@@ -84,18 +84,19 @@ direct_endswith = *direct_top_level, *GC.LINK_TEMPWHITELIST
 def isdirect(host):
     if ipdb is None:
         return False
-    if host in direct_cache:
+    try:
         return direct_cache[host]
-    if host.endswith(direct_endswith):
-        direct_cache[host] = True
-        return True
-    ipv4 = None
-    for ip in dns_resolve(host):
-        if isipv4(ip):
-            ipv4 = ip
-            break
-    direct_cache[host] = direct = ipv4 in ipdb if ipv4 else False
-    return direct
+    except KeyError:
+        if host.endswith(direct_endswith):
+            direct_cache[host] = True
+            return True
+        ipv4 = None
+        for ip in dns_resolve(host):
+            if isipv4(ip):
+                ipv4 = ip
+                break
+        direct_cache[host] = direct = ipv4 in ipdb if ipv4 else False
+        return direct
 
 def load_ipdb():
     global ipdb, IPDBVer

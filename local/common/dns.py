@@ -69,13 +69,13 @@ def dns_resolve(host):
     if isip(host):
         dns[host] = iplist = [host]
         return iplist
-    if host in dns:
+    try:
         iplist = dns[host]
         #避免 DNS 响应较慢时重复设置 IP
         while not iplist and iplist != 0:
             sleep(0.01)
             iplist = dns[host]
-    else:
+    except KeyError:
         dns[host] = None
         iplist = _dns_resolve(host)
         if iplist:

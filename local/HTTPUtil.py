@@ -226,10 +226,12 @@ class BaseHTTPUtil:
 
 connect_limiter = LRUCache(512)
 def set_connect_start(ip):
-    if ip not in connect_limiter:
+    try:
+        connect_limiter[ip].put(True)
+    except KeyError:
         #只是限制同时正在发起的链接数，并不限制链接的总数，所以设定尽量小的数字
         connect_limiter[ip] = Queue.LifoQueue(3)
-    connect_limiter[ip].put(True)
+        connect_limiter[ip].put(True)
 
 def set_connect_finish(ip):
     connect_limiter[ip].get()

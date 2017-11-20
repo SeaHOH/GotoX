@@ -92,12 +92,16 @@ div, input {font-size: 12pt; font-family: arial,sans-serif}
                 if user in self.users:
                     logged_users = self.logged_users
                     auth_white_list = self.auth_white_list
-                    if user in logged_users:
+                    try:
                         #删除该用户之前登录的 IP，使其登录失效
                         del auth_white_list[logged_users[user]]
-                    if client_ip in auth_black_list:
+                    except KeyError:
+                        pass
+                    try:
                         #清除当前登 IP 的失败记录
                         del auth_black_list[client_ip]
+                    except KeyError:
+                        pass
                     #更新用户最新登录成功的 IP
                     logged_users[user] = client_ip
                     #登录成功加入白名单
@@ -114,9 +118,9 @@ div, input {font-size: 12pt; font-family: arial,sans-serif}
                 else:
                     #登录失败计数
                     logging.error('%s 登录 GotoX 失败', self.address_string())
-                    if client_ip in auth_black_list:
+                    try:
                         auth_black_list[client_ip] += 1
-                    else:
+                    except KeyError:
                         auth_black_list[client_ip] = 1
                     self.send_login_page(redirect=redirect, msg='登录失败！')
             else:
@@ -272,9 +276,9 @@ elif GC.LISTEN_AUTH == 1:
                 self.do_FAKECERT()
             else:
                 self.write(self.auth_warning)
-                if client_ip in auth_black_list:
+                try:
                     auth_black_list[client_ip] += self.every_try_times
-                else:
+                except KeyError:
                     auth_black_list[client_ip] = self.every_try_times
                 logging.error('%s 请求代理，但密码错误！"%s %s"',
                         self.address_string(), self.command, self.url or self.path)

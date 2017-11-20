@@ -139,7 +139,7 @@ class GC:
     FINDER_MINIPCNT = int(CONFIG.get('finder', 'minipcnt') or 6)
     FINDER_MAXTIMEOUT = int(CONFIG.get('finder', 'maxtimeout') or 1000)
     FINDER_MAXTHREADS = int(CONFIG.get('finder', 'maxthreads') or 30)
-    FINDER_BLOCKTIME = int(CONFIG.get('finder', 'blocktime') or 12)
+    FINDER_BLOCKTIME = float(CONFIG.get('finder', 'blocktime') or 12)
     FINDER_TIMESBLOCK = int(CONFIG.get('finder', 'timesblock') or 2)
     FINDER_TIMESDEL = int(CONFIG.get('finder', 'timesdel') or max(FINDER_TIMESBLOCK, 2) * 10)
     FINDER_STATDAYS = int(CONFIG.get('finder', 'statdays') or 4)

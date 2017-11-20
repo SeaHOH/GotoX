@@ -1038,13 +1038,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         hostparts = self.url_parts.scheme, self.host
         host = '%s://%s' % hostparts
         #最近是否失败（缓存设置超时两分钟）
-        if host in self.badhost:
+        try:
             if self.badhost[host] & 2 == 0:
                 #记录临时规则的过期时间
                 set_temp_action(*hostparts, self.path[1:])
                 logging.warning('将 %r 加入 "GAE" 规则%s。', host, GC.LINK_TEMPTIME_S)
                 self.badhost[host] |= 2
-        else:
+        except KeyError:
             self.badhost[host] = 0
         self.action = 'do_GAE'
         self.do_GAE()
@@ -1052,7 +1052,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def go_FAKECERT(self):
         host = 'http%s://%s' % ('s' if self.ssl else '', self.host)
         #最近是否失败（缓存设置超时两分钟）
-        if host in self.badhost:
+        try:
             if self.badhost[host] & 1 == 0:
                 action, _ = filter = ssl_filters_cache[host]
                 #防止重复替换
@@ -1061,7 +1061,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     ssl_filters_cache.set(host, ('do_FAKECERT', filter), GC.LINK_TEMPTIME)
                 logging.warning('将 %r 加入 "FAKECERT" 规则%s。', host, GC.LINK_TEMPTIME_S)
                 self.badhost[host] |= 1
-        else:
+        except KeyError:
             self.badhost[host] = 0
         self.action = 'do_FAKECERT'
         self.do_FAKECERT()
@@ -1119,9 +1119,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             nhost = len(hostsp)
             if nhost > 3 or (nhost == 3 and len(hostsp[-2]) > 3):
                 host = '.'.join(hostsp[1:])
-        if host in self.context_cache:
+        try:
             return self.context_cache[host]
-        else:
+        except KeyError:
             certfile, keyfile = CertUtil.get_cert(host, ip)
             self.context_cache[host] = context = ssl.SSLContext(GC.LINK_LOCALSSL)
             context.verify_mode = ssl.CERT_NONE

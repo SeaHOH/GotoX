@@ -53,10 +53,12 @@ reset_errno = errno.ECONNRESET, 10063, errno.ENAMETOOLONG
 closed_errno = errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE
 pass_errno = -1, errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE
 
-refreshzone = timezone - 28800
+timezone_PST = timezone - 3600 * 8 # UTC-8
+timezone_PDT = timezone - 3600 * 7 # UTC-7
 def get_refreshtime():
     #距离 GAE 流量配额每日刷新的时间
-    now = time() + refreshzone
+    #刷新时间是否遵循夏令时？
+    now = time() + timezone_PST
     refreshtime = strftime('%y %j', localtime(now + 86400))
     refreshtime = mktime(strptime(refreshtime, '%y %j'))
     return refreshtime - now

@@ -9,9 +9,9 @@ parse_proxy_cache = LRUCache(128)
 proxy_no_rdns = set()
 
 def parse_proxy(proxy):
-    if proxy in parse_proxy_cache:
+    try:
         return parse_proxy_cache[proxy]
-    else:
+    except KeyError:
         parse_proxy_cache[proxy] = proxy_tuple = urllib2._parse_proxy(proxy)
         return proxy_tuple
 
