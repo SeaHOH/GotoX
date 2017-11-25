@@ -402,10 +402,8 @@ class HTTPUtil(BaseHTTPUtil):
             # disable negal algorithm to send http request quickly.
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
             # pick up the sock socket
-            if self.gws and gws_servername is not None:
-                server_hostname = random.choice(gws_servername)
-            elif cache_key == 'google_gws:443':
-                server_hostname = b'update.googleapis.com'
+            if self.gws:
+                server_hostname = b'fonts.googleapis.com' if gws_servername is None else random.choice(gws_servername)
             else:
                 server_hostname = None if isip(host) else host.encode()
             ssl_sock = self.get_ssl_socket(sock, server_hostname)
