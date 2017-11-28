@@ -12,7 +12,7 @@ from OpenSSL import crypto
 from . import clogging as logging
 from time import time
 from datetime import datetime, timedelta
-from .common import cert_dir
+from .common import cert_dir, LRUCache
 
 ca_vendor = 'GotoX'
 ca_certfile = os.path.join(cert_dir, 'CA.crt')
@@ -32,6 +32,7 @@ sub_serial = 3600 * 24 * 365 * 46
 sub_years = 2
 sub_time_b = -3600
 sub_time_a = 3600 * 24 * (365 * sub_years + sub_years // 4) + sub_time_b
+sub_certs = LRUCache(128)
 
 def create_ca():
     pkey = crypto.PKey()
@@ -78,10 +79,10 @@ def dump_subkey():
     return sub_keystr
 
 def create_subcert(certfile, commonname, ip=False, sans=None):
-    sans = sans or []
+    sans = set(sans) if sans else set()
     cert = crypto.X509()
     cert.set_version(2)
-    cert.set_serial_number(int((int(time()-sub_serial)+random.random()) * 100)) #setting the only number
+    cert.set_serial_number(int((int(time() - sub_serial) + random.random()) * 100)) #setting the only number
     subject = cert.get_subject()
     subject.countryName = 'CN'
     subject.stateOrProvinceName = 'Internet'
@@ -89,35 +90,36 @@ def create_subcert(certfile, commonname, ip=False, sans=None):
     subject.organizationalUnitName = '%s Branch' % ca_vendor
     subject.commonName = commonname
     subject.organizationName = commonname
-    if ip:
-        sans = set([commonname,] + sans)
-    else:
-        sans = set([commonname, '*.'+commonname] + sans)
-    sans = ', '.join('DNS: %s' % x for x in sans)
-    if not isinstance(sans, bytes):
-        sans = sans.encode()
     #某些认证机制会检查签署时间与当前时间之差
     cert.gmtime_adj_notBefore(sub_time_b)
     cert.gmtime_adj_notAfter(sub_time_a)
     cert.set_issuer(ca_subject)
     cert.set_pubkey(sub_key)
-    cert.add_extensions([crypto.X509Extension(b'subjectAltName', True, sans)])
+    sans.add(commonname)
+    if not ip:
+        sans.add('*.' + commonname)
+    sans = ', '.join('DNS: %s' % x for x in sans)
+    cert.add_extensions([crypto.X509Extension(b'subjectAltName', True, sans.encode())])
     cert.sign(ca_key, ca_digest)
 
     with open(certfile, 'wb') as fp:
         fp.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
 
 def get_cert(commonname, ip=False, sans=None):
-    sans = sans or []
     if ip:
         certfile = os.path.join(sub_certdir, commonname.replace(':', '.') + '.crt')
     else:
         rcommonname = '.'.join(reversed(commonname.split('.')))
         certfile = os.path.join(sub_certdir, rcommonname + '.crt')
+
     with sub_lock:
         if os.path.exists(certfile):
-            with open(certfile, 'rb') as fp:
-                cert = crypto.load_certificate(crypto.FILETYPE_PEM, fp.read())
+            try:
+                cert = sub_certs[certfile]
+            except KeyError:
+                with open(certfile, 'rb') as fp:
+                    cert = crypto.load_certificate(crypto.FILETYPE_PEM, fp.read())
+                sub_certs[certfile] = cert
             # 最早在过期 30 天前更新证书
             if datetime.strptime(cert.get_notAfter().decode(), '%Y%m%d%H%M%SZ') < datetime.utcnow() + timedelta(days=30):
                 try:
@@ -125,11 +127,13 @@ def get_cert(commonname, ip=False, sans=None):
                 except OSError as e:
                     logging.warning('CertUtil.get_cert：旧证书删除失败：%r', e)
                 else:
+                    del sub_certs[certfile]
                     cert = None
             if cert:
-                return certfile, sub_keyfile
+                return certfile
+
     create_subcert(certfile, commonname, ip, sans)
-    return certfile, sub_keyfile
+    return certfile
 
 def import_cert(certfile):
     commonname = os.path.splitext(os.path.basename(certfile))[0]

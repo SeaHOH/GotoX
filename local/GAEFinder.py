@@ -41,7 +41,7 @@ g_handshaketimeout = 1.5
 #屏蔽列表（当前使用的新测试方法可能用不着这个了）
 g_block = GC.FINDER_BLOCK #('74.125.', '173.194.', '203.208.', '113.171.')
 #扫描时使用的主机名和匹配的域名，需配对
-g_servername = b'update.googleapis.com'
+g_servername = b'fonts.googleapis.com'
 g_comdomain = '*.googleapis.com'
 
 g_ipfile = os.path.join(data_dir, 'ip.txt')
@@ -432,7 +432,7 @@ class GAE_Finder:
             WARNING('%r', e)
         code = self.getstatuscode(ssl_sock, sock, ip) if ssl_sock else ''
         costtime = int((time()-start_time)*1000)
-        return domain, costtime, code in (b'302', b'200')
+        return domain, costtime, code == b'302'
 
     def getstatuscode(self, conn, sock, ip):
         try:

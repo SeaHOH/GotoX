@@ -1122,10 +1122,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         try:
             return self.context_cache[host]
         except KeyError:
-            certfile, keyfile = CertUtil.get_cert(host, ip)
+            certfile = CertUtil.get_cert(host, ip)
             self.context_cache[host] = context = ssl.SSLContext(GC.LINK_LOCALSSL)
             context.verify_mode = ssl.CERT_NONE
-            context.load_cert_chain(certfile, keyfile)
+            context.load_cert_chain(certfile, CertUtil.sub_keyfile)
             return context
 
     def send_CA(self):
