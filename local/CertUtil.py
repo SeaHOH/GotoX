@@ -18,7 +18,7 @@ ca_vendor = 'GotoX'
 ca_certfile = os.path.join(cert_dir, 'CA.crt')
 ca_keyfile = os.path.join(cert_dir, 'CAkey.pem')
 ca_thumbprint = ''
-ca_key = None
+ca_privatekey = None
 ca_subject = None
 ca_digest = 'sha256'
 ca_years = 20
@@ -26,7 +26,7 @@ ca_time_b = -3600 * 24
 ca_time_a = 3600 * 24 * (365 * ca_years + ca_years // 4) + ca_time_b
 sub_keyfile = os.path.join(cert_dir, 'subkey.pem')
 sub_certdir = os.path.join(cert_dir, 'certs')
-sub_key = None
+sub_publickey = None
 sub_lock = threading.Lock()
 sub_serial = 3600 * 24 * 365 * 46
 sub_years = 2
@@ -69,14 +69,13 @@ def dump_ca():
         fp.write(crypto.dump_privatekey(crypto.FILETYPE_PEM, pkey))
 
 def dump_subkey():
-    global sub_key
+    global sub_publickey
     sub_key = crypto.PKey()
     sub_key.generate_key(crypto.TYPE_RSA, 2048)
     with open(sub_keyfile, 'wb') as fp:
         fp.write(crypto.dump_privatekey(crypto.FILETYPE_PEM, sub_key))
-        sub_keystr = crypto.dump_publickey(crypto.FILETYPE_PEM, sub_key)
-        fp.write(sub_keystr)
-    return sub_keystr
+        fp.write(crypto.dump_publickey(crypto.FILETYPE_PEM, sub_key))
+    sub_publickey = sub_key
 
 def create_subcert(certfile, commonname, ip=False, sans=None):
     sans = set(sans) if sans else set()
@@ -94,13 +93,13 @@ def create_subcert(certfile, commonname, ip=False, sans=None):
     cert.gmtime_adj_notBefore(sub_time_b)
     cert.gmtime_adj_notAfter(sub_time_a)
     cert.set_issuer(ca_subject)
-    cert.set_pubkey(sub_key)
+    cert.set_pubkey(sub_publickey)
     sans.add(commonname)
     if not ip:
         sans.add('*.' + commonname)
     sans = ', '.join('DNS: %s' % x for x in sans)
     cert.add_extensions([crypto.X509Extension(b'subjectAltName', True, sans.encode())])
-    cert.sign(ca_key, ca_digest)
+    cert.sign(ca_privatekey, ca_digest)
 
     with open(certfile, 'wb') as fp:
         fp.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
@@ -260,18 +259,18 @@ def check_ca():
         except Exception as e:
             logging.warning('CertUtil.remove_cert 失败: %r', e)
         dump_ca()
-    global ca_key, ca_subject, sub_key, ca_thumbprint
+    global ca_privatekey, ca_subject, sub_publickey, ca_thumbprint
     with open(ca_keyfile, 'rb') as fp:
         content = fp.read()
     ca = crypto.load_certificate(crypto.FILETYPE_PEM, content)
-    ca_key = crypto.load_privatekey(crypto.FILETYPE_PEM, content)
+    ca_privatekey = crypto.load_privatekey(crypto.FILETYPE_PEM, content)
     ca_subject = ca.get_subject()
     ca_thumbprint = ca.digest('sha1')
-    ca_certerror = False
+    ca_certerror = True
     if os.path.exists(ca_certfile):
         with open(ca_certfile, 'rb') as fp:
-            if fp.read() not in content:
-                ca_certerror = True
+            if fp.read() in content:
+                ca_certerror = False
     if ca_certerror:
         with open(ca_certfile, 'wb') as fp:
             fp.write(crypto.dump_certificate(crypto.FILETYPE_PEM, ca))
@@ -279,10 +278,10 @@ def check_ca():
     if os.path.exists(sub_keyfile):
         with open(sub_keyfile, 'rb') as fp:
             content = fp.read()
-        sub_key = crypto.load_publickey(crypto.FILETYPE_PEM, content)
-        sub_keystr = crypto.dump_publickey(crypto.FILETYPE_PEM, sub_key)
+        sub_publickey = crypto.load_publickey(crypto.FILETYPE_PEM, content)
     else:
-        sub_keystr = dump_subkey()
+        dump_subkey()
+    sub_publickey_str = crypto.dump_publickey(crypto.FILETYPE_PEM, sub_publickey)
     #Check Certs
     certfiles = glob.glob(os.path.join(sub_certdir, '*.crt'))
     if certfiles:
@@ -290,13 +289,13 @@ def check_ca():
         with open(filename, 'rb') as fp:
             content = fp.read()
         cert = crypto.load_certificate(crypto.FILETYPE_PEM, content)
-        if not verify_certificate(ca, cert) or (sub_keystr !=
+        if not verify_certificate(ca, cert) or (sub_publickey_str !=
                 crypto.dump_publickey(crypto.FILETYPE_PEM, cert.get_pubkey())):
             logging.error('Certs mismatch, delete Certs.')
             any(os.remove(x) for x in certfiles)
         del cert
     #Del none-use object
-    del content, certfiles, sub_keystr
+    del content, certfiles, sub_publickey_str
     #Check CA imported
     #if import_cert(ca_keyfile) != 0:
     #    logging.warning('install root certificate failed, Please run as administrator/root/sudo')
