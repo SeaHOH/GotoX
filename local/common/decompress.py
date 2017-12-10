@@ -18,9 +18,11 @@ class DeflateReader(BufferedReader):
 class _DeflateReader(DecompressReader):
     def __init__(self, fp):
         self.fp = fp
-        magic = fp.read(2)
+        CMF, FLG = magic = fp.read(2)
         # This is a compatible, some streams has no magic.
-        if magic != b'\170\234':
+        if CMF & 0x0F != 8 or \
+           CMF & 0x80 != 0 or \
+           ((CMF << 8) + FLG) % 31 > 0:
             fp = _PaddedFile(fp, magic)
         DecompressReader.__init__(self,
                                   fp,
