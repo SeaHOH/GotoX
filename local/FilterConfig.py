@@ -54,14 +54,13 @@ isfiltername = re.compile(r'(?P<order>\d+)-(?P<action>\w+)').match
 isempty = re.compile(r'^\s*$').match
 if GC.LINK_PROFILE == 'ipv4':
     pickip = lambda str: [ip.strip() for ip in str.split('|') if isipv4(ip.strip())]
-    ipnotuse = isipv6
+    isipuse = isipv4
 elif GC.LINK_PROFILE == 'ipv46':
     pickip = lambda str: [ip.strip() for ip in str.split('|') if isip(ip.strip())]
-    #还要使用字符名称，所以不用验证
-    ipnotuse = lambda x: False
+    isipuse = isip
 elif GC.LINK_PROFILE == 'ipv6':
     pickip = lambda str: [ip.strip() for ip in str.split('|') if isipv6(ip.strip())]
-    ipnotuse = isipv4
+    isipuse = isipv6
 
 class actionfilterlist(list):
 
@@ -111,7 +110,9 @@ class actionfilterlist(list):
                         v = None
                     elif '|' in v:
                         v = pickip(' '+v.lower()) or None
-                    elif ipnotuse(v) or not (v in GC.IPLIST_MAP or v.find('.') > 0):
+                    elif isipuse(v):
+                        v = [v]
+                    elif isip(v) or not (v in GC.IPLIST_MAP or v.find('.') > 0):
                         v = None
                 elif filters.action in (REDIRECT, IREDIRECT):
                     if v and v[0] == '!':

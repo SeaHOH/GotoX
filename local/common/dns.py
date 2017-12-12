@@ -9,7 +9,6 @@ except ImportError:
     sys.exit(-1)
 
 import socket
-import threading
 from select import select
 from time import time, sleep
 from json.decoder import JSONDecoder
@@ -19,7 +18,6 @@ from local.GlobalConfig import GC
 
 jsondecoder = JSONDecoder()
 dns = LRUCache(GC.DNS_CACHE_ENTRIES, GC.DNS_CACHE_EXPIRATION)
-alock = threading.Lock()
 
 def reset_dns():
     dns.clear()
@@ -44,20 +42,18 @@ def set_dns(host, iporname):
     #生成唯一别名
     namea = id(iporname) if isinstance(iporname, list) else iporname
     hostname = '%s|%s' % (namea, host)
-    with alock:
-        if hostname in dns:
-            return hostname
-        if isinstance(iporname, str):
-            #建立规则时已经剔除了不合格字串
-            if isip(iporname):
-                dns[hostname] = iporname,
-            elif iporname in GC.IPLIST_MAP:
-                dns[hostname] = GC.IPLIST_MAP[iporname]
-        elif isinstance(iporname, list):
-            dns[hostname] = iporname
-        else:
-            raise TypeError('set_dns 第二参数类型错误：' + type(iporname))
+    if hostname in dns:
         return hostname
+    if isinstance(iporname, str):
+        if iporname in GC.IPLIST_MAP:
+            dns[hostname] = GC.IPLIST_MAP[iporname]
+        else:
+            raise KeyError('set_dns 第二参数错误：' + iporname)
+    elif isinstance(iporname, list):
+        dns[hostname] = iporname
+    else:
+        raise TypeError('set_dns 第二参数类型错误：' + type(iporname))
+    return hostname
 
 def _dns_resolve(host):
     for _resolve in dns_resolves:
