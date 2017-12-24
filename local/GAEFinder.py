@@ -393,7 +393,15 @@ from .HTTPUtil import http_gws
 
 class GAE_Finder:
 
-    httpreq = b'HEAD / HTTP/1.1\r\nHost: www.appspot.com\r\nConnection: Close\r\n\r\n'
+    httpreq = (
+        b'HEAD / HTTP/1.1\r\n'
+        b'Host: www.appspot.com\r\n'
+        b'Connection: Close\r\n\r\n'
+    )
+    redirect_res = (
+        b'302 Found\r\n'
+        b'Location: https://console.cloud.google.com/appengine'
+    )
 
     def __init__(self):
         pass
@@ -430,16 +438,16 @@ class GAE_Finder:
             if not retry and e.args == (-1, 'Unexpected EOF'):
                 return self.getipinfo(ip, conntimeout, handshaketimeout, timeout, True)
             WARNING('%r', e)
-        code = self.getstatuscode(ssl_sock, sock, ip) if ssl_sock else ''
+        is_gae = self.check_gae_status(ssl_sock, sock, ip) if ssl_sock else ''
         costtime = int((time()-start_time)*1000)
-        return domain, costtime, code == b'302'
+        return domain, costtime, is_gae
 
-    def getstatuscode(self, conn, sock, ip):
+    def check_gae_status(self, conn, sock, ip):
         try:
             conn.send(self.httpreq)
-            return conn.read(12)[-3:]
+            return conn.read(72)[-63:] == self.redirect_res
         except NetWorkIOError as e:
-            WARNING('从 %s 获取响应状态时发生错误：%r', ip, e)
+            WARNING('从 %s 获取服务器信息时发生错误：%r', ip, e)
         finally:
             sock.close()
 

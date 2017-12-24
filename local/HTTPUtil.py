@@ -156,10 +156,10 @@ class BaseHTTPUtil:
 
     def google_verify_g23(self, sock):
         certs = sock.get_peer_cert_chain()
-        if len(certs) < 3:
-            raise ssl.SSLError('谷歌域名没有获取到正确的证书链：缺少中级 CA。')
+        if len(certs) < 2:
+            raise ssl.SSLError('谷歌域名没有获取到正确的证书链：缺少 CA。')
         if OpenSSL.crypto.dump_publickey(OpenSSL.crypto.FILETYPE_PEM, certs[1].get_pubkey()) not in GoogleG23PKP:
-            raise ssl.SSLError('谷歌域名没有获取到正确的证书链：中级 CA 公钥不匹配。')
+            raise ssl.SSLError('谷歌域名没有获取到正确的证书链：CA 公钥不匹配。')
         return certs[0]
 
     @staticmethod
