@@ -298,11 +298,24 @@ def test(ipdb):
     print('keeep IP 已保存完毕')
 
 if __name__ == '__main__':
+    import sys
+
     class logging:
         warning = info = debug = print
 
-    set_proxy = input('是否设置代理（Y/N）：')
-    set_proxy = set_proxy.upper() == 'Y'
+    data_source = None
+    for par in ('--apnic', '--17mon', '--gaoyifan', '--all'):
+        if par in sys.argv:
+            data_source = par
+            print(par)
+            break
+
+    if '-d' in sys.argv:
+        set_proxy = False
+    else:
+        set_proxy = input('是否设置代理（Y/N）：')
+        set_proxy = set_proxy.upper() == 'Y'
+
     if set_proxy:
         print('\n开始设置代理')
     while set_proxy:
@@ -322,6 +335,18 @@ if __name__ == '__main__':
 
     ipdb1 = os.path.join(root_dir, 'data', 'directip.db')
     ipdb2 = os.path.join(file_dir, 'directip.db')
+
+    if data_source:
+        if data_source == '--apnic':
+            download_cniplist_as_db(ipdb1, p_APNIC)
+        elif data_source == '--17mon':
+            download_cniplist_as_db(ipdb1, p_17MON)
+        elif data_source == '--gaoyifan':
+            download_cniplist_as_db(ipdb1, p_GAOYIFAN)
+        elif data_source == '--all':
+            download_cniplist_as_db(ipdb1, p_APNIC | p_17MON | p_GAOYIFAN)
+        sys.exit(0)
+
     Tips = '''
 ***********************************************
 *      从 APNIC 下载，放入数据目录 --- 按 1   *
