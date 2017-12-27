@@ -153,7 +153,8 @@ def download(req):
         context.verify_mode = ssl.CERT_REQUIRED
         context.check_hostname = True
         context.set_ciphers(ssl._RESTRICTED_SERVER_CIPHERS)
-        context.load_verify_locations(ca1)
+        if os.path.exists(ca1):
+            context.load_verify_locations(ca1)
         context.load_verify_locations(ca2)
     retry_delay = 2
     max_retries = 10
