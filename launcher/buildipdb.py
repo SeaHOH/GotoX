@@ -304,23 +304,72 @@ if __name__ == '__main__':
     class logging:
         warning = info = debug = print
 
-    data_source = None
-    for par in ('--apnic', '--17mon', '--gaoyifan', '--all'):
-        if par in sys.argv:
-            data_source = par
-            print(par)
-            break
+    if len(sys.argv) < 2 or '--help' in sys.argv:
+        print('''
+用法：
+    --help     显示此使用提示
+    -u         生成的数据库文件不放入脚本目录而是更新到相邻的 data 目录
+               交互模式下参数 "-u" 无效
 
-    if '-d' in sys.argv:
-        set_proxy = False
+    指定可用数据源，交互模式中无效
+
+    --apnic    使用 APNIC 数据源
+    --17mon    使用 17mon 数据源
+    --gaoyifan 使用 gaoyifan 数据源
+    --all      使用以上全部数据源
+
+    指定数据源并配合以下参数时不会进入交互模式，适用于自动／无人职守模式
+
+    -d         跳过代理设置使用直连，使用参数 "-p" 时参数 "-d" 无效
+    -p 主机名(IP 或域名):端口
+               使用 HTTP 代理，无效地址或无法链接代理时会直接结束脚本
+
+''')
+
+    data_source_valid = {
+        '--apnic': p_APNIC,
+        '--17mon': p_17MON,
+        '--gaoyifan': p_GAOYIFAN,
+        '--all': p_APNIC | p_17MON | p_GAOYIFAN
+        }
+    data_source = 0
+    if '--all' in sys.argv:
+        data_source = data_source_valid['--all']
     else:
-        set_proxy = input('是否设置代理（Y/N）：')
+        for par in data_source_valid:
+            if par in sys.argv:
+                data_source |= data_source_valid[par]
+
+    if '-p' in sys.argv:
+        try:
+            addr = sys.argv[sys.argv.index('-p') + 1]
+        except IndexError:
+            print('\n代理地址读取失败，退出脚本...')
+            sys.exit(-1)
+        try:
+            ip, port = addr.split(':')
+            socket.create_connection((ip, int(port)), timeout=1).close()
+            os.environ['HTTPS_PROXY'] = os.environ['HTTP_PROXY'] = addr
+            print('\n代理地址 %r 已设置成功。' % addr)
+            set_proxy = None
+        except:
+            print('\n代理地址 %r 设置失败，退出脚本...' % addr)
+            sys.exit(-1)
+        if data_source == 0:
+            print('进入交互模式')
+    elif '-d' in sys.argv:
+        set_proxy = False
+        if data_source == 0:
+            print('进入交互模式')
+    else:
+        set_proxy = input('进入交互模式\n是否设置代理（Y/N）：')
         set_proxy = set_proxy.upper() == 'Y'
+        data_source = 0
 
     if set_proxy:
-        print('\n开始设置代理')
+        print('\n开始设置代理，仅支持 HTTP 代理，格式："主机名(IP 或域名):端口"')
     while set_proxy:
-        addr = input('\n请输入代理地址（IP:端口），'
+        addr = input('\n请输入代理地址，'
                      '留空使用 "127.0.0.1:8087"：\n') or '127.0.0.1:8087'
         try:
             ip, port = addr.split(':')
@@ -331,21 +380,17 @@ if __name__ == '__main__':
         except:
             set_proxy = input('\n当前地址 %r 无法链接，是否继续设置代理（Y/N）：' % addr)
             set_proxy = set_proxy.upper() == 'Y'
-    if not set_proxy:
+    if set_proxy is False:
         print('\n跳过代理设置')
 
     ipdb1 = os.path.join(root_dir, 'data', 'directip.db')
     ipdb2 = os.path.join(file_dir, 'directip.db')
 
     if data_source:
-        if data_source == '--apnic':
-            download_cniplist_as_db(ipdb1, p_APNIC)
-        elif data_source == '--17mon':
-            download_cniplist_as_db(ipdb1, p_17MON)
-        elif data_source == '--gaoyifan':
-            download_cniplist_as_db(ipdb1, p_GAOYIFAN)
-        elif data_source == '--all':
-            download_cniplist_as_db(ipdb1, p_APNIC | p_17MON | p_GAOYIFAN)
+        if '-u' in sys.argv:
+            download_cniplist_as_db(ipdb1, data_source)
+        else:
+            download_cniplist_as_db(ipdb2, data_source)
         sys.exit(0)
 
     Tips = '''

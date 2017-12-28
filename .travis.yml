@@ -10,16 +10,15 @@ addons:
     packages:
       - p7zip-full
 
-before_script:
+script:
   - export PYTHON_VERSION=cp35
   - export RELEASE_VERSION=$(curl -kL https://github.com/SeaHOH/GotoX/raw/master/local/__init__.py | grep -oP '[0-9\.]+')
 
-script:
+before_deploy:
   - curl -kL -o cert/cacerts/mozilla.pem https://curl.haxx.se/ca/cacert.pem
   - curl -kL -o cert/cacerts/google.pem https://pki.google.com/roots.pem
-  - python launcher/buildipdb.py --17mon -d
+  - python launcher/buildipdb.py -u -d --17mon
 
-before_deploy:
   - rm -rf .git*
   - rm -rf .travis*
 
