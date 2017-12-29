@@ -143,6 +143,7 @@ Req_GAOYIFAN = None
 p_APNIC = 1
 p_17MON = 1 << 1
 p_GAOYIFAN = 1 << 2
+p_ALL = p_APNIC | p_17MON | p_GAOYIFAN
 
 def download(req):
     #显式加载 CA，确保正常使用
@@ -304,7 +305,9 @@ if __name__ == '__main__':
     class logging:
         warning = info = debug = print
 
-    if len(sys.argv) < 2 or '--help' in sys.argv:
+    if len(sys.argv) < 2:
+        print('使用 "--help" 可查看命令行参数说明\n')
+    if '--help' in sys.argv:
         print('''
 用法：
     --help     显示此使用提示
@@ -329,12 +332,11 @@ if __name__ == '__main__':
     data_source_valid = {
         '--apnic': p_APNIC,
         '--17mon': p_17MON,
-        '--gaoyifan': p_GAOYIFAN,
-        '--all': p_APNIC | p_17MON | p_GAOYIFAN
+        '--gaoyifan': p_GAOYIFAN
         }
     data_source = 0
     if '--all' in sys.argv:
-        data_source = data_source_valid['--all']
+        data_source = p_ALL
     else:
         for par in data_source_valid:
             if par in sys.argv:
@@ -356,13 +358,13 @@ if __name__ == '__main__':
             print('\n代理地址 %r 设置失败，退出脚本...' % addr)
             sys.exit(-1)
         if data_source == 0:
-            print('进入交互模式')
+            print('进入交互模式\n')
     elif '-d' in sys.argv:
         set_proxy = False
         if data_source == 0:
-            print('进入交互模式')
+            print('进入交互模式\n')
     else:
-        set_proxy = input('进入交互模式\n是否设置代理（Y/N）：')
+        set_proxy = input('进入交互模式\n\n是否设置代理（Y/N）：')
         set_proxy = set_proxy.upper() == 'Y'
         data_source = 0
 
@@ -387,54 +389,72 @@ if __name__ == '__main__':
     ipdb2 = os.path.join(file_dir, 'directip.db')
 
     if data_source:
-        if '-u' in sys.argv:
-            download_cniplist_as_db(ipdb1, data_source)
-        else:
-            download_cniplist_as_db(ipdb2, data_source)
+        ipdb = ipdb1 if '-u' in sys.argv else ipdb2
+        download_cniplist_as_db(ipdb, data_source)
         sys.exit(0)
 
-    Tips = '''
-***********************************************
-*      从 APNIC 下载，放入数据目录 --- 按 1   *
-*                         当前目录 --- 按 2   *
-*      从 17mon 下载，放入数据目录 --- 按 3   *
-*                         当前目录 --- 按 4   *
-*   从 gaoyifan 下载，放入数据目录 --- 按 5   *
-*                         当前目录 --- 按 6   *
-*       全部下载合并，放入数据目录 --- 按 7   *
-*                         当前目录 --- 按 8   *
-*   使用保留地址测试 ----------------- 按 9   *
-*   退出 ----------------------------- 按 0   *
-***********************************************
+    Tips1 = '''
+ ********************************************
+ *   请选择存放目录：                       *
+ *                   数据目录 ------ 按 1   *
+ *                   当前目录 ------ 按 2   *
+ *                   退出 ---------- 按 0   *
+ ********************************************
+'''
+
+    Tips2 = '''
+ ********************************************
+ *   请选择数据来源，可多选：               *
+ *                   APNIC --------- 按 1   *
+ *                   17mon --------- 按 2   *
+ *                   gaoyifan ------ 按 3   *
+ *                   全部 ---------- 按 8   *
+ *                   测试保留地址 -- 按 9   *
+ *                   退出 ---------- 按 0   *
+ ********************************************
 '''
 
     while True:
-        n = input(Tips)
+        n = input(Tips1)
         try:
             n = int(n)
         except:
-            pass
-        if n == 0:
+            print('输入错误！')
+            continue
+        if n is 0:
             break
-        elif n == 1:
-            download_cniplist_as_db(ipdb1, p_APNIC)
-        elif n == 2:
-            download_cniplist_as_db(ipdb2, p_APNIC)
-        elif n == 3:
-            download_cniplist_as_db(ipdb1, p_17MON)
-        elif n == 4:
-            download_cniplist_as_db(ipdb2, p_17MON)
-        elif n == 5:
-            download_cniplist_as_db(ipdb1, p_GAOYIFAN)
-        elif n == 6:
-            download_cniplist_as_db(ipdb2, p_GAOYIFAN)
-        elif n == 7:
-            download_cniplist_as_db(ipdb1, p_APNIC | p_17MON | p_GAOYIFAN)
-        elif n == 8:
-            download_cniplist_as_db(ipdb2, p_APNIC | p_17MON | p_GAOYIFAN)
-        elif n == 9:
-            test(ipdb2)
+        elif n is 1:
+            ipdb = ipdb1
+        elif n is 2:
+            ipdb = ipdb2
         else:
             print('输入错误！')
+            continue
+
+        ns = input(Tips2)
+        try:
+            ns = set(int(n) for n in ns)
+        except:
+            print('输入错误！')
+            continue
+        if 0 in ns:
+            break
+        if 9 in ns:
+            test(ipdb)
+            continue
+        if 8 in ns:
+            data_source = p_ALL
+        else:
+            if 1 in ns:
+                data_source |= p_APNIC
+            if 2 in ns:
+                data_source |= p_17MON
+            if 3 in ns:
+                data_source |= p_GAOYIFAN
+        if data_source == 0:
+            print('输入错误！')
+            continue
+
+        download_cniplist_as_db(ipdb, data_source)
 else:
     import local.clogging as logging
