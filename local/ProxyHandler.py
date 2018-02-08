@@ -408,10 +408,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         hostname = self.hostname
         http_util = http_gws if hostname.startswith('google') else http_nor
         host = self.host
-        response = None
-        noerror = True
         request_headers, payload = self.handle_request_headers()
         for retry in range(2):
+            noerror = True
+            response = None
+            self.close_connection = self.cc
             try:
                 connection_cache_key = '%s:%d' % (hostname, self.port)
                 response = http_util.request(self, payload, request_headers, connection_cache_key=connection_cache_key)
@@ -552,6 +553,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             noerror = True
             data = None
             response = None
+            self.close_connection = self.cc
             try:
                 response = gae_urlfetch(self.command, self.url, request_headers, payload, appid)
                 if response is None:
