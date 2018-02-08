@@ -100,16 +100,16 @@ class dns_params:
     port = 443
     command = 'GET'
     headers = {'Host': host, 'User-Agent': 'GotoX Agent'}
-    DNSServerPath = '/resolve?name=%s&type=%s&random_padding=%s'
-    Url = 'https://%s/resolve?name=%%s&type=%%s' % host
+    DNSServerPath = '/resolve?name=%s&type=%s'
+    if GC.DNS_OVER_HTTPS_ECS:
+        DNSServerPath += '&ecs=' + GC.DNS_OVER_HTTPS_ECS.replace('/', '%%2F')
+    Url = 'https://' +  host
 
     __slots__ = 'path', 'url'
 
-    def __init__(self, qname, qtype):
-        # 512 - 20(IP) - 20(TCP) - (100 + qname + qtype)(请求数据)
-        npadding = 372 - len(qname) - len(str(qtype))
-        self.path = self.DNSServerPath % (qname, qtype, 'x'*npadding)
-        self.url = self.Url % (qname, qtype)
+    def __init__(self, *qargs):
+        self.path = self.DNSServerPath % qargs
+        self.url = self.Url + self.path
 
 def _https_resolve(qname, qtype, queobj):
     '''

@@ -188,6 +188,7 @@ class GC:
     DNS_SERVERS = tuple(DNS_SERVERS.split('|')) if DNS_SERVERS else ('8.8.8.8',)
     DNS_OVER_HTTPS = CONFIG.getboolean('dns', 'overhttps')
     DNS_OVER_HTTPS_LIST = CONFIG.get('dns', 'overhttpslist') or 'google_gws'
+    DNS_OVER_HTTPS_ECS = CONFIG.get('dns', 'overhttpsecs')
     DNS_PRIORITY = CONFIG.get('dns', 'priority').split('|')
     DNS_BLACKLIST = set(CONFIG.get('dns', 'blacklist').split('|'))
 
