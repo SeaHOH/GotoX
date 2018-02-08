@@ -411,64 +411,74 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         response = None
         noerror = True
         request_headers, payload = self.handle_request_headers()
-        try:
-            connection_cache_key = '%s:%d' % (hostname, self.port)
-            response = http_util.request(self, payload, request_headers, connection_cache_key=connection_cache_key)
-            if not response:
-                if self.target is not None or self.url_parts.path.endswith('ico') or isdirect(host):
-                    #非默认规则、网站图标、直连 IP
-                    logging.warn('%s do_DIRECT "%s %s" 失败，返回 404', self.address_string(), self.command, self.url)
-                    c = '404 无法找到给定的网址'.encode()
-                    self.write('HTTP/1.1 404 Not Found\r\n'
-                               'Content-Type: text/plain; charset=utf-8\r\n'
-                               'Content-Length: %d\r\n\r\n' % len(c))
-                    self.write(c)
-                    return
-                else:
-                    logging.warn('%s do_DIRECT "%s %s" 失败，尝试使用 "GAE" 规则。', self.address_string(), self.command, self.url)
-                    return self.go_GAE()
-            #发生错误时关闭链接
-            if response.status >= 400:
-                noerror = False
-            #拒绝服务、非直连 IP
-            if response.status == 403 and not isdirect(host):
-                logging.warn('%s do_DIRECT "%s %s" 链接被拒绝，尝试使用 "GAE" 规则。', self.address_string(response), self.command, self.url)
-                return self.go_GAE()
-            #修复某些软件无法正确处理持久链接（停用）
-            self.check_useragent()
-            self.get_response_length(response)
-            response, data, need_chunked = self.handle_response_headers(response)
-            _, err = self.write_response_content(data, response, need_chunked)
-            if err:
-                raise err
-        except NetWorkIOError as e:
-            noerror = False
-            #链接重置、非直连 IP
-            if e.args[0] in reset_errno and not isdirect(host):
-                logging.warning('%s do_DIRECT "%s %s" 链接被重置，尝试使用 "GAE" 规则。', self.address_string(response), self.command, self.url)
-                return self.go_GAE()
-            elif e.args[0] not in pass_errno:
-                raise
-        except Exception as e:
-            noerror = False
-            logging.warning('%s do_DIRECT "%s %s" 失败：%r', self.address_string(response), self.command, self.url, e)
-            raise
-        finally:
-            if not noerror:
-                self.close_connection = True
-            if response:
-                response.close()
-                if noerror:
-                    #放入套接字缓存
-                    if self.ssl:
-                        if GC.GAE_KEEPALIVE or http_util is not http_gws:
-                            http_util.ssl_connection_cache[connection_cache_key].append((time(), response.sock))
-                        else:
-                            #干扰严重时考虑不复用 google 链接
-                            response.sock.close()
+        for retry in range(2):
+            try:
+                connection_cache_key = '%s:%d' % (hostname, self.port)
+                response = http_util.request(self, payload, request_headers, connection_cache_key=connection_cache_key)
+                if not response:
+                    #重试、网站图标
+                    if retry or self.url_parts.path.endswith('ico'):
+                        logging.warn('%s do_DIRECT "%s %s" 失败，返回 404', self.address_string(), self.command, self.url)
+                        c = '404 无法找到给定的网址'.encode()
+                        self.write('HTTP/1.1 404 Not Found\r\n'
+                                   'Content-Type: text/plain; charset=utf-8\r\n'
+                                   'Content-Length: %d\r\n\r\n' % len(c))
+                        self.write(c)
+                        return
+                    #非默认规则、直连 IP
+                    elif self.target is not None or isdirect(host):
+                        logging.warning('%s do_DIRECT "%s %s" 没有正确响应，重试。', self.address_string(response), self.command, self.url)
+                        continue
                     else:
-                        response.sock.used = None
-                        http_util.tcp_connection_cache[connection_cache_key].append((time(), response.sock))
+                        logging.warn('%s do_DIRECT "%s %s" 失败，尝试使用 "GAE" 规则。', self.address_string(), self.command, self.url)
+                        return self.go_GAE()
+                #发生错误时关闭链接
+                if response.status >= 400:
+                    noerror = False
+                #拒绝服务、非直连 IP
+                if response.status == 403 and not isdirect(host):
+                    logging.warn('%s do_DIRECT "%s %s" 链接被拒绝，尝试使用 "GAE" 规则。', self.address_string(response), self.command, self.url)
+                    return self.go_GAE()
+                #修复某些软件无法正确处理持久链接（停用）
+                self.check_useragent()
+                self.get_response_length(response)
+                response, data, need_chunked = self.handle_response_headers(response)
+                _, err = self.write_response_content(data, response, need_chunked)
+                if err:
+                    raise err
+                return
+            except NetWorkIOError as e:
+                noerror = False
+                #链接重置
+                if e.args[0] in reset_errno:
+                    if isdirect(host):
+                        logging.warning('%s do_DIRECT "%s %s" 链接被重置，重试。', self.address_string(response), self.command, self.url)
+                        continue
+                    else:
+                        logging.warning('%s do_DIRECT "%s %s" 链接被重置，尝试使用 "GAE" 规则。', self.address_string(response), self.command, self.url)
+                        return self.go_GAE()
+                elif e.args[0] not in pass_errno:
+                    raise
+            except Exception as e:
+                noerror = False
+                logging.warning('%s do_DIRECT "%s %s" 失败：%r', self.address_string(response), self.command, self.url, e)
+                raise
+            finally:
+                if not noerror:
+                    self.close_connection = True
+                if response:
+                    response.close()
+                    if noerror:
+                        #放入套接字缓存
+                        if self.ssl:
+                            if GC.GAE_KEEPALIVE or http_util is not http_gws:
+                                http_util.ssl_connection_cache[connection_cache_key].append((time(), response.sock))
+                            else:
+                                #干扰严重时考虑不复用 google 链接
+                                response.sock.close()
+                        else:
+                            response.sock.used = None
+                            http_util.tcp_connection_cache[connection_cache_key].append((time(), response.sock))
 
     def do_GAE(self):
         #发送请求到 GAE 代理
@@ -749,8 +759,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if remote is None:
             if not isdirect(host):
                 if self.command == 'CONNECT':
-                    logging.warning('%s%s do_FORWARD 链接远程主机 (%r, %r) 失败，尝试使用 "FAKECERT" 规则。', self.address_string(), hostip or '', host, port)
-                    self.go_FAKECERT()
+                    logging.warning('%s%s do_FORWARD 链接远程主机 (%r, %r) 失败，尝试使用 "FAKECERT & GAE" 规则。', self.address_string(), hostip or '', host, port)
+                    self.go_FAKECERT_GAE()
                 elif self.headers.get('Upgrade') == 'websocket':
                     logging.warning('%s%s do_FORWARD websocket 链接远程主机 (%r, %r) 失败。', self.address_string(), hostip or '', host, port)
                 else:
@@ -1032,9 +1042,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.write(b'Content-Length: 0\r\n\r\n')
         logging.warning('"%s%s %s" 已经被拦截', self.address_string(), self.command, self.url or self.host)
 
-    def go_GAE(self):
-        if self.command not in self.gae_fetcmd:
-            return self.go_BAD()
+    def _set_temp_GAE(self):
         hostparts = self.url_parts.scheme, self.host
         host = '%s://%s' % hostparts
         #最近是否失败（缓存设置超时两分钟）
@@ -1046,10 +1054,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.badhost[host] |= 2
         except KeyError:
             self.badhost[host] = 0
-        self.action = 'do_GAE'
-        self.do_GAE()
 
-    def go_FAKECERT(self):
+    def _set_temp_FAKECERT(self):
         host = 'http%s://%s' % ('s' if self.ssl else '', self.host)
         #最近是否失败（缓存设置超时两分钟）
         try:
@@ -1063,8 +1069,22 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.badhost[host] |= 1
         except KeyError:
             self.badhost[host] = 0
+
+    def go_GAE(self):
+        if self.command not in self.gae_fetcmd:
+            return self.go_BAD()
+        self._set_temp_GAE()
+        self.action = 'do_GAE'
+        self.do_GAE()
+
+    def go_FAKECERT(self):
+        self._set_temp_FAKECERT()
         self.action = 'do_FAKECERT'
         self.do_FAKECERT()
+
+    def go_FAKECERT_GAE(self):
+        self._set_temp_GAE()
+        self.go_FAKECERT()
 
     def go_BAD(self):
         self.close_connection = False
