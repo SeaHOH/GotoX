@@ -25,7 +25,7 @@ def int2bytes4(n, pack=struct.pack):
 
 Url_APNIC = 'https://ftp.apnic.net/apnic/stats/apnic/delegated-apnic-latest'
 Url_17MON = 'https://raw.githubusercontent.com/17mon/china_ip_list/master/china_ip_list.txt'
-URL_GAOYIFAN = 'https://raw.githubusercontent.com/gaoyifan/china-operator-ip/ip-lists/china.txt'
+Url_GAOYIFAN = 'https://raw.githubusercontent.com/gaoyifan/china-operator-ip/ip-lists/china.txt'
 mask_dict = dict((str(2**i), i) for i in range(8, 25))
 keeprange = (    '0.0.0.0/8',  #本地网络
                 '10.0.0.0/8',  #私有网络
@@ -201,7 +201,7 @@ def download_cniplist(ipdb, parse_cniplist, url):
         #更新一般在月初几天，由于内容不包含日期信息，故记录为获取时的日期信息
         update = '17mon-' + time.strftime('%Y%m%d', time.localtime(time.time()))
         name = '17mon'
-    elif url is URL_GAOYIFAN:
+    elif url is Url_GAOYIFAN:
         if Req_GAOYIFAN is None:
             Req_GAOYIFAN = urllib.request.Request(url)
         req = Req_GAOYIFAN
@@ -285,7 +285,7 @@ def download_cniplist_as_db(ipdb, p=p_APNIC):
 
 
     if p & p_GAOYIFAN:
-        _iplist = download_cniplist(ipdb, parse_CIDR_cniplist, URL_GAOYIFAN)
+        _iplist = download_cniplist(ipdb, parse_CIDR_cniplist, Url_GAOYIFAN)
         iplist.extend(_iplist)
         _update.append(update)
 

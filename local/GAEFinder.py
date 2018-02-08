@@ -438,7 +438,7 @@ class GAE_Finder:
             if not retry and e.args == (-1, 'Unexpected EOF'):
                 return self.getipinfo(ip, conntimeout, handshaketimeout, timeout, True)
             WARNING('%r', e)
-        is_gae = self.check_gae_status(ssl_sock, sock, ip) if ssl_sock else ''
+        is_gae = self.check_gae_status(ssl_sock, sock, ip) if ssl_sock else False
         costtime = int((time()-start_time)*1000)
         return domain, costtime, is_gae
 

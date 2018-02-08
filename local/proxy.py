@@ -65,7 +65,7 @@ from .ProxyHandler import AutoProxyHandler
 def main():
     def pre_start():
         from .common import isip, isipv4, isipv6
-        from .common.dns import dns, _dns_remote_resolve as dns_remote_resolve
+        from .common.dns import dns, _dns_remote_resolve as dns_remote_resolve, dns_system_resolve
 
         def get_process_list():
             process_list = []
@@ -126,7 +126,7 @@ def main():
                         logging.debug('远程解析成功：host=%r，dns=%s，iplist=%s', host, dnsservers, iplist)
                     except Queue.Empty:
                         logging.warn('远程解析超时，尝试本地解析')
-                        resolved_iplist += sum([socket.gethostbyname_ex(x)[-1] for x in need_resolve_remote], [])
+                        resolved_iplist += sum([dns_system_resolve(x) or [] for x in need_resolve_remote], [])
                         break
                 if name.startswith('google_'):
                     resolved_iplist = list(set(resolved_iplist) - set(google_blacklist))
