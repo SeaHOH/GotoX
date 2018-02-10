@@ -188,9 +188,12 @@ def network_test(first=None):
         test_sock.sendto(test_qdata, dnsserver)
         ins, _, _ = select([test_sock], [], [], 0.5)
         if ins:
-            _, peername = test_sock.recvfrom(512)
-            if peername in sent:
-                ok = True
+            try:
+                _, peername = test_sock.recvfrom(512)
+                if peername in sent:
+                    ok = True
+            except:
+                pass
     if haserr:
         logging.warning('网络已经可以使用，%s', '初始化继续……' if first else '重新开始代理……')
     if haserr or first:
