@@ -1045,7 +1045,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         logging.warning('"%s%s %s" 已经被拦截', self.address_string(), self.command, self.url or self.host)
 
     def _set_temp_GAE(self):
-        hostparts = self.url_parts.scheme, self.host
+        hostparts = 'https' if self.ssl else 'http', self.host
         host = '%s://%s' % hostparts
         #最近是否失败（缓存设置超时两分钟）
         try:
