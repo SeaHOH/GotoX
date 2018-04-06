@@ -92,6 +92,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     fakecert = False
     url = None
     url_parts = None
+    conaborted = False
 
     def setup(self):
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
@@ -256,7 +257,15 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return ndata, None
         wrote = 0
         err = None
-        write = self.write
+
+        def write(d):
+            try:
+                self.write(d)
+            except Exception as e:
+                self.conaborted = True
+                logging.debug('%s 客户端链接断开：%r, %r', self.address_string(), self.url, e)
+                raise e
+
         readinto = response.readinto
         buf = memoryview(bytearray(self.bufsize))
         try:
@@ -450,6 +459,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 return
             except NetWorkIOError as e:
                 noerror = False
+                if self.conaborted:
+                    raise e
                 #链接重置
                 if e.args[0] in reset_errno:
                     if isdirect(host):
