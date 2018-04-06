@@ -1,15 +1,14 @@
 # coding:utf-8
 '''
-A simple colorful logging class for Python. The only format is '%H:%M:%S' +
-level code in head.
+A simple colorful logging class for console or terminal output.
 '''
 
-import sys, os, time, traceback
+import sys, os, threading, time, traceback
 
-__all__ = ['CRITICAL', 'DEBUG', 'ERROR', 'FATAL', 'INFO', 'NOTSET', 'TEST',
-           'WARN', 'WARNING', 'basicConfig', 'critical', 'debug', 'disable',
-           'error', 'exception', 'fatal', 'getLogger', 'info', 'log',
-           'setLevel', 'test', 'warn', 'warning']
+__all__ = ['CRITICAL', 'DEBUG', 'ERROR', 'FATAL', 'INFO', 'NOTSET', 'WARN',
+           'WARNING', 'COLORS', 'addLevelName', 'basicConfig', 'getLogger',
+           'setLevel', 'disable', 'critical', 'debug', 'error', 'exception',
+           'fatal', 'info', 'log', 'warn', 'warning']
 
 CRITICAL = 50
 FATAL = CRITICAL
@@ -17,7 +16,6 @@ ERROR = 40
 WARNING = 30
 WARN = WARNING
 INFO = 20
-TEST = 15
 DEBUG = 10
 NOTSET = 0
 
@@ -26,133 +24,240 @@ _levelToName = {
     ERROR: 'ERROR',
     WARNING: 'WARNING',
     INFO: 'INFO',
-    TEST : 'TEST',
     DEBUG: 'DEBUG',
     NOTSET: 'NOTSET',
 }
 _nameToLevel = {
     'CRITICAL' : CRITICAL,
+    'FATAL' : CRITICAL,
     'ERROR' : ERROR,
     'WARN' : WARNING,
     'WARNING' : WARNING,
     'INFO' : INFO,
-    'TEST' : TEST,
     'DEBUG' : DEBUG,
     'NOTSET' : NOTSET,
 }
-_colors = {
-    'CRITICAL' : None,
-    'ERROR' : None,
-    'WARNING' : None,
-    'INFO' : None,
-    'TEST' : None,
-    'DEBUG' : None,
-    'HEAD' : None,
-    'RESET' : None,
-}
+
+class _colors(object):
+    if os.name == 'nt':
+        RESET = 0x07
+        BLACK = 0x00
+        RED = 0x0c
+        GREEN = 0x02
+        YELLOW = 0x06
+        BLUE = 0x01
+        MAGENTA = 0x05
+        CYAN = 0x03
+        SILVER = 0x07
+        GRAY = 0x08
+        WHITE = 0x0f
+    elif os.name == 'posix':
+        RESET = '\033[0m'
+        BLACK = '\033[30m'
+        RED = '\033[31m'
+        GREEN = '\033[32m'
+        YELLOW = '\033[33m'
+        BLUE = '\033[34m'
+        MAGENTA = '\033[35m'
+        CYAN = '\033[36m'
+        SILVER = '\033[37m'
+        GRAY = '\033[1;30m'
+        WHITE = '\033[1;37m'
+    CRITICAL = RED
+    ERROR = RED
+    WARNING = YELLOW
+    INFO = SILVER
+    DEBUG = GREEN
+    HEAD = CYAN
+    DEFAULT = RESET
+
+    def __getattr__(self, key):
+        try:
+            return self.__getattribute__(key)
+        except:
+            return self.DEFAULT
+
+    def __getitem__(self, key):
+        return self.__getattr__(key)
+
+    def __setitem__(self, key, value):
+        self.__setattr__(key, value)
+
+COLORS = _colors()
+
+if os.name == 'nt' and hasattr(sys.stderr, 'isatty') and sys.stderr.isatty():
+    import ctypes
+    _SetCTA = ctypes.windll.kernel32.SetConsoleTextAttribute
+    _StdHandle = ctypes.windll.kernel32.GetStdHandle(-12)
+    _setColor = lambda color: _SetCTA(_StdHandle, COLORS[color])
+elif os.name == 'posix':
+    _setColor = lambda color: _write(COLORS[color])
+else:
+    _setColor = lambda x: None
+
+_lock = threading.RLock()
+_addedLevelNames = {}
+_handlerList = []
+
+def addLevelName(level, levelName, color=None, force=False):
+    with _lock:
+        levelName = levelName.upper()
+        if not force and level in _levelToName or levelName in _nameToLevel:
+            return
+        _levelToName[level] = levelName
+        _nameToLevel[levelName] = level
+        if color:
+            COLORS[levelName] = color
+        g = globals()
+        g[levelName] = level
+
+        def wrapper(logger):
+            def wrap(fmt, *args, **kwargs):
+                logger.log(level, fmt, *args)
+            return wrap
+
+        levelName = levelName.lower()
+        _addedLevelNames[levelName] = wrapper
+        g[levelName] = root.__getattr__(levelName)
 
 def _checkLevel(level):
-    if isinstance(level, (int, float)):
-        rv = level
-    elif str(level) == level:
-        if level not in _nameToLevel:
-            raise ValueError("Unknown level: %r" % level)
-        rv = _nameToLevel[level]
-    else:
-        raise TypeError("Level not an integer or a valid string: %r" % level)
-    return rv
+    with _lock:
+        if isinstance(level, (int, float)):
+            rv = level
+        elif str(level) == level:
+            if level not in _nameToLevel:
+                raise ValueError("Unknown level: %r" % level)
+            rv = _nameToLevel[level]
+        else:
+            raise TypeError("Level not an integer or a valid string: %r" % level)
+        return rv
 
-def _init_():
-    '''
-    When gevent.monkey.patch_all is called with ``sys=True``, call this function
-    to reload the sys.stderr.(python 2)
-    '''
-    import sys
-    global _write, _flush, _setColor
-    _write = sys.stderr.write
-    _flush = sys.stderr.flush
-    if hasattr(sys.stderr, 'isatty') and sys.stderr.isatty():
-        if os.name == 'nt':
-            _colors['INFO'] = 0x07
-            _colors['ERROR'] = 0x0c
-            _colors['WARNING'] = 0x06
-            _colors['DEBUG'] = 0x002
-            _colors['HEAD'] = 0x03
-            import ctypes
-            SetCTA = ctypes.windll.kernel32.SetConsoleTextAttribute
-            StdHandle = ctypes.windll.kernel32.GetStdHandle(-12)
-            _setColor = lambda color: SetCTA(StdHandle, _colors[color])
-        elif os.name == 'posix':
-            _colors['INFO'] = '\033[0m'
-            _colors['ERROR'] = '\033[31m'
-            _colors['WARNING'] = '\033[33m'
-            _colors['DEBUG'] = '\033[32m'
-            _colors['HEAD'] = '\033[36m'
-            _setColor = lambda color: _write(_colors[color])
-        _colors['CRITICAL'] = _colors['ERROR']
-        _colors['TEST'] = _colors['DEBUG']
-        _colors['RESET'] = _colors['INFO']
-    else:
-        _setColor = lambda x: None
+def _write(msg, file=None, color=None, reset=None):
+    if file is None:
+        file = sys.stderr or sys.stdout
+        if file is None:
+            return
+    try:
+        colors = file in (sys.stderr, sys.stdout)
+        if colors:
+            _setColor(color)
+        file.write(msg)
+        if hasattr(file, 'flush'):
+            file.flush()
+        if colors and reset:
+            _setColor('RESET')
+    except OSError:
+        pass
 
-_init_()
+class Logger(object):
 
-def getLogger(*args, **kwargs):
-    return sys.modules['clogging']
+    loggerDict = {}
+    _disable = 0
+    logName = True
+    stream = None
+
+    def __new__(cls, name, level=NOTSET):
+        with _lock:
+            if name in cls.loggerDict:
+                return cls.loggerDict[name]
+            else:
+                self = super(Logger, cls).__new__(cls)
+                cls.loggerDict[name] = self
+                return self
+
+    def __init__(self, name, level=NOTSET):
+        self.name = name
+        self.level = _checkLevel(level)
+
+    def __getattr__(self, attr):
+        try:
+            return self.__getattribute__(attr)
+        except Exception as e:
+            try:
+                log = _addedLevelNames[attr](self)
+                self.__setattr__(attr, log)
+                return log
+            except:
+                raise e
+
+    @staticmethod
+    def getLogger(name=None):
+        if name:
+            return Logger(name)
+        else:
+            return root
+
+    def setLevel(self, level):
+        self.level = _checkLevel(level)
+
+    def disable(self, level):
+        self._disable = _checkLevel(level)
+
+    def isEnabledFor(self, level):
+        if self.__class__._disable >= level or self._disable >= level:
+            return False
+        return level >= self.level
+
+    def log(self, level, fmt, *args, exc_info=None, **kwargs):
+        with _lock:
+            if self.isEnabledFor(level):
+                levelName = _levelToName[level]
+                head = '%s %s ' % (time.strftime('%H:%M:%S'), levelName[0])
+                if self.logName:
+                    head = '%s%s ' % (head, self.name)
+                _write(head, color='HEAD')
+                _write('%s\n' % (fmt % args), color=levelName, reset=True)
+            if exc_info:
+                if isinstance(exc_info, BaseException):
+                    exc_info = (type(exc_info), exc_info, exc_info.__traceback__)
+                elif not isinstance(exc_info, tuple):
+                    exc_info = sys.exc_info()
+                _write(''.join(traceback.format_exception(*exc_info)))
+                _write('\n')
+
+    def debug(self, fmt, *args, **kwargs):
+        self.log(DEBUG, fmt, *args, **kwargs)
+
+    def info(self, fmt, *args, **kwargs):
+        self.log(INFO, fmt, *args, **kwargs)
+
+    def warning(self, fmt, *args, **kwargs):
+        self.log(WARNING, fmt, *args, **kwargs)
+
+    warn = warning
+
+    def error(self, fmt, *args, **kwargs):
+        self.log(ERROR, fmt, *args, **kwargs)
+
+    def exception(self, fmt, *args, exc_info=True, **kwargs):
+        self.error(fmt, *args, exc_info=exc_info, **kwargs)
+
+    def critical(self, fmt, *args, **kwargs):
+        self.log(CRITICAL, fmt, *args, **kwargs)
+
+    fatal = critical
 
 def basicConfig(*args, **kwargs):
-    warning('Unable to format, the only format is "%%H:%%M:%%S" + level code in head.')
+    warning('Unable to format, the only format is "%%H:%%M:%%S" + level code ' +
+            '+ logger name in head.')
     warning('Use setLevel(level) to set output level.')
-    log.level = _checkLevel(kwargs.get('level', INFO))
+    root.level = _checkLevel(kwargs.get('level', INFO))
 
-def setLevel(level):
-    log.level = _checkLevel(level)
+getLogger = Logger.getLogger
 
-def disable(level):
-    log.disable = _checkLevel(level)
+root = Logger('root', WARNING)
+root.logName = False
+Logger.root = root
 
-def isEnabledFor(level):
-    if log.disable >= level:
-        return 0
-    return level >= log.level
+setLevel = root.setLevel
+disable = root.disable
+log = root.log
+debug = root.debug
+info = root.info
+warning = warn = root.warning
+error = root.error
+exception = root.exception
+critical = fatal = root.critical
 
-def log(level, fmt, *args, **kwargs):
-    if isEnabledFor(level):
-        levelName = _levelToName[level]
-        _setColor('HEAD')
-        _write('%s %s ' % (time.strftime('%H:%M:%S'), levelName[0]))
-        _setColor('HEAD') # repeat for python3 in nt
-        _flush() # immediately output for python3
-        _setColor(levelName)
-        _write('%s\n' % (fmt % args))
-        _setColor('RESET')
-
-log.level = 0
-log.disable = -1
-
-def debug(fmt, *args, **kwargs):
-    log(DEBUG, fmt, *args)
-
-def test(fmt, *args, **kwargs):
-    log(TEST, fmt, *args)
-
-def info(fmt, *args, **kwargs):
-    log(INFO, fmt, *args)
-
-def warning(fmt, *args, **kwargs):
-    log(WARNING, fmt, *args)
-    #_write(traceback.format_exc() + '\n')
-
-warn = warning
-
-def error(fmt, *args, **kwargs):
-    log(ERROR, fmt, *args)
-
-def exception(fmt, *args, **kwargs):
-    error(fmt, *args)
-    _write(traceback.format_exc() + '\n')
-
-def critical(fmt, *args, **kwargs):
-    log(CRITICAL, fmt, *args)
-
-fatal = critical
+def replace_logging():
+    sys.modules['logging'] = sys.modules[__name__]

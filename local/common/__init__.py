@@ -4,6 +4,9 @@ import os
 import sys
 from local import clogging as logging
 
+logging.replace_logging()
+logging.addLevelName(15, 'TEST', logging._colors.GREEN)
+
 app_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 cert_dir = os.path.join(app_root, 'cert')
 config_dir = os.path.join(app_root, 'config')

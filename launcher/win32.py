@@ -34,7 +34,8 @@ CONFIG_FILENAME = os.path.join(config_dir, 'Config.ini')
 CONFIG_USER_FILENAME = re.sub(r'\.ini$', '.user.ini', CONFIG_FILENAME)
 CONFIG_AUTO_FILENAME = os.path.join(config_dir, 'ActionFilter.ini')
 
-def get_listen_addr():
+def load_config():
+    global LISTEN_GAE, LISTEN_AUTO
     CONFIG = ConfigParser(inline_comment_prefixes=('#', ';'))
     CONFIG._optcre = re.compile(r'(?P<option>[^=\s]+)\s*(?P<vi>=?)\s*(?P<value>.*)')
     CONFIG.read([CONFIG_FILENAME, CONFIG_USER_FILENAME])
@@ -48,9 +49,12 @@ def get_listen_addr():
         if LINK_PROFILE not in ('ipv4', 'ipv6', 'ipv46'):
             LINK_PROFILE = 'ipv4'
         LISTEN_IP = '127.0.0.1' if '4' in LINK_PROFILE else '::1'
-    LISTEN_GAE = '%s:%d' % (LISTEN_IP, CONFIG.getint('listen', 'gae_port'))
-    LISTEN_AUTO = '%s:%d' % (LISTEN_IP, CONFIG.getint('listen', 'auto_port'))
-    return proxy_server(LISTEN_GAE, True), proxy_server(LISTEN_AUTO, True)
+    _LISTEN_GAE = '%s:%d' % (LISTEN_IP, CONFIG.getint('listen', 'gae_port'))
+    _LISTEN_AUTO = '%s:%d' % (LISTEN_IP, CONFIG.getint('listen', 'auto_port'))
+    LISTEN_GAE = proxy_server(_LISTEN_GAE, True)
+    LISTEN_AUTO = proxy_server(_LISTEN_AUTO, True)
+    LISTEN_DEBUGINFO = _LOGLv[min(CONFIG.getint('listen', 'debuginfo'), 3)]
+    logging.setLevel(LISTEN_DEBUGINFO)
 
 import winreg
 
@@ -164,11 +168,20 @@ def refresh_proxy_state(enable=None):
 from subprocess import Popen
 from local import __version__ as gotoxver, clogging as logging
 
+logging.replace_logging()
+logging.addLevelName(15, 'TEST', logging._colors.GREEN)
+_LOGLv = {
+    0 : logging.WARNING,
+    1 : logging.INFO,
+    2 : logging.TEST,
+    3 : logging.DEBUG
+    }
+
 GotoX_app = None
 
 def start_GotoX():
-    global GotoX_app, LISTEN_GAE, LISTEN_AUTO
-    LISTEN_GAE, LISTEN_AUTO = get_listen_addr()
+    global GotoX_app
+    load_config()
     GotoX_app = Popen((py_exe, app_start))
     os.environ['HTTPS_PROXY'] = os.environ['HTTP_PROXY'] = LISTEN_AUTO.http
 
