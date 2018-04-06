@@ -77,8 +77,7 @@ def dump_subkey():
         fp.write(crypto.dump_publickey(crypto.FILETYPE_PEM, sub_key))
     sub_publickey = sub_key
 
-def create_subcert(certfile, commonname, ip=False, sans=None):
-    sans = set(sans) if sans else set()
+def create_subcert(certfile, commonname, ip=False):
     cert = crypto.X509()
     cert.set_version(2)
     cert.set_serial_number(int((int(time() - sub_serial) + random.random()) * 100)) #setting the only number
@@ -94,10 +93,10 @@ def create_subcert(certfile, commonname, ip=False, sans=None):
     cert.gmtime_adj_notAfter(sub_time_a)
     cert.set_issuer(ca_subject)
     cert.set_pubkey(sub_publickey)
-    sans.add(commonname)
-    if not ip:
-        sans.add('*.' + commonname)
-    sans = ', '.join('DNS: %s' % x for x in sans)
+    if ip:
+        sans = 'IP: ' + commonname
+    else:
+        sans = 'DNS: %s, DNS: *.%s' % (commonname,  commonname)
     cert.add_extensions([crypto.X509Extension(b'subjectAltName', True, sans.encode())])
     cert.sign(ca_privatekey, ca_digest)
 
@@ -131,7 +130,7 @@ def get_cert(commonname, ip=False, sans=None):
             if cert:
                 return certfile
 
-    create_subcert(certfile, commonname, ip, sans)
+    create_subcert(certfile, commonname, ip)
     return certfile
 
 def import_cert(certfile):
