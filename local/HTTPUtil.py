@@ -168,7 +168,7 @@ class BaseHTTPUtil:
             sock.close()
             return
         try:
-            rd, _, ed = select([sock], [], [sock], 0.01)
+            rd, _, ed = select([sock], [], [sock], 0.0)
             if rd or ed:
                 sock.close()
                 return

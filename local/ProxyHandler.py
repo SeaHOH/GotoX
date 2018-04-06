@@ -130,7 +130,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             #从头域获取主机、端口
             host, port = self.parse_netloc(host)
             #排除某些程序把代理当成主机名
-            if chost and port in self.listen_port and host.startswith(self.localhosts):
+            if chost and port in self.listen_port and host in self.localhosts:
                 self.host = host = chost
                 port = cport
             else:
@@ -157,7 +157,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         host = self.host
         self.action, self.target = get_connect_action(ssl, host)
         #本地地址
-        if host.startswith(self.localhosts):
+        if host in self.localhosts:
             self.action = 'do_FAKECERT'
         self.fakecert = ssl and self.action == 'do_FAKECERT'
         self.do_action()
@@ -175,7 +175,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             #从头域获取主机、端口
             host, port = self.parse_netloc(host)
             #排除某些程序把代理当成主机名
-            if chost and port in self.listen_port and host.startswith(self.localhosts):
+            if chost and port in self.listen_port and host in self.localhosts:
                 self.host = host = chost
                 port = cport
             else:
@@ -203,7 +203,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.url = url = url_parts.geturl()
         #确定路径
         if path[0] != '/':
-            self.path = url[url.find('/', url.find('//') + 3):]
+            self.path = url[url.find('/', 12):]
 
     def do_METHOD(self):
         #处理其它请求，根据规则过滤执行目标动作
@@ -213,7 +213,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         host = self.host
         path = self.path
         #本地地址
-        if host.startswith(self.localhosts):
+        if host in self.localhosts:
             #发送证书
             if path.lower() in self.CAPath:
                 return self.send_CA()
@@ -399,7 +399,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         #修复某些软件无法正确处理 206 Partial Content 响应的持久链接
         user_agent = self.headers.get('User-Agent', '')
         if (user_agent.startswith('mpv')         # mpv
-            or user_agent.endswith('(Chrome)')): # youtube-dl 有时会传递给其它支持的播放器，导致无法辨识，统一关闭
+            or user_agent.endswith(('(Chrome)', 'Iceweasel/38.2.1'))): # youtube-dl 有时会传递给其它支持的播放器，导致无法辨识，统一关闭
                                                  # 其它自定义的就没法，此处无法辨识，感觉关闭所有 206 有点划不来
             self.close_connection = True
 
@@ -418,7 +418,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 response = http_util.request(self, payload, request_headers, connection_cache_key=connection_cache_key)
                 if not response:
                     #重试、网站图标
-                    if retry or self.url_parts.path.endswith('ico'):
+                    if retry or self.url_parts.path.endswith('favicon.ico'):
                         logging.warn('%s do_DIRECT "%s %s" 失败，返回 404', self.address_string(), self.command, self.url)
                         c = '404 无法找到给定的网址'.encode()
                         self.write('HTTP/1.1 404 Not Found\r\n'
@@ -459,11 +459,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         logging.warning('%s do_DIRECT "%s %s" 链接被重置，尝试使用 "GAE" 规则。', self.address_string(response), self.command, self.url)
                         return self.go_GAE()
                 elif e.args[0] not in pass_errno:
-                    raise
+                    raise e
             except Exception as e:
                 noerror = False
                 logging.warning('%s do_DIRECT "%s %s" 失败：%r', self.address_string(response), self.command, self.url, e)
-                raise
+                raise e
             finally:
                 if not noerror:
                     self.close_connection = True
@@ -1241,7 +1241,7 @@ class GAEProxyHandler(AutoProxyHandler):
         #处理其它请求，转发到 GAE 代理
         self._do_METHOD()
         #本地地址
-        if self.host.startswith(self.localhosts):
+        if self.host in self.localhosts:
             #发送证书
             if self.path.lower() in self.CAPath:
                 return self.send_CA()

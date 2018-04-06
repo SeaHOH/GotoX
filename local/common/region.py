@@ -47,7 +47,7 @@ class DirectIPv4Database:
         #格式化并缓存索引数据
         #使用 struct.unpack 一次性分割数据效率更高
         #每 4 字节为一个索引范围 fip：BE short -> int，对应 IP 范围序数
-        self.index = unpack('>' + 'h' * (224 * 2), index)
+        self.index = unpack('>%dh' % (224 * 2), index)
         #每 8 字节对应一段直连 IP 范围和一段非直连 IP 范围
         self.data = unpack('4s' * (data_len // 4), data)
 

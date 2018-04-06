@@ -231,7 +231,7 @@ IPPROTO_IPV6 = getattr(socket, 'IPPROTO_IPV6', 41)
 
 class LocalProxyServer(SocketServer.ThreadingTCPServer):
     '''Local Proxy Server'''
-    request_queue_size = 48
+    request_queue_size = 96
     is_not_online = True
 
     def __init__(self, server_address, RequestHandlerClass):
