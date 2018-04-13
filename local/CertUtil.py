@@ -103,7 +103,7 @@ def create_subcert(certfile, commonname, ip=False):
     with open(certfile, 'wb') as fp:
         fp.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
 
-def get_cert(commonname, ip=False, sans=None):
+def get_cert(commonname, ip=False):
     if ip:
         certfile = os.path.join(sub_certdir, commonname.replace(':', '.') + '.crt')
     else:

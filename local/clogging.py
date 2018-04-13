@@ -238,7 +238,7 @@ class Logger(object):
     fatal = critical
 
 def basicConfig(*args, **kwargs):
-    warning('Unable to format, the only format is "%%H:%%M:%%S" + level code ' +
+    warning('Unable to format, the only format is "%%H:%%M:%%S" + level code '
             '+ logger name in head.')
     warning('Use setLevel(level) to set output level.')
     root.level = _checkLevel(kwargs.get('level', INFO))

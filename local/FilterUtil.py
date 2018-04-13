@@ -52,13 +52,20 @@ def get_redirect(target, url):
 
 def match_host_filter(filter, host):
     if isinstance(filter, str):
-        if '.' in filter:
-            if filter[-1] != '.':
-                if filter[0] == '.':
-                    return host.endswith(filter)
-                return host == filter
-            if filter[0] != '.':
-                return host.startswith(filter)
+        if filter:
+            if filter[0] == '^':
+                if filter[-1] == '$':
+                    return host == filter[1:-1]
+                return host.startswith(filter[1:])
+            if filter[-1] == '$':
+                return host.endswith(filter[:-1])
+            if '.' in filter:
+                if filter[-1] != '.':
+                    if filter[0] == '.':
+                        return host.endswith(filter)
+                    return host == filter
+                if filter[0] != '.':
+                    return host.startswith(filter)
         return filter in host
     return filter(host)
 
