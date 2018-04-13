@@ -278,7 +278,7 @@ class RangeFetch:
                     response.close()
                     if noerror:
                         #放入套接字缓存
-                        ssl_connection_cache['google_gws:443'].append((time(), response.sock))
+                        ssl_connection_cache['google_fe:443'].append((time(), response.sock))
                     elif self.delable:
                         with self.tLock:
                              if xip in self.iplist and len(self.iplist) > self.minip:

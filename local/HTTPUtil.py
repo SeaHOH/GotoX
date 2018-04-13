@@ -403,7 +403,10 @@ class HTTPUtil(BaseHTTPUtil):
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
             # pick up the sock socket
             if self.gws:
-                server_hostname = b'fonts.googleapis.com' if gws_servername is None else random.choice(gws_servername)
+                if cache_key == 'google_fe:443':
+                    server_hostname = host.encode() if gws_servername is None else random.choice(gws_servername)
+                else:
+                    server_hostname = b'fonts.googleapis.com'
             else:
                 server_hostname = None if isip(host) else host.encode()
             ssl_sock = self.get_ssl_socket(sock, server_hostname)
