@@ -22,7 +22,7 @@ before_deploy:
   - curl -kL -o cert/cacerts/google.pem https://pki.google.com/roots.pem
   - python launcher/buildipdb.py -u -d --17mon
 
-  - git clone --depth=1 --branch=win_py_portable https://github.com/SeaHOH/GotoX.git win_py_portable
+  - git clone --depth=1 --branch=win_py_portable https://github.com/SeaHOH/GotoX.git ../win_py_portable
 
   - rm -rf .git*
   - rm -rf .travis*
