@@ -85,16 +85,6 @@ class _colors(object):
 
 COLORS = _colors()
 
-if os.name == 'nt' and hasattr(sys.stderr, 'isatty') and sys.stderr.isatty():
-    import ctypes
-    _SetCTA = ctypes.windll.kernel32.SetConsoleTextAttribute
-    _StdHandle = ctypes.windll.kernel32.GetStdHandle(-12)
-    _setColor = lambda color: _SetCTA(_StdHandle, COLORS[color])
-elif os.name == 'posix':
-    _setColor = lambda color: _write(COLORS[color])
-else:
-    _setColor = lambda x: None
-
 _lock = threading.RLock()
 _addedLevelNames = {}
 _handlerList = []
@@ -148,6 +138,16 @@ def _write(msg, file=None, color=None, reset=None):
             _setColor('RESET')
     except OSError:
         pass
+
+if os.name == 'nt' and hasattr(sys.stderr, 'isatty') and sys.stderr.isatty():
+    import ctypes
+    _SetCTA = ctypes.windll.kernel32.SetConsoleTextAttribute
+    _StdHandle = ctypes.windll.kernel32.GetStdHandle(-12)
+    _setColor = lambda color: _SetCTA(_StdHandle, COLORS[color])
+elif os.name == 'posix':
+    _setColor = lambda color: _write(COLORS[color])
+else:
+    _setColor = lambda x: None
 
 class Logger(object):
 
