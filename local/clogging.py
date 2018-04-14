@@ -128,7 +128,7 @@ def _write(msg, file=None, color=None, reset=None):
         if file is None:
             return
     try:
-        colors = file in (sys.stderr, sys.stdout)
+        colors = color and file in (sys.stderr, sys.stdout)
         if colors:
             _setColor(color)
         file.write(msg)
