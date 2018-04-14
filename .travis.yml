@@ -33,8 +33,8 @@ before_deploy:
   - mv GotoX GotoX-win_amd64
 
   - rm -f GotoX-non_win/*.vbs
-  - mv -f win_py_portable/${PYTHON_VERSION}-win32/python/* GotoX-win32/python
-  - mv -f win_py_portable/${PYTHON_VERSION}-win_amd64/python/* GotoX-win_amd64/python
+  - cp -rf win_py_portable/${PYTHON_VERSION}-win32/python GotoX-win32/python
+  - cp -rf win_py_portable/${PYTHON_VERSION}-win_amd64/python GotoX-win_amd64/python
 
   - cd GotoX-non_win
   - zip -r GotoX-${RELEASE_VERSION}-non_win.zip *
