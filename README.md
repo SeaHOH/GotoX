@@ -102,6 +102,7 @@
     - pyOpenSSL 16.0.0 及以上
     - dnslib 0.8.3 及以上
     - PySocks 1.5.4 及以上
+- 可选组件：
     - brotlipy 0.5.0 及以上
 - 发布将提供包含 Windows CPython 3.5 环境的便携版本。
 - IPv6 未测试，欢迎反馈。

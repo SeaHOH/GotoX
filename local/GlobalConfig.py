@@ -9,6 +9,7 @@ import re
 import fnmatch
 from .compat import ConfigParser
 from .common import config_dir, data_dir
+from .common.decompress import _brotli
 #from .common.proxy import get_system_proxy, parse_proxy
 from . import clogging as logging
 
@@ -87,7 +88,7 @@ class GC:
     if LINK_PROFILE not in ('ipv4', 'ipv6', 'ipv46'):
         LINK_PROFILE = 'ipv4'
     LINK_WINDOW = min(CONFIG.getint('link', 'window'), 2)
-    LINK_REQUESTCOMPRESS = CONFIG.getboolean('link', 'requestcompress')
+    LINK_REQUESTCOMPRESS = _brotli and CONFIG.getboolean('link', 'requestcompress')
     #LINK_OPENSSL = CONFIG.getboolean('link', 'openssl')
     LINK_OPENSSL = 1
     LINK_VERIFYG2PK = CONFIG.getboolean('link', 'verifyg2pk')

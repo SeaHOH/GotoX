@@ -5,7 +5,13 @@ import zlib
 from _compression import DecompressReader
 from io import DEFAULT_BUFFER_SIZE, RawIOBase, BufferedReader
 from gzip import _PaddedFile, _GzipReader
-from brotli._brotli import ffi, lib
+
+try:
+    from brotli import _brotli
+    ffi = _brotli.ffi
+    lib = _brotli.lib
+except:
+    _brotli = None
 
 class DeflateReader(BufferedReader):
     def __init__(self, fileobj):
@@ -213,6 +219,7 @@ def BrotliDecompressor(fileobj):
 
 decompress_readers = {
     'gzip': GzipReader,
-    'deflate': DeflateReader,
-    'br': BrotliReader
+    'deflate': DeflateReader
     }
+if _brotli:
+    decompress_readers['br'] = BrotliReader
