@@ -1060,42 +1060,51 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         host = '%s://%s' % hostparts
         #最近是否失败（缓存设置超时两分钟）
         try:
-            if self.badhost[host] & 2 == 0:
+            f = self.badhost[host] & 12
+            if f == 0:
+                self.badhost[host] |= 4
+            elif f == 4:
                 #记录临时规则的过期时间
                 set_temp_action(*hostparts, self.path[1:])
                 logging.warning('将 %r 加入 "GAE" 规则%s。', host, GC.LINK_TEMPTIME_S)
-                self.badhost[host] |= 2
+                self.badhost[host] |= 8
         except KeyError:
-            self.badhost[host] = 0
+            self.badhost[host] = 4
 
     def _set_temp_FAKECERT(self):
         host = 'http%s://%s' % ('s' if self.ssl else '', self.host)
         #最近是否失败（缓存设置超时两分钟）
         try:
-            if self.badhost[host] & 1 == 0:
+            f = self.badhost[host] & 3
+            if f == 0:
+                self.badhost[host] |= 1
+            elif f == 1:
                 action, _ = filter = ssl_filters_cache[host]
                 #防止重复替换
                 if action != 'do_FAKECERT':
                     #设置临时规则的过期时间
                     ssl_filters_cache.set(host, ('do_FAKECERT', filter), GC.LINK_TEMPTIME)
                 logging.warning('将 %r 加入 "FAKECERT" 规则%s。', host, GC.LINK_TEMPTIME_S)
-                self.badhost[host] |= 1
+                self.badhost[host] |= 2
         except KeyError:
-            self.badhost[host] = 0
+            self.badhost[host] = 1
 
     def go_GAE(self):
         if self.command not in self.gae_fetcmd:
             return self.go_BAD()
         self._set_temp_GAE()
         self.action = 'do_GAE'
-        self.do_GAE()
+        self.do_action()
 
     def go_FAKECERT(self):
         self._set_temp_FAKECERT()
         self.action = 'do_FAKECERT'
-        self.do_FAKECERT()
+        self.fakecert = True
+        self.do_action()
 
     def go_FAKECERT_GAE(self):
+        self.path = '/'
+        self._set_temp_GAE()
         self._set_temp_GAE()
         self.go_FAKECERT()
 

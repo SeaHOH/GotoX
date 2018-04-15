@@ -93,15 +93,18 @@ def set_temp_action(scheme, host, path):
     schemes = '', scheme
     key = '%s://%s' % (scheme, host)
     filters = filters_cache.get(key)
-    if filters:
-        #以临时规则替换缓存规则中第一个匹配
-        for i in range(len(filters)):
-            schemefilter, pathfilter, action, target = filter = filters[i]
-            if schemefilter in schemes and match_path_filter(pathfilter, path):
-                #防止重复替换
-                if action != 'TEMPGAE':
-                    filters[i] = '', '', 'TEMPGAE', (time() + GC.LINK_TEMPTIME, filter)
-                break
+    if not filters:
+        url = '%s://%s/%s' % (scheme, host, path)
+        get_action(scheme, host, path, url)
+        filters = filters_cache.get(key)
+    #以临时规则替换缓存规则中第一个匹配
+    for i in range(len(filters)):
+        schemefilter, pathfilter, action, target = filter = filters[i]
+        if schemefilter in schemes and match_path_filter(pathfilter, path):
+            #防止重复替换
+            if action != 'TEMPGAE':
+                filters[i] = '', '', 'TEMPGAE', (time() + GC.LINK_TEMPTIME, filter)
+            break
 
 def get_action(scheme, host, path, url):
     check_reset()
