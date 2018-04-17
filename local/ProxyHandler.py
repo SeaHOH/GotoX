@@ -53,7 +53,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     nLock = threading.Lock()
     nappid = 0
     CAPath = '/ca', '/cadownload'
-    gae_fetcmd = 'GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'PATCH'
+    gae_fetcmd = 'GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'
     skip_request_headers = (
         'Vary',
         'Via',
@@ -492,6 +492,32 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             response.sock.used = None
                             http_util.tcp_connection_cache[connection_cache_key].append((time(), response.sock))
 
+    def fake_options(self, request_headers):
+        response = [
+            'HTTP/1.1 200 OK',
+            'Access-Control-Allow-Credentials: true',
+#            'Access-Control-Allow-Headers: Authorization, If-Modified-Since',
+            'Access-Control-Allow-Methods: GET, POST, HEAD, PUT, DELETE, OPTIONS, PATCH',
+#            'Access-Control-Allow-Origin: *',
+            'Access-Control-Expose-Headers: Content-Encoding, Content-Length, Date, Server, Vary, X-Google-GFE-Backend-Request-Cost, X-FB-Debug, X-Loader-Length',
+            'Access-Control-Max-Age: 1728000',
+            'Vary: Origin, X-Origin',
+            'Content-Length: 0'
+            ]
+        headers = request_headers.get('Access-Control-Request-Headers')
+        if headers:
+            response.append('Access-Control-Allow-Headers: ' + headers)
+        else:
+            response.append('Access-Control-Allow-Headers: Authorization, If-Modified-Since')
+        origin = request_headers.get('Origin')
+        if origin:
+            response.append('Access-Control-Allow-Origin: ' + origin)
+        else:
+            response.append('Access-Control-Allow-Origin: *')
+        response.append('') 
+        self.write('\r\n'.join(response))
+        logging.warning('%s "%s FAKEOPTIONS %s HTTP/1.1" 200 0', self.address_string(response), self.action[3:], self.url)
+
     def do_GAE(self):
         #发送请求到 GAE 代理
         if self.command not in self.gae_fetcmd:
@@ -501,6 +527,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return self.do_action()
         url_parts = self.url_parts
         request_headers, payload = self.handle_request_headers()
+        if self.command == 'OPTIONS':
+            return self.fake_options(request_headers)
         #为使用非标准端口的网址加上端口
         if (url_parts.scheme, self.port) not in (('http', 80), ('https', 443)):
             self.url = '%s://%s:%s%s' % (url_parts.scheme, self.host, self.port, self.path)
