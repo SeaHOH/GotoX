@@ -1175,10 +1175,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     timecount = min(timecount*2, maxpong)
         except NetWorkIOError as e:
             if e.args[0] not in pass_errno:
-                logging.warning('%s 转发 %r 失败：%r', self.address_string(remote), self.url, e)
+                logging.warning('%s 转发 "%s" 失败：%r', self.address_string(remote), self.url or self.host, e)
                 raise
         finally:
             remote.close()
+            logging.test('%s 转发终止："%s"', self.address_string(remote), self.url or self.host)
 
     def get_context(self):
         #维护一个 ssl context 缓存
