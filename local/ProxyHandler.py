@@ -1081,7 +1081,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.write(content)
         else:
             self.write(b'Content-Length: 0\r\n\r\n')
-        logging.warning('"%s%s %s" 已经被拦截', self.address_string(), self.command, self.url or self.host)
+        logging.warning('%s "%s %s" 已经被拦截', self.address_string(), self.command, self.url or self.host)
 
     def _set_temp_GAE(self):
         hostparts = 'https' if self.ssl else 'http', self.host
@@ -1156,6 +1156,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         maxpong = maxpong or self.fwd_keeptime
         allins = [local, remote]
         timecount = self.fwd_keeptime
+        remote_silence_time = 0
         try:
             while allins and timecount > 0:
                 start_time = time()
@@ -1171,7 +1172,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         other.sendall(buf[:ndata])
                     else:
                         allins.remove(sock)
-                if t < tick and len(allins) == 2:
+                if remote in allins and remote in ins:
+                    remote_silence_time = 0
+                else:
+                    remote_silence_time += t
+                    if remote_silence_time > maxpong:
+                        break
+                if ins and len(allins) == 2:
                     timecount = min(timecount*2, maxpong)
         except NetWorkIOError as e:
             if e.args[0] not in pass_errno:
@@ -1179,7 +1186,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 raise
         finally:
             remote.close()
-            logging.test('%s 转发终止："%s"', self.address_string(remote), self.url or self.host)
+            logging.debug('%s 转发终止："%s"', self.address_string(remote), self.url or self.host)
 
     def get_context(self):
         #维护一个 ssl context 缓存
