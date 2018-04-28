@@ -514,7 +514,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             response.append('Access-Control-Allow-Origin: ' + origin)
         else:
             response.append('Access-Control-Allow-Origin: *')
-        response.append('') 
+        response.append('\r\n')
         self.write('\r\n'.join(response))
         logging.warning('%s "%s FAKEOPTIONS %s HTTP/1.1" 200 0', self.address_string(response), self.action[3:], self.url)
 
