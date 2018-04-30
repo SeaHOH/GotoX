@@ -206,7 +206,7 @@ def on_hide(systray):
 
 def on_refresh(systray):
     if ctypes.windll.user32.MessageBoxW(None,
-            '是否重新载入 CotoX？', '请确认', 4 | 48) == 6:
+            '是否重新载入 GotoX？', '请确认', 4 | 48) == 6:
         stop_GotoX()
         start_GotoX()
         ctypes.windll.user32.ShowWindow(hwnd, 8)
