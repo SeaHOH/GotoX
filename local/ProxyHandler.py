@@ -1149,9 +1149,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if self.command == 'CONNECT':
             self.connection.sendall(b'HTTP/1.1 200 Connection Established\r\n\r\n')
         else:
-            http_headers = ''.join('%s: %s\r\n' % (k.title(), v) for k, v in self.headers.items() if not k.title().startswith('Proxy'))
+            request_headers, payload = self.handle_request_headers()
+            http_headers = ''.join('%s: %s\r\n' % kv for kv in request_headers.items())
             rebuilt_request = '%s\r\n%s\r\n' % (self.requestline, http_headers)
-            remote.sendall(rebuilt_request.encode())
+            remote.sendall(rebuilt_request.encode() + payload)
         local = self.connection
         buf = memoryview(bytearray(32768)) # 32K
         maxpong = maxpong or self.fwd_keeptime
