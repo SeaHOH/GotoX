@@ -151,7 +151,7 @@ class BaseHTTPUtil:
             raise ssl.SSLError('没有获取到证书')
         subject = cert.get_subject()
         if subject.O != 'Google Inc':
-            raise ssl.SSLError('%s 证书的公司名称（%s）不是 "Google Inc"' % (address[0], subject.O))
+            raise ssl.SSLError('%s 证书的公司名称（%s）不是 "Google Inc"' % (sock.getpeername[0], subject.O))
         return cert
 
     def google_verify_g23(self, sock):
