@@ -16,6 +16,7 @@ from . import clogging as logging
 from shutil import copyfile
 from time import time, localtime, strftime
 from .common import cert_dir, data_dir, NetWorkIOError, isip, isipv4, isipv6
+from .compat.openssl import zero_EOF_error
 from .ProxyServer import network_test
 from .GlobalConfig import GC
 
@@ -435,7 +436,7 @@ class GAE_Finder:
         except NetWorkIOError as e:
             sock.close()
             ssl_sock = None
-            if not retry and e.args == (-1, 'Unexpected EOF'):
+            if not retry and e.args == zero_EOF_error:
                 return self.getipinfo(ip, conntimeout, handshaketimeout, timeout, True)
             WARNING('%r', e)
         is_gae = self.check_gae_status(ssl_sock, sock, ip) if ssl_sock else False

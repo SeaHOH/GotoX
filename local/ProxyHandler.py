@@ -93,6 +93,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     url = None
     url_parts = None
     conaborted = False
+    action = ''
 
     def setup(self):
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
@@ -1276,13 +1277,14 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             elif client_ip == '::1':
                 client_ip = 'L6'
             self.address_str = '%s:%s->' % (client_ip, self.client_address[1])
-        if hasattr(response, 'xip'):
-            if response.xip[1] in (80, 443):
+        if hasattr(self, 'port') and self.port in (80, 443):
+            if hasattr(response, 'xip'):
                 return '%s%s' % (self.address_str, response.xip[0])
-            else:
-                return '%s%s:%s' % (self.address_str, *response.xip)
-        else:
-            return self.address_str
+        elif hasattr(response, 'xip'):
+            return '%s%s:%s' % (self.address_str, *response.xip)
+        elif hasattr(self, 'port'):
+            return '%s:%s' % (self.address_str, self.port)
+        return self.address_str
 
 class GAEProxyHandler(AutoProxyHandler):
 

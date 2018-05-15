@@ -201,7 +201,7 @@ class GC:
             DNS_PRIORITY.remove(dnstype)
     DNS_PRIORITY.extend(DNS_DEF_PRIORITY)
 
-    DNS_CACHE_ENTRIES = int(CONFIG.get('dns/cache', 'entries') or 128)
+    DNS_CACHE_ENTRIES = int(CONFIG.get('dns/cache', 'entries') or 1024)
     DNS_CACHE_EXPIRATION = int(CONFIG.get('dns/cache', 'expiration') or 7200)
 
 del CONFIG, fnmatch, ConfigParser
