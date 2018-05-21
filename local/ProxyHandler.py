@@ -159,7 +159,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         host = self.host
         self.action, self.target = get_connect_action(ssl, host)
         #本地地址
-        if host in self.localhosts:
+        if host in self.localhosts and self.port == 443:
             self.action = 'do_FAKECERT'
         self.fakecert = ssl and self.action == 'do_FAKECERT'
         self.do_action()
@@ -215,7 +215,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         host = self.host
         path = self.path
         #本地地址
-        if host in self.localhosts:
+        if host in self.localhosts and self.port in (80, 443):
             #发送证书
             if path.lower() in self.CAPath:
                 return self.send_CA()
@@ -1300,7 +1300,7 @@ class GAEProxyHandler(AutoProxyHandler):
         #处理其它请求，转发到 GAE 代理
         self._do_METHOD()
         #本地地址
-        if self.host in self.localhosts:
+        if self.host in self.localhosts and self.port in (80, 443):
             #发送证书
             if self.path.lower() in self.CAPath:
                 return self.send_CA()
