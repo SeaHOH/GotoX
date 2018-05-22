@@ -699,6 +699,8 @@ class HTTPUtil(BaseHTTPUtil):
                     response =  self._request(result, method, request_params.path, self.protocol_version, headers, payload, bufsize=bufsize)
                     return response
             except Exception as e:
+                if 'timed out' in str(e):
+                    timeout += 10
                 if ssl_sock:
                     ip = ssl_sock.xip
                     ssl_sock.sock.close()
