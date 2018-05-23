@@ -77,7 +77,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     fwd_timeout = GC.LINK_FWDTIMEOUT
     fwd_keeptime = GC.LINK_FWDKEEPTIME
-    listen_port = GC.LISTEN_GAE_PORT, GC.LISTEN_AUTO_PORT
+    listen_port = str(GC.LISTEN_GAE_PORT), str(GC.LISTEN_AUTO_PORT)
     request_compress = GC.LINK_REQUESTCOMPRESS
 
     #可修改
