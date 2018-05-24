@@ -29,11 +29,11 @@ def check_reset():
             with gLock:
                 if gn == 0 and _ACTION_FILTERS.RESET:
                     global ACTION_FILTERS
-                    _ACTION_FILTERS.RESET = False
                     ACTION_FILTERS = _ACTION_FILTERS.copy()
                     filters_cache.clear()
                     ssl_filters_cache.clear()
                     reset_dns()
+                    _ACTION_FILTERS.RESET = False
                     logging.warning('%r 内容被修改，已重新加载自动代理配置。', _ACTION_FILTERS.CONFIG_FILENAME)
 
 def get_redirect(target, url):

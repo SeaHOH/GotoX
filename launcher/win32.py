@@ -204,6 +204,13 @@ def on_show(systray):
 def on_hide(systray):
     ctypes.windll.user32.ShowWindow(hwnd, 0)
 
+from urllib.request import urlopen
+def on_reset_dns(systray):
+    urlopen('http://localhost/docmd?cmd=reset_dns')
+
+def on_reset_autorule(systray):
+    urlopen('http://localhost/docmd?cmd=reset_autorule')
+
 def on_refresh(systray):
     if ctypes.windll.user32.MessageBoxW(None,
             '是否重新载入 GotoX？', '请确认', 4 | 48) == 6:
@@ -332,6 +339,8 @@ def build_menu(systray):
                  ('显示窗口', on_show, show_state, MFT_RADIOCHECK),
                  ('隐藏窗口', on_hide, hide_state, MFT_RADIOCHECK),
                  ('设置系统（IE）代理', sub_menu3),
+                 ('重置 DNS 缓存', on_reset_dns),
+                 ('重置自动规则缓存', on_reset_autorule),
                  ('重启 GotoX', on_refresh),
                  (None, '-'),
                  ('关于', on_about))

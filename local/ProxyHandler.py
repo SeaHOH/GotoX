@@ -28,7 +28,7 @@ from .common import (
     isip
     )
 from .common.decompress import decompress_readers
-from .common.dns import set_dns, dns_resolve
+from .common.dns import reset_dns, set_dns, dns_resolve
 from .common.proxy import parse_proxy, proxy_no_rdns
 from .common.region import isdirect
 from .GlobalConfig import GC
@@ -43,6 +43,7 @@ from .FilterUtil import (
     get_action,
     get_connect_action
     )
+from .FilterConfig import ACTION_FILTERS
 
 normattachment = partial(re.compile(r'(?<=filename=)([^"\']+)').sub, r'"\1"')
 getbytes = re.compile(r'^bytes=(\d*)-(\d*)(,..)?').search
@@ -216,9 +217,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         path = self.path
         #本地地址
         if host in self.localhosts and self.port in (80, 443):
-            #发送证书
-            if path.lower() in self.CAPath:
-                return self.send_CA()
             return self.do_LOCAL()
         request_headers = self.headers
         #限制 bilibili 视频请求，以防断流 5MB
@@ -1012,6 +1010,12 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         })
 
     def do_LOCAL(self, filename=None):
+        #发送证书
+        if self.path.lower() in self.CAPath:
+            return self.send_CA()
+        #执行 GotoX 命令
+        elif self.url_parts.path == '/docmd':
+            return self.do_CMD()
         #返回一个本地文件或目录
         self.close_connection = False
         path = urlparse.unquote(self.path)
@@ -1029,6 +1033,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 logging.info('%s "%s %s HTTP/1.1" 403 -，无法打开本地文件：%r',
                     self.address_string(), self.command, self.url, r)
             return
+        #返回本地文件
         if os.path.isfile(filename):
             content_type = self.guess_type(filename)
             try:
@@ -1222,6 +1227,21 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.write('Content-Length: %s\r\n\r\n' % len(data))
         self.write(data)
 
+    def do_CMD(self):
+        reqs = urlparse.parse_qs(self.url_parts.query)
+        cmd = reqs['cmd'][0]
+        if cmd == 'reset_dns':
+            #重置 DNS
+            reset_dns()
+        elif cmd == 'reset_autorule':
+            #重置自动规则
+            ACTION_FILTERS.RESET = True
+        self.close_connection = False
+        self.write('HTTP/1.1 204 No Content\r\n'
+                   'Content-Length: 0\r\n\r\n')
+        logging.warning('%s "%s %s HTTP/1.1" 204 0，GotoX 命令执行完毕。',
+            self.address_string(), self.command, self.url)
+
     def is_not_online(self):
         #检查代理服务是否运行并释放无效链接
         if self.server.is_not_online:
@@ -1301,9 +1321,6 @@ class GAEProxyHandler(AutoProxyHandler):
         self._do_METHOD()
         #本地地址
         if self.host in self.localhosts and self.port in (80, 443):
-            #发送证书
-            if self.path.lower() in self.CAPath:
-                return self.send_CA()
             return self.do_LOCAL()
         self.action = 'do_GAE'
         self.do_action()
