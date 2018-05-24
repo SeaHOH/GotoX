@@ -225,7 +225,7 @@ def get_localhosts():
         _localhosts = sum((x if isinstance(x, list) else [x,] for x in socket.gethostbyname_ex(socket.gethostname())), _localhosts)
     except:
         pass
-    AutoProxyHandler.localhosts = tuple(set(_localhosts + localhosts + get_listen_ip()))
+    AutoProxyHandler.localhosts = set(_localhosts + localhosts + get_listen_ip())
 
 IPPROTO_IPV6 = getattr(socket, 'IPPROTO_IPV6', 41)
 

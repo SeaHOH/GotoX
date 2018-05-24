@@ -54,7 +54,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     nLock = threading.Lock()
     nappid = 0
     CAPath = '/ca', '/cadownload'
-    gae_fetcmd = 'GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'
+    gae_fetcmds = {'GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'}
     skip_request_headers = (
         'Vary',
         'Via',
@@ -519,7 +519,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_GAE(self):
         #发送请求到 GAE 代理
-        if self.command not in self.gae_fetcmd:
+        if self.command not in self.gae_fetcmds:
             logging.warn('%s GAE 不支持 "%s %s"，转用 DIRECT。', self.address_string(), self.command, self.url)
             self.action = 'do_DIRECT'
             self.target = None
@@ -1124,7 +1124,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.badhost[host] = 1
 
     def go_GAE(self):
-        if self.command not in self.gae_fetcmd:
+        if self.command not in self.gae_fetcmds:
             return self.go_BAD()
         self._set_temp_GAE()
         self.action = 'do_GAE'
@@ -1287,7 +1287,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 qGAE.get()
 
     def log_error(self, format, *args):
-        logging.error('%s "%s %s %s" 失败，%s', self.address_string(), self.action[3:], self.command, self.url, format % args)
+        logging.error('%s "%s %s %s" 失败，%s', self.address_string(), self.action[3:], self.command, self.url or self.host, format % args)
 
     def address_string(self, response=None):
         #返回请求和响应的地址

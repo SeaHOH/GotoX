@@ -25,7 +25,7 @@ from .common import cert_dir, NetWorkIOError, closed_errno, LRUCache, isip
 from .common.dns import dns, dns_resolve
 from .common.proxy import parse_proxy, proxy_no_rdns
 
-GoogleG23PKP = set((
+GoogleG23PKP = {
 # https://pki.google.com/GIAG2.crt
 b'''\
 -----BEGIN PUBLIC KEY-----
@@ -57,7 +57,7 @@ b'''\
 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEG4ANKJrwlpAPXThRcA3Z4XbkwQvW
 hj5J/kicXpbBQclS4uyuQ5iSOGKcuCRt8ralqREJXuRsnLZo0sIT680+VQ==
 -----END PUBLIC KEY-----
-'''))
+'''}
 
 gws_servername = GC.GAE_SERVERNAME
 gae_testgwsiplist = GC.GAE_TESTGWSIPLIST
