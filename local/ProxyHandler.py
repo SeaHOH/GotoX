@@ -54,6 +54,20 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     nLock = threading.Lock()
     nappid = 0
     CAPath = '/ca', '/cadownload'
+    invalid_cmds = {
+        'action',
+        'METHOD',
+        'DIRECT',
+        'GAE',
+        'FORWARD',
+        'PROXY',
+        'REDIRECT',
+        'IREDIRECT',
+        'FAKECERT',
+        'LOCAL',
+        'BLOCK',
+        'CMD'
+        }
     gae_fetcmds = {'GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'}
     skip_request_headers = (
         'Vary',
@@ -99,6 +113,15 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def setup(self):
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
         self.write = lambda d: self.wfile.write(d if isinstance(d, bytes) else d.encode())
+
+    def parse_request(self):
+        #检查 HTTP 命令，排除内部使用的命令
+        parse_request = BaseHTTPServer.BaseHTTPRequestHandler.parse_request(self)
+        if self.command in self.invalid_cmds:
+            self.close_connection = True
+            self.send_error(501, "Unsupported method (%r)" % self.command)
+            return False
+        return parse_request
 
     def do_action(self):
         #记录 gws 链接活动时间
@@ -1215,11 +1238,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def send_CA(self):
         #返回 CA 证书
-        self.close_connection = False
         from .CertUtil import ca_certfile
         with open(ca_certfile, 'rb') as fp:
             data = fp.read()
         logging.info('"%s HTTP/1.1 200"，发送 CA 证书到 %r', self.url, self.address_string())
+        self.close_connection = False
         self.write(b'HTTP/1.1 200 Ok\r\n'
                    b'Content-Type: application/x-x509-ca-cert\r\n')
         if self.path.lower() == self.CAPath[1]:
