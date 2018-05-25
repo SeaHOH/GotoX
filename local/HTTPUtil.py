@@ -403,7 +403,7 @@ class HTTPUtil(BaseHTTPUtil):
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
             # pick up the sock socket
             if self.gws:
-                if cache_key == 'google_fe:443':
+                if cache_key == 'google_fe:443' or host.endswith('.appspot.com'):
                     server_hostname = host.encode() if gws_servername is None else random.choice(gws_servername)
                 else:
                     server_hostname = b'fonts.googleapis.com'
