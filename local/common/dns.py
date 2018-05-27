@@ -12,7 +12,7 @@ import socket
 from select import select
 from time import time, sleep
 from json.decoder import JSONDecoder
-from . import logging, LRUCache, isip, isipv4, isipv6, classlist
+from . import logging, LRUCache, isip, isipv4, isipv6, get_main_domain, get_wan_ip, classlist
 from local.compat import Queue, thread
 from local.GlobalConfig import GC
 
@@ -103,8 +103,9 @@ class dns_params:
     command = 'GET'
     headers = {'Host': host, 'User-Agent': 'GotoX Agent'}
     DNSServerPath = '/resolve?name=%s&type=%s'
-    if GC.DNS_OVER_HTTPS_ECS:
-        DNSServerPath += '&ecs=' + GC.DNS_OVER_HTTPS_ECS.replace('/', '%%2F')
+    _DNSServerPath =  DNSServerPath + '&ecs='
+    if GC.DNS_OVER_HTTPS_ECS and GC.DNS_OVER_HTTPS_ECS != 'auto':
+        DNSServerPath = _DNSServerPath + GC.DNS_OVER_HTTPS_ECS.replace('/', '%%2F')
     Url = 'https://' +  host
 
     __slots__ = 'path', 'url'
@@ -112,6 +113,15 @@ class dns_params:
     def __init__(self, *qargs):
         self.path = self.DNSServerPath % qargs
         self.url = self.Url + self.path
+
+def update_dns_params():
+    if GC.DNS_OVER_HTTPS_ECS == 'auto':
+        ip = get_wan_ip()
+        if ip:
+            dns_params.DNSServerPath = dns_params._DNSServerPath + ip
+            logging.test('update_dns_params 当前公网出口 IP 是：%s', ip)
+        else:
+            logging.warning('update_dns_params 获取公网出口 IP 失败。')
 
 def _https_resolve(qname, qtype, queobj):
     '''

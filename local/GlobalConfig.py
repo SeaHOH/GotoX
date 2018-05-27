@@ -190,6 +190,8 @@ class GC:
     DNS_OVER_HTTPS = CONFIG.getboolean('dns', 'overhttps')
     DNS_OVER_HTTPS_LIST = CONFIG.get('dns', 'overhttpslist') or 'google_gws'
     DNS_OVER_HTTPS_ECS = CONFIG.get('dns', 'overhttpsecs')
+    DNS_IP_API = CONFIG.get('dns', 'ipapi')
+    DNS_IP_API = tuple(DNS_IP_API.split('|')) if DNS_IP_API else ()
     DNS_PRIORITY = CONFIG.get('dns', 'priority').split('|')
     DNS_BLACKLIST = set(CONFIG.get('dns', 'blacklist').split('|'))
 

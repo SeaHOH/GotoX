@@ -315,6 +315,18 @@ def get_main_domain(host):
                 host = '.'.join(hostsp[-3:])
     return host
 
+from local.GlobalConfig import GC
+from local.compat import urllib2
+
+def get_wan_ip():
+    for url in GC.DNS_IP_API:
+        try:
+            resp = urllib2.urlopen(url).read().decode().strip()
+            if isip(resp):
+                return resp
+        except:
+            pass
+
 class classlist(list): pass
 
 def spawn_later(seconds, target, *args, **kwargs):

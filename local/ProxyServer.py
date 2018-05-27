@@ -10,7 +10,7 @@ from select import select
 from . import clogging as logging
 from .compat import thread, SocketServer
 from .common import NetWorkIOError, pass_errno
-from .common.dns import reset_dns
+from .common.dns import reset_dns, update_dns_params
 from .common.proxy import get_listen_ip
 from .GlobalConfig import GC
 
@@ -213,6 +213,7 @@ def start_proxyserver():
             logging.error('如果出现此错误请告诉作者，谢谢！\nhttps://github.com/SeaHOH/GotoX/issues')
             sys.exit(-1)
     AutoProxyHandler.bufsize = AutoProxy.socket.getsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF)
+    update_dns_params()
 
 def stop_proxyserver():
     AutoProxy.server_close()
