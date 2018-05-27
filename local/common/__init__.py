@@ -48,23 +48,13 @@ import socket
 import string
 import threading
 import collections
-from time import time, sleep, timezone, localtime, strftime, strptime, mktime
+from time import time, sleep
 
 NetWorkIOError = (socket.error, ssl.SSLError, OSError, OpenSSL.SSL.Error) if OpenSSL else (socket.error, ssl.SSLError, OSError)
 # Windows: errno.WSAENAMETOOLONG = 10063
 reset_errno = errno.ECONNRESET, 10063, errno.ENAMETOOLONG
 closed_errno = errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE
 pass_errno = -1, errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE
-
-timezone_PST = timezone - 3600 * 8 # UTC-8
-timezone_PDT = timezone - 3600 * 7 # UTC-7
-def get_refreshtime():
-    #距离 GAE 流量配额每日刷新的时间
-    #刷新时间是否遵循夏令时？
-    now = time() + timezone_PST
-    refreshtime = strftime('%y %j', localtime(now + 86400))
-    refreshtime = mktime(strptime(refreshtime, '%y %j'))
-    return refreshtime - now
 
 NONEKEY = object()
 class LRUCache:
@@ -302,6 +292,28 @@ def isipv6(ip, AF_INET6=socket.AF_INET6, inet_pton=socket.inet_pton):
 #                    r'(?:[0-9a-f]{0,4}(?:(?<=::)|(?<!::):)){7}'
 #                    r'([0-9a-f]{1,4}'
 #                    r'|(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})$', re.I).match
+
+def get_parent_domain(host):
+    ip = isip(host)
+    if not ip:
+        hostsp = host.split('.')
+        nhost = len(hostsp)
+        if nhost > 3 or nhost == 3 and (len(hostsp[-1]) > 2 or len(hostsp[-2]) > 3):
+            host = '.'.join(hostsp[1:])
+    return host
+
+def get_main_domain(host):
+    ip = isip(host)
+    if not ip:
+        hostsp = host.split('.')
+        if len(hostsp[-1]) > 2:
+            host = '.'.join(hostsp[-2:])
+        elif len(hostsp) > 2:
+            if len(hostsp[-2]) > 3:
+                host = '.'.join(hostsp[-2:])
+            else:
+                host = '.'.join(hostsp[-3:])
+    return host
 
 class classlist(list): pass
 

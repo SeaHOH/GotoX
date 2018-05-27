@@ -2,17 +2,61 @@
 
 import zlib
 import struct
+import threading
 from io import BytesIO
+from time import time, timezone, localtime, strftime, strptime, mktime
 from . import clogging as logging
 from .compat import Queue, httplib
 from .GlobalConfig import GC
 from .GAEUpdate import testipuseable
 from .HTTPUtil import http_gws
+from .common import LRUCache
 from .common.decompress import GzipSock
 
+timezone_PST = timezone - 3600 * 8 # UTC-8
+timezone_PDT = timezone - 3600 * 7 # UTC-7
+def get_refreshtime():
+    #距离 GAE 流量配额每日刷新的时间
+    #刷新时间是否遵循夏令时？
+    now = time() + timezone_PST
+    refreshtime = strftime('%y %j', localtime(now + 86400))
+    refreshtime = mktime(strptime(refreshtime, '%y %j'))
+    return refreshtime - now
+
+nappid = 0
+nLock = threading.Lock()
+badappids = LRUCache(len(GC.GAE_APPIDS))
 qGAE = Queue.LifoQueue()
 for _ in range(GC.GAE_MAXREQUESTS * len(GC.GAE_APPIDS)):
     qGAE.put(True)
+
+def get_appid():
+    global nappid
+    with nLock:
+        while True:
+            nappid += 1
+            if nappid >= len(GC.GAE_APPIDS):
+                nappid = 0
+            appid = GC.GAE_APPIDS[nappid]
+            contains, expired, _ = badappids.getstate(appid)
+            if contains and expired:
+                for _ in range(GC.GAE_MAXREQUESTS):
+                    qGAE.put(True)
+            if not contains or expired:
+                break
+        return appid
+
+def mark_badappid(appid, time=None):
+    if appid not in badappids:
+        if time is None:
+            time = get_refreshtime()
+            if len(GC.GAE_APPIDS) - len(badappids) <= 1:
+                logging.error('全部的 AppID 流量都使用完毕')
+            else:
+                logging.info('当前 AppID[%s] 流量使用完毕，切换下一个…', appid)
+        badappids.set(appid, True, time)
+        for _ in range(GC.GAE_MAXREQUESTS):
+            qGAE.get()
 
 gae_options = []
 if GC.GAE_DEBUG:

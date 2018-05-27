@@ -232,7 +232,7 @@ IPPROTO_IPV6 = getattr(socket, 'IPPROTO_IPV6', 41)
 class LocalProxyServer(SocketServer.ThreadingTCPServer):
     '''Local Proxy Server'''
     request_queue_size = 96
-    is_not_online = True
+    is_offline = True
 
     def __init__(self, server_address, RequestHandlerClass):
         SocketServer.BaseServer.__init__(self, server_address, RequestHandlerClass)
@@ -262,10 +262,10 @@ class LocalProxyServer(SocketServer.ThreadingTCPServer):
         self.socket = sock
         self.server_address = sock.getsockname()
         sock.listen(self.request_queue_size)
-        self.is_not_online = False
+        self.is_offline = False
 
     def server_close(self):
-        self.is_not_online = True
+        self.is_offline = True
         self.shutdown()
         self.socket.close()
 

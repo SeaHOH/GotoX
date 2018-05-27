@@ -22,7 +22,6 @@ from .common import (
     reset_errno,
     closed_errno,
     pass_errno,
-    get_refreshtime,
     LRUCache,
     message_html,
     isip
@@ -35,7 +34,7 @@ from .GlobalConfig import GC
 from .GAEUpdate import testip
 from .HTTPUtil import http_gws, http_nor
 from .RangeFetch import RangeFetchs
-from .GAEFetch import qGAE, gae_urlfetch
+from .GAEFetch import qGAE, get_appid, mark_badappid, gae_urlfetch
 from .FilterUtil import (
     set_temp_action,
     filters_cache,
@@ -51,8 +50,6 @@ getrange = re.compile(r'^bytes (\d+)-(\d+)/(\d+|\*)').search
 
 class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
-    nLock = threading.Lock()
-    nappid = 0
     CAPath = '/ca', '/cadownload'
     invalid_cmds = {
         'action',
@@ -96,10 +93,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     request_compress = GC.LINK_REQUESTCOMPRESS
 
     #可修改
-    context_cache = LRUCache(32)
+    context_cache = LRUCache(256)
     proxy_connection_time = LRUCache(32)
     badhost = LRUCache(16, 120)
-    badappids = LRUCache(len(GC.GAE_APPIDS))
     rangesize = min(GC.GAE_MAXSIZE, GC.AUTORANGE_FAST_MAXSIZE * 4, 1024 * 1024 * 3)
 
     #默认值
@@ -150,11 +146,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         host = self.headers.get('Host', '')
         port = None
         #从命令获取主机、端口
-        chost, cport = self.parse_netloc(self.path)
+        chost, cport = urlparse.splitport(self.path)
         #确定主机，优先 Host 头域（忽略 CONNECT 命令）
         if host:
             #从头域获取主机、端口
-            host, port = self.parse_netloc(host)
+            host, port = urlparse.splitport(host)
             #排除某些程序把代理当成主机名
             if chost and port in self.listen_port and host in self.localhosts:
                 self.host = host = chost
@@ -163,8 +159,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.host = host
         else:
             self.host = host = chost
-        if ':' in host:
-            host = '[' + host + ']'
         if 'Host' in self.headers:
             self.headers.replace_header('Host', host)
         else:
@@ -176,7 +170,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_CONNECT(self):
         #处理 CONNECT 请求，根据规则过滤执行目标动作
-        if self.is_not_online():
+        if self.is_offline():
             return
         self._do_CONNECT()
         ssl = self.ssl
@@ -195,11 +189,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         path = self.path
         url_parts = urlparse.urlsplit(path)
         #从命令获取主机、端口
-        chost, cport = self.parse_netloc(url_parts.netloc)
+        chost, cport = urlparse.splitport(url_parts.netloc)
         #确定主机，优先 Host 头域
         if host:
             #从头域获取主机、端口
-            host, port = self.parse_netloc(host)
+            host, port = urlparse.splitport(host)
             #排除某些程序把代理当成主机名
             if chost and port in self.listen_port and host in self.localhosts:
                 self.host = host = chost
@@ -208,8 +202,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.host = host
         else:
             self.host = host = chost
-        if ':' in host:
-            host = '[' + host + ']'
         if 'Host' in self.headers:
             self.headers.replace_header('Host', host)
         else:
@@ -233,7 +225,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_METHOD(self):
         #处理其它请求，根据规则过滤执行目标动作
-        if self.is_not_online():
+        if self.is_offline():
             return
         self._do_METHOD()
         host = self.host
@@ -514,13 +506,11 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             response.sock.used = None
                             http_util.tcp_connection_cache[connection_cache_key].append((time(), response.sock))
 
-    def fake_options(self, request_headers):
+    def fake_OPTIONS(self, request_headers):
         response = [
             'HTTP/1.1 200 OK',
             'Access-Control-Allow-Credentials: true',
-#            'Access-Control-Allow-Headers: Authorization, If-Modified-Since',
             'Access-Control-Allow-Methods: GET, POST, HEAD, PUT, DELETE, OPTIONS, PATCH',
-#            'Access-Control-Allow-Origin: *',
             'Access-Control-Expose-Headers: Content-Encoding, Content-Length, Date, Server, Vary, X-Google-GFE-Backend-Request-Cost, X-FB-Debug, X-Loader-Length',
             'Access-Control-Max-Age: 1728000',
             'Vary: Origin, X-Origin',
@@ -550,7 +540,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         url_parts = self.url_parts
         request_headers, payload = self.handle_request_headers()
         if self.command == 'OPTIONS':
-            return self.fake_options(request_headers)
+            return self.fake_OPTIONS(request_headers)
         #为使用非标准端口的网址加上端口
         if (url_parts.scheme, self.port) not in (('http', 80), ('https', 443)):
             self.url = '%s://%s:%s%s' % (url_parts.scheme, self.host, self.port, self.path)
@@ -610,7 +600,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.write(b'HTTP/1.1 504 Gateway Timeout\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
                     self.write(c)
                 return
-            appid = self.get_appid()
+            appid = get_appid()
             noerror = True
             data = None
             response = None
@@ -644,9 +634,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             continue
                         elif 'ver quota' in data:
                             logging.warning('GAE：%r urlfetch %r 返回 over quota，重试', appid, self.url)
-                            self.badappids.set(appid, True, 60)
-                            for _ in range(GC.GAE_MAXREQUESTS):
-                                qGAE.get()
+                            mark_badappid(60)
                             continue
                         elif 'urlfetch: CLOSED' in data:
                             logging.warning('GAE：%r urlfetch %r 返回 urlfetch: CLOSED，重试', appid, self.url)
@@ -668,7 +656,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     continue
                 #当前 appid 流量完结(Service Unavailable)
                 elif response.app_status == 503:
-                    self.mark_badappid(appid)
+                    mark_badappid(appid)
                     self.do_GAE()
                     return
                 #服务端出错（Internal Server Error）
@@ -908,10 +896,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.url = url = target
             #重设主机
             self.url_parts = url_parts = urlparse.urlsplit(target)
-            host, port = self.parse_netloc(url_parts.netloc)
+            host, port = urlparse.splitport(url_parts.netloc)
             self.host = host
-            if ':' in host:
-                host = '[' + host + ']'
             if mhost:
                 if 'Host' in self.headers:
                     self.headers.replace_header('Host', host)
@@ -922,7 +908,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.ssl = url_parts.scheme == 'https'
             #重设端口
             if port:
-                self.port = port
+                self.port = int(port)
             elif origssl != self.ssl:
                 if self.ssl and self.port == 80:
                     self.port = 443
@@ -944,7 +930,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 else:
                     self.action, self.target = raction
             else:
-                self.action, self.target = get_action(url_parts.scheme, self.host, self.path[1:], url)
+                self.action, self.target = get_action(url_parts.scheme, host, self.path[1:], url)
             #内部重定向到加密链接，相当于已伪造证书
             self.fakecert = self.ssl
             self.do_action()
@@ -956,6 +942,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         context = self.get_context()
         try:
             ssl_sock = context.wrap_socket(self.connection, server_side=True)
+        except ssl.SSLEOFError:
+            return
         except Exception as e:
             if e.args[0] not in pass_errno:
                 logging.exception('%s 伪造加密链接失败：host=%r，%r', self.address_string(), self.host, e)
@@ -970,7 +958,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.handle()
         finally:
             #关闭加密套接字，并没有真正关闭，还有 2 个 makefile
-            #ssl_sock.shutdown(socket.SHUT_WR)
             ssl_sock.close()
 
     def list_dir(self, path, displaypath):
@@ -1225,7 +1212,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if not ip:
             hostsp = host.split('.')
             nhost = len(hostsp)
-            if nhost > 3 or (nhost == 3 and len(hostsp[-2]) > 3):
+            if nhost > 3 or nhost == 3 and (len(hostsp[-1]) > 2 or len(hostsp[-2]) > 3):
                 host = '.'.join(hostsp[1:])
         try:
             return self.context_cache[host]
@@ -1265,49 +1252,12 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         logging.warning('%s "%s %s HTTP/1.1" 204 0，GotoX 命令执行完毕。',
             self.address_string(), self.command, self.url)
 
-    def is_not_online(self):
+    def is_offline(self):
         #检查代理服务是否运行并释放无效链接
-        if self.server.is_not_online:
+        if self.server.is_offline:
             self.close_connection = True
             self.connection.close()
             return True
-
-    def parse_netloc(self, netloc):
-        host, has_br, port = netloc.partition(']')
-        if has_br:
-            # IPv6 必须使用方括号
-            host = host[1:]
-            port = port[1:]
-        else:
-            host, _, port = host.partition(':')
-        return host.lower(), port
-
-    def get_appid(self):
-        with self.nLock:
-            nappid = self.__class__.nappid
-            while True:
-                nappid += 1
-                if nappid >= len(GC.GAE_APPIDS):
-                    nappid = 0
-                appid = GC.GAE_APPIDS[nappid]
-                contains, expired, _ = self.badappids.getstate(appid)
-                if contains and expired:
-                    for _ in range(GC.GAE_MAXREQUESTS):
-                        qGAE.put(True)
-                if not contains or expired:
-                    break
-            self.__class__.nappid = nappid
-            return appid
-
-    def mark_badappid(self, appid):
-        if appid not in self.badappids:
-            if len(GC.GAE_APPIDS) - len(self.badappids) <= 1:
-                logging.error('全部的 AppID 流量都使用完毕')
-            else:
-                logging.info('当前 AppID[%s] 流量使用完毕，切换下一个…', appid)
-            self.badappids.set(appid, True, get_refreshtime())
-            for _ in range(GC.GAE_MAXREQUESTS):
-                qGAE.get()
 
     def log_error(self, format, *args):
         logging.error('%s "%s %s %s" 失败，%s', self.address_string(), self.action[3:], self.command, self.url or self.host, format % args)

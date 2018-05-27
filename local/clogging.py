@@ -103,7 +103,7 @@ def addLevelName(level, levelName, color=None, force=False):
 
         def wrapper(logger):
             def wrap(fmt, *args, **kwargs):
-                logger.log(level, fmt, *args)
+                logger.log(level, fmt, *args, **kwargs)
             return wrap
 
         levelName = levelName.lower()

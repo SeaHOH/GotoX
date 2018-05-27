@@ -16,16 +16,12 @@ from . import logging, LRUCache, isip, isipv4, isipv6, classlist
 from local.compat import Queue, thread
 from local.GlobalConfig import GC
 
-jsondecoder = JSONDecoder()
-dns = LRUCache(GC.DNS_CACHE_ENTRIES, GC.DNS_CACHE_EXPIRATION)
-
 def reset_dns():
     dns.clear()
     #保持链接 GAE 列表不过期
     dns.set('google_gws', GC.IPLIST_MAP['google_gws'], noexpire=True)
     dns.set('google_com', GC.IPLIST_MAP['google_com'], noexpire=True)
-
-reset_dns()
+    dns.set(dnshostalias, GC.IPLIST_MAP[GC.DNS_OVER_HTTPS_LIST], noexpire=True)
 
 def set_dns(host, iporname):
     #先处理正常解析
@@ -40,7 +36,9 @@ def set_dns(host, iporname):
         if dns_resolve(_host):
             return _host
     #生成唯一别名
-    namea = id(iporname) if isinstance(iporname, list) else iporname
+    namea = str(id(iporname)) if isinstance(iporname, list) else iporname
+    if namea.startswith('google'):
+        host = get_main_domain(host)
     hostname = '%s|%s' % (namea, host)
     if hostname in dns:
         return hostname
@@ -84,9 +82,13 @@ def dns_resolve(host):
             dns.set(host, 0, 300)
     return iplist
 
+
 dnshostalias = 'dns.over.https'
 https_resolve_cache_key = GC.DNS_OVER_HTTPS_LIST + ':443'
 https_resolve_threads = max(min((GC.LINK_WINDOW - 1), 3), 1)
+jsondecoder = JSONDecoder()
+dns = LRUCache(GC.DNS_CACHE_ENTRIES, GC.DNS_CACHE_EXPIRATION)
+reset_dns()
 
 from local.HTTPUtil import http_gws
 
@@ -146,9 +148,6 @@ def _https_resolve(qname, qtype, queobj):
     queobj.put(iplist)
 
 def https_resolve(qname, qtype, queobj):
-    if dnshostalias not in dns:
-        dns.set(dnshostalias, GC.IPLIST_MAP[GC.DNS_OVER_HTTPS_LIST], 24 * 3600)
-
     queobjt = Queue.Queue()
     for _ in range(https_resolve_threads):
         thread.start_new_thread(_https_resolve, (qname, qtype, queobjt))
