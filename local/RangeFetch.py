@@ -9,7 +9,7 @@ from . import clogging as logging
 from time import time, sleep
 from .compat import Queue, thread, urlparse
 from .common import spawn_later
-from .GAEFetch import qGAE, gae_urlfetch
+from .GAEFetch import qGAE, get_appid, mark_badappid, gae_urlfetch
 from .GlobalConfig import GC
 from .HTTPUtil import http_gws
 from .GAEUpdate import testip, testallgaeip
@@ -34,7 +34,6 @@ class RangeFetch:
         self.iplist = GC.IPLIST_MAP['google_gws'].copy()
 
         self.handler = handler
-        self.get_appid = handler.get_appid
         self.write = handler.write
         self.bufsize = handler.bufsize
         self.command = handler.command
@@ -184,7 +183,7 @@ class RangeFetch:
                         self.response = None
                         start, end = self.firstrange
                     else:
-                        appid = self.get_appid()
+                        appid = get_appid()
                         if self._last_app_status.get(appid, 200) >= 500:
                             sleep(2)
                         start, end = range_queue.get(timeout=1)
@@ -218,7 +217,7 @@ class RangeFetch:
                     range_queue.put((start, end))
                 elif response.app_status == 503:
                     if appid:
-                        self.handler.mark_badappid(appid)
+                        mark_badappid(appid)
                     range_queue.put((start, end))
                     noerror = False
                 elif response.app_status != 200:
