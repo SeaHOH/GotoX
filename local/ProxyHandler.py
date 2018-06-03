@@ -93,6 +93,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     request_compress = GC.LINK_REQUESTCOMPRESS
 
     #可修改
+    timeout = 60 * 6
     context_cache = LRUCache(256)
     proxy_connection_time = LRUCache(32)
     badhost = LRUCache(16, 120)
@@ -101,12 +102,20 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     #默认值
     ssl = False
     fakecert = False
+    host = None
     url = None
     url_parts = None
     conaborted = False
     action = ''
 
     def setup(self):
+        #仅监听本机时关闭 nagle's algorithm 算法和接收缓冲
+        if not self.disable_nagle_algorithm:
+            client_ip = self.client_address[0]
+            if client_ip.endswith('127.0.0.1') or client_ip == '::1':
+                self.disable_nagle_algorithm = True
+                if sys.platform != 'darwin':
+                    self.request.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 0)
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
         self.write = lambda d: self.wfile.write(d if isinstance(d, bytes) else d.encode())
 
@@ -634,7 +643,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             continue
                         elif 'ver quota' in app_msg:
                             logging.warning('GAE：%r urlfetch %r 返回 over quota，重试', appid, self.url)
-                            mark_badappid(60)
+                            mark_badappid(appid, 60)
                             continue
                         elif 'urlfetch: CLOSED' in app_msg:
                             logging.warning('GAE：%r urlfetch %r 返回 urlfetch: CLOSED，重试', appid, self.url)
@@ -1262,7 +1271,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return True
 
     def log_error(self, format, *args):
-        logging.error('%s "%s %s %s" 失败，%s', self.address_string(), self.action[3:], self.command, self.url or self.host, format % args)
+        self.close_connection = True
+        if format != "Request timed out: %r":
+            logging.error('%s "%s %s %s" 失败，%s', self.address_string(), self.action[3:], self.command, self.url or self.host, format % args)
 
     def address_string(self, response=None):
         #返回请求和响应的地址
