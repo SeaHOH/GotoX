@@ -264,8 +264,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return 0, None
         #写入响应内容
         ndata = len(data) if data else 0
-        if hasattr(response, 'data'):
-            # goproxy 服务端错误信息处理预读数据
+        if hasattr(response, 'app_msg'):
+            # goproxy 服务端错误信息
             if ndata:
                 self.write(data)
             return ndata, None
@@ -353,8 +353,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             content_length = response.headers.get('Content-Length', '0')
             self.response_length = content_length = int(content_length) if content_length.isdigit() else 0
             response.length = content_length if content_length else None
-        elif hasattr(response, 'data'):
-            self.response_length = content_length = len(response.data)
+        elif hasattr(response, 'app_msg'):
+            self.response_length = content_length = len(response.app_msg)
         else:
             self.response_length = content_length = response.length or 0
         return content_length
@@ -383,9 +383,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.response_length = 0
                 logging.debug('正在以 %r 格式解压缩 %s', ce, self.url)
         length = self.response_length
-        if hasattr(response, 'data'):
-            # goproxy 服务端错误信息处理预读数据
-            data = response.data
+        if hasattr(response, 'app_msg'):
+            # goproxy 服务端错误信息
+            data = response.app_msg
             response_headers['Content-Type'] = 'text/html; charset=utf-8'
         else:
             data = response.read(self.bufsize)
@@ -622,30 +622,32 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         continue
                 #处理 GoProxy 错误信息
                 if response.reason == 'debug error':
-                    data = response.read().decode()
+                    app_msg = response.app_msg.decode()
                     #密码错误
                     if response.app_status == 403:
                         logging.warning('GAE：%r 密码错误！你设置的密码是： %r', appid, GC.GAE_PASSWORD)
-                        data = '<h1>******   GAE：%r 密码错误！请修改后重试。******</h1>' % appid
+                        app_msg = '<h1>******   GAE：%r 密码错误！请修改后重试。******</h1>' % appid
                     # GoProxy 临时错误，重试
                     elif response.app_status == 502:
-                        if 'DEADLINE_EXCEEDED' in data:
+                        if 'DEADLINE_EXCEEDED' in app_msg:
                             logging.warning('GAE：%r urlfetch %r 返回 DEADLINE_EXCEEDED，重试', appid, self.url)
                             continue
-                        elif 'ver quota' in data:
+                        elif 'ver quota' in app_msg:
                             logging.warning('GAE：%r urlfetch %r 返回 over quota，重试', appid, self.url)
                             mark_badappid(60)
                             continue
-                        elif 'urlfetch: CLOSED' in data:
+                        elif 'urlfetch: CLOSED' in app_msg:
                             logging.warning('GAE：%r urlfetch %r 返回 urlfetch: CLOSED，重试', appid, self.url)
                             sleep(0.5)
                             continue
+                        elif 'RESPONSE_TOO_LARGE' in app_msg:
+                            logging.warning('GAE：%r urlfetch %r 返回 urlfetch: RESPONSE_TOO_LARGE，服务器不支持 Range。', appid, self.url)
                     # GoProxy 服务端版本可能不兼容
                     elif response.app_status == 400:
                         logging.error('%r 部署的可能是 GotoX 不兼容的 GoProxy 服务端版本，如果这条错误反复出现请将之反馈给开发者。', appid)
-                        data = ('<h2>GotoX：%r 部署的可能是 GotoX 不兼容的 GoProxy 服务端版本，如果这条错误反复出现请将之反馈给开发者。<h2>\n'
-                                '错误信息：\n%r' % (appid, data))
-                    response.data = data.encode()
+                        app_msg = ('<h2>GotoX：%r 部署的可能是 GotoX 不兼容的 GoProxy 服务端版本，如果这条错误反复出现请将之反馈给开发者。<h2>\n'
+                                '错误信息：\n%r' % (appid, app_msg))
+                    response.app_msg = app_msg.encode()
                 #网关错误（Bad Gateway｜Gateway Timeout）
                 elif response.app_status in (502, 504):
                     logging.warning('do_GAE 网关错误，url=%r，重试', self.url)

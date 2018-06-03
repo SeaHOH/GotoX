@@ -53,7 +53,7 @@ def mark_badappid(appid, time=None):
             if len(GC.GAE_APPIDS) - len(badappids) <= 1:
                 logging.error('全部的 AppID 流量都使用完毕')
             else:
-                logging.info('当前 AppID[%s] 流量使用完毕，切换下一个…', appid)
+                logging.warning('当前 AppID[%s] 流量使用完毕，切换下一个…', appid)
         badappids.set(appid, True, time)
         for _ in range(GC.GAE_MAXREQUESTS):
             qGAE.get()
@@ -164,19 +164,18 @@ def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
     raw_response_length = len(raw_response_list)
     if raw_response_length == 3:
         _, status, reason = raw_response_list
-        response.status = int(status)
         response.reason = reason.strip()
     elif raw_response_length == 2:
         _, status = raw_response_list
-        status = int(status)
-        #标记 GoProxy 错误信息
-        if status in (400, 403, 502):
-            response.app_status = response.status = status
-            response.reason = 'debug error'
-        else:
-            response.status = status
-            response.reason = ''
+        response.reason = ''
     else:
         return
+    response.status = int(status)
+    #标记服务器端错误信息
+    headers_data, app_msg = headers_data.split(b'\r\n\r\n')
+    if app_msg:
+        response.app_status = response.status
+        response.reason = 'debug error'
+        response.app_msg = app_msg
     response.headers = response.msg = httplib.parse_headers(BytesIO(headers_data))
     return response
