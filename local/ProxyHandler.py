@@ -330,7 +330,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.close_connection = False
         payload = b''
         length = int(request_headers.get('Content-Length', 0))
-        if self.command == 'GAE':
+        if self.action == 'do_GAE':
             try:
                 #暂时限制为 32MB，实际可能会更小一点
                 if 0 < length < 33554433:
@@ -350,7 +350,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                                     break
                                 else:
                                     #只能抛弃，如服务器强制要求携带，则请求可能失败
-                                    logging.debug('%s "%s %s"分块拖挂：%r', self.address_string(), self.command, self.url, chunk)
+                                    logging.debug('%s "%s %s %s"分块拖挂：%r', self.address_string(), self.action[3:], self.command, self.url, chunk)
                             break
                         chunk = self.rfile.read(chunk_size)
                         value.append(chunk)
@@ -361,12 +361,12 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             raise Exception('分块尺寸不匹配 CRLF')
                     payload = b''.join(value)
             except Exception as e:
-                logging.error('%s "%s %s" 附加内容读取失败：%r', self.address_string(), self.command, self.url, e)
+                logging.error('%s "%s %s %s" 附加内容读取失败：%r', self.address_string(), self.action[3:], self.command, self.url, e)
                 raise
             if length > 33554432:
-                logging.error('%s "%s %s" 附加内容尺寸过大：%d，无法通过 GAE 代理', self.address_string(), self.command, self.url, length)
+                logging.error('%s "%s %s %s" 附加内容尺寸过大：%d，无法通过 GAE 代理', self.address_string(), self.action[3:], self.command, self.url, length)
                 raise
-        elif self.command != 'DIRECT' or length > 65536 or 'Transfer-Encoding' in request_headers:
+        elif self.action != 'do_DIRECT' or length > 65536 or 'Transfer-Encoding' in request_headers:
             #不读取，直接传递 rfile 以加快代理转发速度
             payload = self.rfile
         elif length:
@@ -374,7 +374,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             try:
                 payload = self.rfile.read(length)
             except NetWorkIOError as e:
-                logging.error('%s "%s %s" 附加内容读取失败：%r', self.address_string(), self.command, self.url, e)
+                logging.error('%s "%s %s %s" 附加内容读取失败：%r', self.address_string(), self.action[3:], self.command, self.url, e)
                 raise
         # 强制请求压缩内容，之后会自动判断解压缩
         ae = request_headers.get('Accept-Encoding', '')
