@@ -14,13 +14,8 @@ from . import clogging as logging
 from select import select
 from time import time, sleep
 from .GlobalConfig import GC
+from .compat import Queue, thread, httplib, urlparse, hasattr
 from .compat.openssl import zero_EOF_error, SSLConnection
-from .compat import (
-    Queue,
-    thread,
-    httplib,
-    urlparse
-    )
 from .common import cert_dir, NetWorkIOError, closed_errno, LRUCache, isip
 from .common.dns import dns, dns_resolve
 from .common.proxy import parse_proxy, proxy_no_rdns
@@ -635,16 +630,57 @@ class HTTPUtil(BaseHTTPUtil):
                 return proxy_ssl_sock
 
     def _request(self, sock, method, path, protocol_version, headers, payload, bufsize=8192):
-        request_data = '%s %s %s\r\n' % (method, path, protocol_version)
-        request_data += ''.join('%s: %s\r\n' % (k.title(), v) for k, v in headers.items())
-        if self.proxy:
-            _, username, password, _ = parse_proxy(self.proxy)
-            if username and password:
-                request_data += 'Proxy-Authorization: Basic %s\r\n' % base64.b64encode(('%s:%s' % (username, password)).encode()).decode().strip()
-        request_data += '\r\n'
-        request_data = request_data.encode() + payload
+        request_data = []
+        request_data.append('%s %s %s' % (method, path, protocol_version))
+        for k, v in headers.items():
+            request_data.append('%s: %s' % (k.title(), v))
+        #if self.proxy:
+        #    _, username, password, _ = parse_proxy(self.proxy)
+        #    if username and password:
+        #        request_data += 'Proxy-Authorization: Basic %s\r\n' % base64.b64encode(('%s:%s' % (username, password)).encode()).decode().strip()
+        request_data.append('\r\n')
 
-        sock.sendall(request_data)
+        if hasattr(payload, 'read'):
+            #避免发送多个小数据包
+            sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, False)
+            request_data = '\r\n'.join(request_data).encode()
+            payload.readed = True
+            #以下按原样转发
+            if 'Transfer-Encoding' in headers:
+                sock.sendall(request_data)
+                while True:
+                    chunk_size_str = self.rfile.readline(65537)
+                    if len(chunk_size_str) > 65536:
+                        raise Exception('分块尺寸过大')
+                    sock.sendall(chunk_size_str)
+                    chunk_size = int(chunk_size_str.split(b';')[0], 16)
+                    if chunk_size == 0:
+                        while True:
+                            chunk = self.rfile.readline(65536)
+                            sock.sendall(chunk)
+                            if chunk in (b'\r\n', b'\n', b''): # b'' 也许无法读取到空串
+                                break
+                            else:
+                                logging.debug('%s "%s %s%s"分块拖挂：%r', sock.xip[0], method, headers.get('host', ''), path, chunk)
+                        break
+                    chunk = self.rfile.readline(65536)
+                    if chunk[-2:] != b'\r\n':
+                        raise Exception('分块尺寸不匹配 CRLF')
+                    sock.sendall(chunk)
+            else:
+                left_size = int(headers.get('Content-Length', 0)) + len(request_data)
+                while True:
+                    sock.sendall(request_data)
+                    left_size -= len(request_data)
+                    if left_size < 1:
+                        break
+                    request_data = payload.read(min(bufsize, left_size))
+            #为下个请求恢复无延迟发送
+            sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
+        else:
+            request_data = '\r\n'.join(request_data).encode() + payload
+            sock.sendall(request_data)
+
         try:
             response = httplib.HTTPResponse(sock, method=method)
             response.begin()
@@ -678,7 +714,9 @@ class HTTPUtil(BaseHTTPUtil):
             timeout += 2
         if 'Host' not in headers:
             headers['Host'] = request_params.host
-        if payload:
+        if hasattr(payload, 'read'):
+            pass
+        elif payload:
             if not isinstance(payload, bytes):
                 payload = payload.encode()
             if 'Content-Length' not in headers:

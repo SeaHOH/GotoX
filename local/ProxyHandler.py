@@ -329,11 +329,52 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             self.close_connection = False
         payload = b''
-        if 'Content-Length' in request_headers:
+        length = int(request_headers.get('Content-Length', 0))
+        if self.command == 'GAE':
             try:
-                payload = self.rfile.read(int(request_headers['Content-Length']))
+                #暂时限制为 32MB，实际可能会更小一点
+                if 0 < length < 33554433:
+                    payload = self.rfile.read(length)
+                elif 'Transfer-Encoding' in request_headers:
+                    value = []
+                    length = 0
+                    while True:
+                        chunk_size_str = self.rfile.readline(65537)
+                        if len(chunk_size_str) > 65536:
+                            raise Exception('分块尺寸过大')
+                        chunk_size = int(chunk_size_str.split(b';')[0], 16)
+                        if chunk_size == 0:
+                            while True:
+                                chunk = self.rfile.readline(65537)
+                                if chunk in (b'\r\n', b'\n', b''): # b'' 也许无法读取到空串
+                                    break
+                                else:
+                                    #只能抛弃，如服务器强制要求携带，则请求可能失败
+                                    logging.debug('%s "%s %s"分块拖挂：%r', self.address_string(), self.command, self.url, chunk)
+                            break
+                        chunk = self.rfile.read(chunk_size)
+                        value.append(chunk)
+                        length += len(chunk)
+                        if length > 33554432:
+                            break
+                        if self.rfile.read(2) != b'\r\n':
+                            raise Exception('分块尺寸不匹配 CRLF')
+                    payload = b''.join(value)
+            except Exception as e:
+                logging.error('%s "%s %s" 附加内容读取失败：%r', self.address_string(), self.command, self.url, e)
+                raise
+            if length > 33554432:
+                logging.error('%s "%s %s" 附加内容尺寸过大：%d，无法通过 GAE 代理', self.address_string(), self.command, self.url, length)
+                raise
+        elif self.command != 'DIRECT' or length > 65536 or 'Transfer-Encoding' in request_headers:
+            #不读取，直接传递 rfile 以加快代理转发速度
+            payload = self.rfile
+        elif length:
+            #小于 64KB 仍然一次读取完毕
+            try:
+                payload = self.rfile.read(length)
             except NetWorkIOError as e:
-                logging.error('%s "%s %s" 附加请求内容读取失败：%r', self.address_string(), self.command, self.url, e)
+                logging.error('%s "%s %s" 附加内容读取失败：%r', self.address_string(), self.command, self.url, e)
                 raise
         # 强制请求压缩内容，之后会自动判断解压缩
         ae = request_headers.get('Accept-Encoding', '')
@@ -441,13 +482,22 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         http_util = http_gws if hostname.startswith('google') else http_nor
         host = self.host
         request_headers, payload = self.handle_request_headers()
+        headers_sent = False
         for retry in range(2):
+            if retry > 0 and hasattr(payload, 'readed'):
+                logging.warning('%s do_DIRECT 由于有上传数据 "%s %s" 终止重试', self.address_string(), self.command, self.url)
+                self.close_connection = True
+                if not headers_sent:
+                    c = message_html('504 响应超时', '获取 %r 超时，请稍后重试。' % self.url, '').encode()
+                    self.write(b'HTTP/1.1 504 Gateway Timeout\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
+                    self.write(c)
+                return
             noerror = True
             response = None
             self.close_connection = self.cc
             try:
                 connection_cache_key = '%s:%d' % (hostname, self.port)
-                response = http_util.request(self, payload, request_headers, connection_cache_key=connection_cache_key)
+                response = http_util.request(self, payload, request_headers, self.bufsize, connection_cache_key)
                 if not response:
                     #重试、网站图标
                     if retry or self.url_parts.path.endswith('favicon.ico'):
@@ -476,6 +526,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.check_useragent()
                 self.get_response_length(response)
                 response, data, need_chunked = self.handle_response_headers(response)
+                headers_sent = True
                 _, err = self.write_response_content(data, response, need_chunked)
                 if err:
                     raise err
@@ -1178,7 +1229,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             request_headers, payload = self.handle_request_headers()
             http_headers = ''.join('%s: %s\r\n' % kv for kv in request_headers.items())
             rebuilt_request = '%s\r\n%s\r\n' % (self.requestline, http_headers)
-            remote.sendall(rebuilt_request.encode() + payload)
+            if isinstance(payload, bytes) and payload:
+                remote.sendall(rebuilt_request.encode() + payload)
+            else:
+                remote.sendall(rebuilt_request.encode())
         local = self.connection
         buf = memoryview(bytearray(32768)) # 32K
         maxpong = maxpong or self.fwd_keeptime
