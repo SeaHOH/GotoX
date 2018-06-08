@@ -58,6 +58,7 @@ class GC:
     LISTEN_AUTHUSER = tuple(LISTEN_AUTHUSER.split('|')) if LISTEN_AUTHUSER else (':',)
     LISTEN_DEBUGINFO = _LOGLv[min(CONFIG.getint('listen', 'debuginfo'), 3)]
     LISTEN_CHECKPROCESS = CONFIG.getboolean('listen', 'checkprocess')
+    LISTEN_CHECKSYSCA = CONFIG.getboolean('listen', 'checksysca')
 
     GAE_APPIDS = re.findall(r'[\w\-\.]+', CONFIG.get('gae', 'appid').replace('.appspot.com', ''))
     GAE_DEBUG = CONFIG.getint('gae', 'debug')

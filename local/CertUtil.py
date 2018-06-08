@@ -9,10 +9,11 @@ import base64
 import random
 import OpenSSL
 from OpenSSL import crypto
-from . import clogging as logging
 from time import time
 from datetime import datetime, timedelta
+from . import clogging as logging
 from .common import cert_dir, LRUCache
+from .GlobalConfig import GC
 
 ca_vendor = 'GotoX'
 ca_certfile = os.path.join(cert_dir, 'CA.crt')
@@ -130,57 +131,93 @@ def get_cert(commonname, ip=False):
             if cert:
                 return certfile
 
-    create_subcert(certfile, commonname, ip)
-    return certfile
+        create_subcert(certfile, commonname, ip)
+        return certfile
 
-def import_cert(certfile):
-    commonname = os.path.splitext(os.path.basename(certfile))[0]
-    isCA = False
-    if certfile == ca_keyfile or certfile == ca_certfile:
-        commonname = ca_subject.commonName
-        isCA = True
-    else:
-        try:
-            with open(certfile, 'rb') as fp:
-                commonname = crypto.load_certificate(crypto.FILETYPE_PEM, fp.read()).get_subject().commonName.decode()
-        except Exception as e:
-            logging.error('load_certificate(certfile=%r) failed:%s', certfile, e)
+def import_ca(certfile=None):
+    if certfile is None:
+        certfile = ca_certfile
+    with open(certfile, 'rb') as fp:
+        certdata = fp.read()
+        if certdata.startswith(b'-----'):
+            begin = b'-----BEGIN CERTIFICATE-----'
+            end = b'-----END CERTIFICATE-----'
+            certdata = base64.b64decode(b''.join(certdata[certdata.find(begin)+len(begin):certdata.find(end)].strip().splitlines()))
+    try:
+        commonname = crypto.load_certificate(crypto.FILETYPE_ASN1, certdata).get_subject().CN
+    except Exception as e:
+        logging.error('load_certificate(certfile=%r) 失败：%s', certfile, e)
+        return -1
+
     if sys.platform.startswith('win'):
         import ctypes
-        with open(certfile, 'rb') as fp:
-            certdata = fp.read()
-            if certdata.startswith(b'-----'):
-                begin = b'-----BEGIN CERTIFICATE-----'
-                end = b'-----END CERTIFICATE-----'
-                certdata = base64.b64decode(b''.join(certdata[certdata.find(begin)+len(begin):certdata.find(end)].strip().splitlines()))
-            crypt32 = ctypes.WinDLL(b'crypt32.dll'.decode())
-            store_handle = crypt32.CertOpenStore(10, 0, 0, 0x4000 | 0x20000, b'ROOT'.decode())
-            if not store_handle:
+        import ctypes.wintypes
+        class CERT_CONTEXT(ctypes.Structure):
+            _fields_ = [
+                ('dwCertEncodingType', ctypes.wintypes.DWORD),
+                ('pbCertEncoded', ctypes.POINTER(ctypes.wintypes.BYTE)),
+                ('cbCertEncoded', ctypes.wintypes.DWORD),
+                ('pCertInfo', ctypes.c_void_p),
+                ('hCertStore', ctypes.c_void_p),]
+        X509_ASN_ENCODING = 0x1
+        CERT_STORE_ADD_ALWAYS = 4
+        CERT_STORE_PROV_SYSTEM = 10
+        CERT_STORE_OPEN_EXISTING_FLAG = 0x4000
+        CERT_SYSTEM_STORE_CURRENT_USER = 1 << 16
+        CERT_SYSTEM_STORE_LOCAL_MACHINE = 2 << 16
+        crypt32 = ctypes.windll.crypt32
+        ca_exists = False
+        for store in (CERT_SYSTEM_STORE_LOCAL_MACHINE, CERT_SYSTEM_STORE_CURRENT_USER):
+            try:
+                store_handle = crypt32.CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, None, CERT_STORE_OPEN_EXISTING_FLAG | store, 'root')
+                if not store_handle:
+                    if store == CERT_SYSTEM_STORE_CURRENT_USER and not ca_exists:
+                        logging.warning('证书导入失败：无法打开 Windows 系统证书仓库')
+                        return -1
+                    else:
+                        continue
+
+                pCertCtx = crypt32.CertEnumCertificatesInStore(store_handle, None)
+                while pCertCtx:
+                    certCtx = CERT_CONTEXT.from_address(pCertCtx)
+                    _certdata = ctypes.string_at(certCtx.pbCertEncoded, certCtx.cbCertEncoded)
+                    if _certdata == certdata:
+                        ca_exists = True
+                        logging.test("证书 %r 已经存在于 Windows 系统证书仓库", commonname)
+                    else:
+                        cert =  OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1, _certdata)
+                        if cert.get_subject().CN == commonname:
+                            ret = crypt32.CertDeleteCertificateFromStore(crypt32.CertDuplicateCertificateContext(pCertCtx))
+                            if ret == 1:
+                                logging.test("已经移除无效的 Windows 证书 %r", commonname)
+                            elif ret == 0 and store == CERT_SYSTEM_STORE_LOCAL_MACHINE:
+                                logging.warning('无法从 Windows 计算机账户删除无效证书 %r，请用管理员权限重新运行 GotoX，或者手动删除', commonname)
+                    pCertCtx = crypt32.CertEnumCertificatesInStore(store_handle, pCertCtx)
+
+                #只导入到当前用户账户，无需管理员权限
+                if store == CERT_SYSTEM_STORE_CURRENT_USER and \
+                        not ca_exists and \
+                        crypt32.CertAddEncodedCertificateToStore(store_handle, X509_ASN_ENCODING, certdata, len(certdata), CERT_STORE_ADD_ALWAYS, None) == 1:
+                    ca_exists = True
+                    msg = '已经导入 GotoX CA 证书，请重启浏览器。'
+                    title = 'GotoX 提示'
+                    ctypes.windll.user32.MessageBoxW(None, msg, title, 48)
+            except Exception as e:
+                logging.warning('证书导入失败：%r', e)
                 return -1
-            X509_ASN_ENCODING = 0x00000001
-            CERT_FIND_HASH = 0x10000
-            CERT_FIND_SUBJECT_STR = 0x00080007
-            if isCA:
-                class CRYPT_HASH_BLOB(ctypes.Structure):
-                    _fields_ = [('cbData', ctypes.c_ulong), ('pbData', ctypes.c_char_p)]
-                import binascii
-                assert ca_thumbprint
-                crypt_hash = CRYPT_HASH_BLOB(20, binascii.a2b_hex(ca_thumbprint.replace(':', '')))
-                find_mode = CERT_FIND_HASH
-                find_data = ctypes.byref(crypt_hash)
-            else:
-                find_mode = CERT_FIND_SUBJECT_STR
-                find_data = ca_vendor.decode()
-            crypt_handle = crypt32.CertFindCertificateInStore(store_handle, X509_ASN_ENCODING, 0, find_mode, find_data, None)
-            if crypt_handle:
-                crypt32.CertFreeCertificateContext(crypt_handle)
-                return 0
-            ret = crypt32.CertAddEncodedCertificateToStore(store_handle, 0x1, certdata, len(certdata), 4, None)
-            crypt32.CertCloseStore(store_handle, 0)
-            del crypt32
-        return 0 if ret else -1
+            finally:
+                if pCertCtx:
+                    crypt32.CertFreeCertificateContext(pCertCtx)
+                if store_handle:
+                    crypt32.CertCloseStore(store_handle, 0)
+        return 0 if ca_exists else -1
+
+    #放弃其它系统
+    return 0
+
     if sys.platform == 'darwin':
         return os.system(('security find-certificate -a -c "%s" | grep "%s" >/dev/null || security add-trusted-cert -d -r trustRoot -k "/Library/Keychains/System.keychain" "%s"' % (commonname, commonname, certfile.decode('utf-8'))).encode('utf-8'))
+
     if sys.platform.startswith('linux'):
         import platform
         platform_distname = platform.dist()[0]
@@ -194,32 +231,6 @@ def import_cert(certfile):
         else:
             logging.warning('please install *libnss3-tools* package to import GotoX root ca')
     return 0
-
-def remove_cert(name):
-    if os.name == 'nt':
-        import ctypes, ctypes.wintypes
-        class CERT_CONTEXT(ctypes.Structure):
-            _fields_ = [
-                ('dwCertEncodingType', ctypes.wintypes.DWORD),
-                ('pbCertEncoded', ctypes.POINTER(ctypes.wintypes.BYTE)),
-                ('cbCertEncoded', ctypes.wintypes.DWORD),
-                ('pCertInfo', ctypes.c_void_p),
-                ('hCertStore', ctypes.c_void_p),]
-        crypt32 = ctypes.WinDLL(b'crypt32.dll'.decode())
-        store_handle = crypt32.CertOpenStore(10, 0, 0, 0x4000 | 0x20000, b'ROOT'.decode())
-        pCertCtx = crypt32.CertEnumCertificatesInStore(store_handle, None)
-        while pCertCtx:
-            certCtx = CERT_CONTEXT.from_address(pCertCtx)
-            certdata = ctypes.string_at(certCtx.pbCertEncoded, certCtx.cbCertEncoded)
-            cert =  crypto.load_certificate(crypto.FILETYPE_ASN1, certdata)
-            if hasattr(cert, 'get_subject'):
-                cert = cert.get_subject()
-            cert_name = next((v for k, v in cert.get_components() if k == 'CN'), '')
-            if cert_name and name == cert_name:
-                crypt32.CertDeleteCertificateFromStore(crypt32.CertDuplicateCertificateContext(pCertCtx))
-            pCertCtx = crypt32.CertEnumCertificatesInStore(store_handle, pCertCtx)
-        return 0
-    return -1
 
 def verify_certificate(ca, cert):
     store = crypto.X509Store()
@@ -250,13 +261,10 @@ def check_ca():
             else:
                 os.remove(sub_certdir)
                 os.mkdir(sub_certdir)
-        try:
-            if remove_cert('%s CA' % ca_vendor) == 0:
-                logging.error('CAkey.pem 不存在，从系统证书中删除。')
-            else:
-                raise UserWarning('删除功能不能在 %s 中使用，请自行删除 [%s CA] 证书' % (sys.platform, ca_vendor))
-        except Exception as e:
-            logging.warning('CertUtil.remove_cert 失败: %r', e)
+        if GC.LISTEN_CHECKSYSCA and sys.platform.startswith('win'):
+            logging.warning('CAkey.pem 不存在，将从系统证书中删除无效的 CA 证书')
+        else:
+            logging.warning('删除功能未启用或未支持，请自行删除 [%s CA] 证书' % ca_vendor)
         dump_ca()
     global ca_privatekey, ca_subject, sub_publickey, ca_thumbprint
     with open(ca_keyfile, 'rb') as fp:
@@ -296,8 +304,8 @@ def check_ca():
     #Del none-use object
     del content, certfiles, sub_publickey_str
     #Check CA imported
-    #if import_cert(ca_keyfile) != 0:
-    #    logging.warning('install root certificate failed, Please run as administrator/root/sudo')
+    if GC.LISTEN_CHECKSYSCA and import_ca() != 0:
+        logging.warning('install root certificate failed, Please run as administrator/root/sudo')
     #Check Certs Dir
     if os.path.exists(sub_certdir):
         if not os.path.isdir(sub_certdir):
