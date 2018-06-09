@@ -398,7 +398,7 @@ class HTTPUtil(BaseHTTPUtil):
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
             # pick up the sock socket
             if self.gws:
-                if cache_key == 'google_fe:443' or host.endswith('.appspot.com'):
+                if cache_key == 'google_fe:443' or host and host.endswith('.appspot.com'):
                     if gws_servername is None:
                         if host is None:
                             if GC.GAE_APPIDS:

@@ -12,7 +12,7 @@ import socket
 from select import select
 from time import time, sleep
 from json.decoder import JSONDecoder
-from . import logging, LRUCache, isip, isipv4, isipv6, get_main_domain, get_wan_ip, classlist
+from . import logging, LRUCache, isip, isipv4, isipv6, get_wan_ip, classlist
 from local.compat import Queue, thread
 from local.GlobalConfig import GC
 
@@ -37,8 +37,9 @@ def set_dns(host, iporname):
             return _host
     #生成唯一别名
     namea = str(id(iporname)) if isinstance(iporname, list) else iporname
-    if namea.startswith('google'):
-        host = get_main_domain(host)
+    if namea.startswith('google_'):
+        #host = get_main_domain(host)
+        host = 'appspot.com' if host.endswith('.appspot.com') else ''
     hostname = '%s|%s' % (namea, host)
     if hostname in dns:
         return hostname

@@ -22,12 +22,23 @@ from .GAEFinder import (
 
 lLock = threading.Lock()
 tLock = threading.Lock()
+sLock = threading.Lock()
 
 class testip:
     running = False
     queobj = Queue.Queue()
     lastactive = lastupdate = time()
     lasttest = lastupdate - 30
+    #预连接 GAE 和普通服务
+    cachekey = 'google_fe:443', 'google_gws|:443'
+    ncachekey = 0
+
+def getcachekey():
+    with sLock:
+        testip.ncachekey += 1
+        if testip.ncachekey >= len(testip.cachekey):
+            testip.ncachekey = 0
+        return testip.cachekey[testip.ncachekey]
 
 def removeip(ip):
     with lLock:
@@ -143,7 +154,7 @@ def _testallgaeip():
     network_test()
     testip.queobj.queue.clear()
     for ip in iplist:
-        thread.start_new_thread(http_gws._create_ssl_connection, ((ip, 443), 'google_fe:443', None, testip.queobj, timeout/1000))
+        thread.start_new_thread(http_gws._create_ssl_connection, ((ip, 443), getcachekey(), None, testip.queobj, timeout/1000))
     for _ in iplist:
         result = testip.queobj.get()
         if isinstance(result, Exception):
@@ -181,7 +192,7 @@ def testonegaeip():
     statistics = finder.statistics
     network_test()
     testip.queobj.queue.clear()
-    http_gws._create_ssl_connection((ip, 443), 'google_fe:443', None, testip.queobj, timeout/1000)
+    http_gws._create_ssl_connection((ip, 443), getcachekey(), None, testip.queobj, timeout/1000)
     result = testip.queobj.get()
     if isinstance(result, Exception):
         logging.warning('测试失败（超时：%d 毫秒）%s：%s，Bad IP 已删除' % (timeout,  '.'.join(x.rjust(3) for x in ip.split('.')), result.args[0]))
