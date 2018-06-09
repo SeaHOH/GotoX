@@ -399,7 +399,16 @@ class HTTPUtil(BaseHTTPUtil):
             # pick up the sock socket
             if self.gws:
                 if cache_key == 'google_fe:443' or host.endswith('.appspot.com'):
-                    server_hostname = host.encode() if gws_servername is None else random.choice(gws_servername)
+                    if gws_servername is None:
+                        if host is None:
+                            if GC.GAE_APPIDS:
+                                server_hostname = random.choice(GC.GAE_APPIDS)
+                            else:
+                                server_hostname = b'www.appspot.com'
+                        else:
+                            server_hostname = host.encode()
+                    else:
+                        server_hostname = random.choice(gws_servername)
                 else:
                     server_hostname = b'fonts.googleapis.com'
             else:
