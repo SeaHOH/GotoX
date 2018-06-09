@@ -199,7 +199,10 @@ def import_ca(certfile=None):
                         not ca_exists and \
                         crypt32.CertAddEncodedCertificateToStore(store_handle, X509_ASN_ENCODING, certdata, len(certdata), CERT_STORE_ADD_ALWAYS, None) == 1:
                     ca_exists = True
-                    msg = '已经导入 GotoX CA 证书，请重启浏览器。'
+                    msg = ('已经将 GotoX CA 证书导入到系统证书仓库，请重启浏览器。\n\n'
+                           '如果你使用的是 Firefox，且导入过老旧证书，请在高级设置中手动删除，'
+                           '再重启浏览器，设置好代理后访问以下网址即可导入新证书：\n\n'
+                           '\thttp://gotox.go')
                     title = 'GotoX 提示'
                     ctypes.windll.user32.MessageBoxW(None, msg, title, 48)
             except Exception as e:
@@ -242,25 +245,21 @@ def verify_certificate(ca, cert):
     return True
 
 def check_ca():
-    #Check cert Dir
-    #if os.path.exists(cert_dir):
-    #    if not os.path.isdir(cert_dir):
-    #        os.remove(cert_dir)
-    #        os.mkdir(cert_dir)
-    #else:
-    #    os.mkdir(cert_dir)
-    #Check CA exists
+    #检查文件夹
+    for dir in (cert_dir, sub_certdir):
+        if os.path.exists(dir):
+            if not os.path.isdir(dir):
+                os.remove(dir)
+                os.mkdir(dir)
+        else:
+            os.mkdir(dir)
+    #检查 CA 证书
     if not os.path.exists(ca_keyfile):
         if not OpenSSL:
             logging.critical('CAkey.pem is not exist and OpenSSL is disabled, ABORT!')
             sys.exit(-1)
-        if os.path.exists(sub_certdir):
-            if os.path.isdir(sub_certdir):
-                logging.error('CAkey.pem 不存在，清空 Certs 文件夹。')
-                any(os.remove(x) for x in glob.glob(os.path.join(sub_certdir, '*.crt')))
-            else:
-                os.remove(sub_certdir)
-                os.mkdir(sub_certdir)
+        logging.error('CAkey.pem 不存在，清空 certs 文件夹。')
+        any(os.remove(x) for x in glob.glob(os.path.join(sub_certdir, '*.crt')))
         if GC.LISTEN_CHECKSYSCA and sys.platform.startswith('win'):
             logging.warning('CAkey.pem 不存在，将从系统证书中删除无效的 CA 证书')
         else:
@@ -281,7 +280,10 @@ def check_ca():
     if ca_certerror:
         with open(ca_certfile, 'wb') as fp:
             fp.write(crypto.dump_certificate(crypto.FILETYPE_PEM, ca))
-    #Check sub Key exists
+    #检查系统 CA 证书
+    if GC.LISTEN_CHECKSYSCA and import_ca() != 0:
+        logging.warning('install root certificate failed, Please run as administrator/root/sudo')
+    #检查伪造网站密钥
     if os.path.exists(sub_keyfile):
         with open(sub_keyfile, 'rb') as fp:
             content = fp.read()
@@ -289,7 +291,7 @@ def check_ca():
     else:
         dump_subkey()
     sub_publickey_str = crypto.dump_publickey(crypto.FILETYPE_PEM, sub_publickey)
-    #Check Certs
+    #检查伪造网站证书
     certfiles = glob.glob(os.path.join(sub_certdir, '*.crt'))
     if certfiles:
         filename = random.choice(certfiles)
@@ -300,19 +302,6 @@ def check_ca():
                 crypto.dump_publickey(crypto.FILETYPE_PEM, cert.get_pubkey())):
             logging.error('Certs mismatch, delete Certs.')
             any(os.remove(x) for x in certfiles)
-        del cert
-    #Del none-use object
-    del content, certfiles, sub_publickey_str
-    #Check CA imported
-    if GC.LISTEN_CHECKSYSCA and import_ca() != 0:
-        logging.warning('install root certificate failed, Please run as administrator/root/sudo')
-    #Check Certs Dir
-    if os.path.exists(sub_certdir):
-        if not os.path.isdir(sub_certdir):
-            os.remove(sub_certdir)
-            os.mkdir(sub_certdir)
-    else:
-        os.mkdir(sub_certdir)
 
 if __name__ == '__main__':
     check_ca()
