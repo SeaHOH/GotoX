@@ -262,6 +262,7 @@ def readiplist(otherset):
     ipset = ipset - otherset
     ipset -= ipexset
     #排除非当前配置的遗留 IP
+    weakset = weakset - otherset
     weakset &= ipset
     ipset -= weakset
     g.halfweak = len(weakset)/2
@@ -364,10 +365,13 @@ class g:
     source_ipset = set()
     running = False
     #reloadlist = False
-    ipmtime = os.path.getmtime(g_ipfile) if exists(g_ipfile) else 0
-    ipexmtime = os.path.getmtime(g_ipexfile) if exists(g_ipexfile) else 0
+    ipmtime = 0
+    ipexmtime = 0
     baddict = readbadlist()
     delset = readdellist()
+    ipexlist = []
+    iplist = []
+    weaklist = []
 
 clearzerofile(g_ipfile)
 clearzerofile(g_ipfilebak)
@@ -387,8 +391,6 @@ if not exists(g_badfile) and exists(g_badfilebak):
     os.rename(g_badfilebak, g_badfile)
 g.statistics = readstatistics()
 makegoodlist()
-g.ipexlist, g.iplist, g.weaklist = readiplist(set())
-savebadlist()
 
 from .HTTPUtil import http_gws
 
