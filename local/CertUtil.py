@@ -165,19 +165,22 @@ def import_ca(certfile=None):
         CERT_STORE_OPEN_EXISTING_FLAG = 0x4000
         CERT_SYSTEM_STORE_CURRENT_USER = 1 << 16
         CERT_SYSTEM_STORE_LOCAL_MACHINE = 2 << 16
+        CERT_FIND_SUBJECT_STR = 8 << 16 | 7
         crypt32 = ctypes.windll.crypt32
         ca_exists = False
+        store_handle = None
+        pCertCtx = None
         for store in (CERT_SYSTEM_STORE_LOCAL_MACHINE, CERT_SYSTEM_STORE_CURRENT_USER):
             try:
                 store_handle = crypt32.CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, None, CERT_STORE_OPEN_EXISTING_FLAG | store, 'root')
                 if not store_handle:
                     if store == CERT_SYSTEM_STORE_CURRENT_USER and not ca_exists:
-                        logging.warning('证书导入失败：无法打开 Windows 系统证书仓库')
+                        logging.warning('导入证书时发生错误：无法打开 Windows 系统证书仓库')
                         return -1
                     else:
                         continue
 
-                pCertCtx = crypt32.CertEnumCertificatesInStore(store_handle, None)
+                pCertCtx = crypt32.CertFindCertificateInStore(store_handle, X509_ASN_ENCODING, 0, CERT_FIND_SUBJECT_STR, commonname, None)
                 while pCertCtx:
                     certCtx = CERT_CONTEXT.from_address(pCertCtx)
                     _certdata = ctypes.string_at(certCtx.pbCertEncoded, certCtx.cbCertEncoded)
@@ -185,14 +188,14 @@ def import_ca(certfile=None):
                         ca_exists = True
                         logging.test("证书 %r 已经存在于 Windows 系统证书仓库", commonname)
                     else:
-                        cert =  OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1, _certdata)
+                        cert =  crypto.load_certificate(crypto.FILETYPE_ASN1, _certdata)
                         if cert.get_subject().CN == commonname:
                             ret = crypt32.CertDeleteCertificateFromStore(crypt32.CertDuplicateCertificateContext(pCertCtx))
                             if ret == 1:
                                 logging.test("已经移除无效的 Windows 证书 %r", commonname)
                             elif ret == 0 and store == CERT_SYSTEM_STORE_LOCAL_MACHINE:
                                 logging.warning('无法从 Windows 计算机账户删除无效证书 %r，请用管理员权限重新运行 GotoX，或者手动删除', commonname)
-                    pCertCtx = crypt32.CertEnumCertificatesInStore(store_handle, pCertCtx)
+                    pCertCtx = crypt32.CertFindCertificateInStore(store_handle, X509_ASN_ENCODING, 0, CERT_FIND_SUBJECT_STR, commonname, pCertCtx)
 
                 #只导入到当前用户账户，无需管理员权限
                 if store == CERT_SYSTEM_STORE_CURRENT_USER and \
@@ -206,13 +209,16 @@ def import_ca(certfile=None):
                     title = 'GotoX 提示'
                     ctypes.windll.user32.MessageBoxW(None, msg, title, 48)
             except Exception as e:
-                logging.warning('证书导入失败：%r', e)
-                return -1
+                logging.warning('导入证书时发生错误：%r', e)
+                if isinstance(e, OSError):
+                    store_handle = None
             finally:
                 if pCertCtx:
                     crypt32.CertFreeCertificateContext(pCertCtx)
+                    pCertCtx = None
                 if store_handle:
                     crypt32.CertCloseStore(store_handle, 0)
+                    store_handle = None
         return 0 if ca_exists else -1
 
     #放弃其它系统
