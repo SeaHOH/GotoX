@@ -402,7 +402,7 @@ class HTTPUtil(BaseHTTPUtil):
                     if gws_servername is None:
                         if host is None:
                             if GC.GAE_APPIDS:
-                                server_hostname = random.choice(GC.GAE_APPIDS)
+                                server_hostname = random.choice(GC.GAE_APPIDS).encode() + b'.appspot.com'
                             else:
                                 server_hostname = b'www.appspot.com'
                         else:
