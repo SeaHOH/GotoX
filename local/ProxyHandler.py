@@ -51,20 +51,7 @@ getrange = re.compile(r'^bytes (\d+)-(\d+)/(\d+|\*)').search
 class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
     CAPath = '/ca', '/cadownload'
-    invalid_cmds = {
-        'action',
-        'METHOD',
-        'DIRECT',
-        'GAE',
-        'FORWARD',
-        'PROXY',
-        'REDIRECT',
-        'IREDIRECT',
-        'FAKECERT',
-        'LOCAL',
-        'BLOCK',
-        'CMD'
-        }
+    valid_cmds = {'CONNECT', 'GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'OPTIONS', 'TRACE', 'PATCH'}
     gae_fetcmds = {'GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'}
     skip_request_headers = (
         'Vary',
@@ -119,31 +106,54 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
         self.write = lambda d: self.wfile.write(d if isinstance(d, bytes) else d.encode())
 
-    def parse_request(self):
-        #检查 HTTP 命令，排除内部使用的命令
-        parse_request = BaseHTTPServer.BaseHTTPRequestHandler.parse_request(self)
-        if self.command in self.invalid_cmds:
+    def handle_one_request(self):
+        try:
+            self.raw_requestline = self.rfile.readline(65537)
+            if len(self.raw_requestline) > 65536:
+                self.requestline = ''
+                self.request_version = ''
+                self.command = ''
+                self.send_error(414)
+                return
+            if not self.raw_requestline:
+                self.close_connection = True
+                return
+            if self.is_offline():
+                return
+            if not self.parse_request():
+                # An error code has been sent, just exit
+                return
+            if self.command == 'CONNECT':
+                self.do_CONNECT()
+            elif self.command in self.valid_cmds:
+                self.do_METHOD()
+            else:
+                self.send_error(501, 'Unsupported method (%r)' % self.command)
+                return
+            self.wfile.flush() #actually send the response if not already done.
+        except socket.timeout as e:
+            #a read or a write timed out.  Discard this connection
+            self.log_error("Request timed out: %r", e)
             self.close_connection = True
-            self.send_error(501, "Unsupported method (%r)" % self.command)
-            return False
-        return parse_request
 
     def do_action(self):
-        #记录 gws 链接活动时间
+        #记录 gws 连接活动时间
         #获取 hostname 别名
         self.close_connection = True
-        if self.action == 'do_GAE' and self.headers.get('Upgrade') == 'websocket':
+        if self.headers.get('Upgrade') == 'websocket' and self.action in ('do_DIRECT', 'do_GAE'):
             self.action = 'do_FORWARD'
             self.target = None
-            logging.warn('%s GAE 不支持 websocket %r，转用 FORWARD。', self.address_string(), self.url)
+            logging.warn('%s %s 不支持 websocket %r，转用 FORWARD。', self.address_string(), self.action[3:], self.url)
         if self.action in ('do_DIRECT', 'do_FORWARD'):
             self.hostname = hostname = set_dns(self.host, self.target)
             if hostname is None:
-                logging.error('%s 无法解析主机：%r，路径：%r，请检查是否输入正确！', self.address_string(), self.host, self.path)
-                #返回错误代码和提示页面了，但加密请求不会显示
-                c = message_html('504 解析失败', '504 解析失败<p>主机名 %r 无法解析，请检查是否输入正确！' % self.host).encode()
-                self.write(b'HTTP/1.1 504 Resolve Failed\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
-                self.write(c)
+                if self.ssl and not self.fakecert:
+                    self.do_FAKECERT()
+                else:
+                    logging.error('%s 无法解析主机：%r，路径：%r，请检查是否输入正确！', self.address_string(), self.host, self.path)
+                    c = message_html('504 解析失败', '504 解析失败<p>主机名 %r 无法解析，请检查是否输入正确！' % self.host).encode()
+                    self.write(b'HTTP/1.1 504 Resolve Failed\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
+                    self.write(c)
                 return 
             elif hostname.startswith('google'):
                 testip.lastactive = time()
@@ -151,54 +161,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             testip.lastactive = time()
         getattr(self, self.action)()
 
-    def _do_CONNECT(self):
-        host = self.headers.get('Host', '')
+    def parse_host(self, host, chost, mhost=True):
         port = None
         #从命令获取主机、端口
-        chost, cport = urlparse.splitport(self.path)
-        #确定主机，优先 Host 头域（忽略 CONNECT 命令）
-        if host:
-            #从头域获取主机、端口
-            host, port = urlparse.splitport(host)
-            #排除某些程序把代理当成主机名
-            if chost and port in self.listen_port and host in self.localhosts:
-                self.host = host = chost
-                port = cport
-            else:
-                self.host = host
-        else:
-            self.host = host = chost
-        if 'Host' in self.headers:
-            self.headers.replace_header('Host', host)
-        else:
-            self.headers['Host'] = host
-        self.port = port = int(port or cport or 443)
-        #某些 http 链接（前端代理）也可能会使用 CONNECT 方法
-        #认为非 80 端口都是加密链接
-        self.ssl = port != 80
-
-    def do_CONNECT(self):
-        #处理 CONNECT 请求，根据规则过滤执行目标动作
-        if self.is_offline():
-            return
-        self._do_CONNECT()
-        ssl = self.ssl
-        host = self.host
-        self.action, self.target = get_connect_action(ssl, host)
-        #本地地址
-        if host in self.localhosts and self.port == 443:
-            self.action = 'do_FAKECERT'
-        self.fakecert = ssl and self.action == 'do_FAKECERT'
-        self.do_action()
-
-    def _do_METHOD(self):
-        self.reread_req = False
-        host = self.headers.get('Host', '')
-        port = None
-        path = self.path
-        url_parts = urlparse.urlsplit(path)
-        #从命令获取主机、端口
-        chost, cport = urlparse.splitport(url_parts.netloc)
+        chost, cport = urlparse.splitport(chost)
         #确定主机，优先 Host 头域
         if host:
             #从头域获取主机、端口
@@ -211,60 +177,55 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.host = host
         else:
             self.host = host = chost
-        if 'Host' in self.headers:
-            self.headers.replace_header('Host', host)
-        else:
-            self.headers['Host'] = host
-        #确定协议
-        scheme = url_parts.scheme
-        if scheme:
-            #认为只有 https 协议才是加密链接
-            self.ssl = scheme == 'https'
-        else:
-            scheme = 'https' if self.ssl else 'http'
         #确定端口
-        self.port = int(port or cport or self.ssl and 443 or 80)
+        self.port = port = int(port or cport or self.ssl and 443 or 80)
+        #确定 Host 头域
+        if mhost:
+            if (bool(self.ssl), port) not in ((False, 80), (True, 443)):
+                host = '%s:%d' % (host, port)
+            if 'Host' in self.headers:
+                self.headers.replace_header('Host', host)
+            else:
+                self.headers['Host'] = host
+
+    def _do_CONNECT(self):
+        self.write(b'HTTP/1.1 200 Connection Established\r\n\r\n')
+        leadbyte = self.connection.recv(1, socket.MSG_PEEK)
+        self.ssl = leadbyte in (b'\x16', b'\x80') # 0x80: ssl20
+        if not self.ssl:
+            return True
+        self.parse_host(self.headers.get('Host'), self.path)
+
+    def do_CONNECT(self):
+        #处理 CONNECT 请求，根据规则过滤执行目标动作
+        if self._do_CONNECT():
+            return
+        self.action, self.target = get_connect_action(self.ssl, self.host)
+        self.do_action()
+
+    def _do_METHOD(self):
+        self.reread_req = False
+        self.url_parts = url_parts = urlparse.urlsplit(self.path)
+        self.parse_host(self.headers.get('Host'), url_parts.netloc)
+        #确定协议
+        scheme = 'https' if self.ssl else 'http'
         #确定网址、去掉可能存在的端口
-        #似乎是 urllib.parse.*.geturl 的 bug，没有检查 IPv6 主机名
-        self.url_parts = url_parts = urlparse.SplitResult(scheme, host, url_parts.path, url_parts.query, '')
+        self.url_parts = url_parts = urlparse.SplitResult(scheme, self.headers.get('Host'), url_parts.path, url_parts.query, '')
         self.url = url = url_parts.geturl()
         #确定路径
-        if path[0] != '/':
+        if self.path[0] != '/':
             self.path = url[url.find('/', 12):]
+        #本地地址
+        if self.host in self.localhosts and self.port in (80, 443):
+            self.do_LOCAL()
+            return True
 
     def do_METHOD(self):
         #处理其它请求，根据规则过滤执行目标动作
-        if self.is_offline():
+        if self._do_METHOD():
             return
-        self._do_METHOD()
-        host = self.host
-        path = self.path
-        #本地地址
-        if host in self.localhosts and self.port in (80, 443):
-            return self.do_LOCAL()
-        request_headers = self.headers
-        #限制 bilibili 视频请求，以防断流 5MB
-        #if host.endswith('.acgvideo.com') or path.startswith('/ws.acgvideo.com'):
-        #    request_range = request_headers.get('Range')
-        #    range_start = getbytes(request_range).group(1) if request_range is not None else None
-        #    range_start = int(range_start) if range_start else 0
-        #    if 'Range' in request_headers:
-        #        request_headers.replace_header('Range', 'bytes=%d-%d' % (range_start, range_start + 5242879))
-        #    else:
-        #        request_headers['Range'] = 'bytes=%d-%d' % (range_start, range_start + 5242879)
-        #限制 sohu 视频请求，以防拒绝访问
-        if 'Range' in request_headers and path.startswith('/sohu'):
-            del request_headers['Range']
-        self.action, self.target = get_action(self.url_parts.scheme, host, path[1:], self.url)
+        self.action, self.target = get_action(self.url_parts.scheme, self.host, self.path[1:], self.url)
         self.do_action()
-
-    do_GET = do_METHOD
-    do_PUT = do_METHOD
-    do_POST = do_METHOD
-    do_HEAD = do_METHOD
-    do_DELETE = do_METHOD
-    do_OPTIONS = do_METHOD
-    do_PATCH = do_METHOD
 
     def write_response_content(self, data, response, need_chunked):
         length = self.response_length
@@ -286,7 +247,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.write(d)
             except Exception as e:
                 self.conaborted = True
-                logging.debug('%s 客户端链接断开：%r, %r', self.address_string(), self.url, e)
+                logging.debug('%s 客户端连接断开：%r, %r', self.address_string(), self.url, e)
                 raise e
 
         readinto = response.readinto
@@ -444,7 +405,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if self.request_version == 'HTTP/1.1':
                 response_headers['Transfer-Encoding'] = 'chunked'
             else:
-                # HTTP/1.1 以下不支持 chunked，关闭链接
+                # HTTP/1.1 以下不支持 chunked，关闭连接
                 need_chunked = False
                 self.close_connection = True
                 response_headers['Proxy-Connection'] = 'close'
@@ -469,7 +430,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return response, data, need_chunked
 
     def check_useragent(self):
-        #修复某些软件无法正确处理 206 Partial Content 响应的持久链接
+        #修复某些软件无法正确处理 206 Partial Content 响应的持久连接
         user_agent = self.headers.get('User-Agent', '')
         if (user_agent.startswith('mpv')         # mpv
             or user_agent.endswith(('(Chrome)', 'Iceweasel/38.2.1'))): # youtube-dl 有时会传递给其它支持的播放器，导致无法辨识，统一关闭
@@ -515,14 +476,14 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     else:
                         logging.warn('%s do_DIRECT "%s %s" 失败，尝试使用 "GAE" 规则。', self.address_string(), self.command, self.url)
                         return self.go_GAE()
-                #发生错误时关闭链接
+                #发生错误时关闭连接
                 if response.status >= 400:
                     noerror = False
                 #拒绝服务、非直连 IP
                 if response.status == 403 and not isdirect(host):
-                    logging.warn('%s do_DIRECT "%s %s" 链接被拒绝，尝试使用 "GAE" 规则。', self.address_string(response), self.command, self.url)
+                    logging.warn('%s do_DIRECT "%s %s" 连接被拒绝，尝试使用 "GAE" 规则。', self.address_string(response), self.command, self.url)
                     return self.go_GAE()
-                #修复某些软件无法正确处理持久链接（停用）
+                #修复某些软件无法正确处理持久连接（停用）
                 self.check_useragent()
                 self.get_response_length(response)
                 response, data, need_chunked = self.handle_response_headers(response)
@@ -535,13 +496,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 noerror = False
                 if self.conaborted:
                     raise e
-                #链接重置
+                #连接重置
                 if e.args[0] in reset_errno:
                     if isdirect(host):
-                        logging.warning('%s do_DIRECT "%s %s" 链接被重置，重试。', self.address_string(response), self.command, self.url)
+                        logging.warning('%s do_DIRECT "%s %s" 连接被重置，重试。', self.address_string(response), self.command, self.url)
                         continue
                     else:
-                        logging.warning('%s do_DIRECT "%s %s" 链接被重置，尝试使用 "GAE" 规则。', self.address_string(response), self.command, self.url)
+                        logging.warning('%s do_DIRECT "%s %s" 连接被重置，尝试使用 "GAE" 规则。', self.address_string(response), self.command, self.url)
                         return self.go_GAE()
                 elif e.args[0] not in pass_errno:
                     raise e
@@ -560,7 +521,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             if GC.GAE_KEEPALIVE or http_util is not http_gws:
                                 http_util.ssl_connection_cache[connection_cache_key].append((time(), response.sock))
                             else:
-                                #干扰严重时考虑不复用 google 链接
+                                #干扰严重时考虑不复用 google 连接
                                 response.sock.close()
                         else:
                             response.sock.used = None
@@ -601,9 +562,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         request_headers, payload = self.handle_request_headers()
         if self.command == 'OPTIONS':
             return self.fake_OPTIONS(request_headers)
-        #为使用非标准端口的网址加上端口
-        if (url_parts.scheme, self.port) not in (('http', 80), ('https', 443)):
-            self.url = '%s://%s:%s%s' % (url_parts.scheme, self.host, self.port, self.path)
         #排除不支持 range 的请求
         need_autorange = self.command != 'HEAD' and 'range=' not in url_parts.query and 'range/' not in self.path and 'live=1' not in url_parts.query
         self.range_end = range_end = range_start = 0
@@ -778,7 +736,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                                     need_autorange = 2
                 elif (  #重试中途失败的请求时返回错误
                         (headers_sent and start > 0) 
-                        #服务器不支持 Range 且错误返回成功状态，直接放弃并断开链接
+                        #服务器不支持 Range 且错误返回成功状态，直接放弃并断开连接
                         or (range_start > 0 and response.status < 300)):
                     self.close_connection = True
                     return
@@ -787,7 +745,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     logging.info('发现[autorange/big]匹配：%r', self.url)
                     response.status = 206
                     need_autorange = 2
-                #修复某些软件无法正确处理持久链接（停用）
+                #修复某些软件无法正确处理持久连接（停用）
                 self.check_useragent()
                 #第一个响应，不用重复写入头部
                 if not headers_sent:
@@ -807,7 +765,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 noerror = False
                 errors.append(e)
                 if e.args[0] in closed_errno or isinstance(e, NetWorkIOError) and len(e.args) > 1 and 'bad write' in e.args[1]:
-                    #链接主动终止
+                    #连接主动终止
                     logging.debug('%s do_GAE %r 返回 %r，终止', self.address_string(response), self.url, e)
                     self.close_connection = True
                     return
@@ -872,21 +830,22 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if remote is None:
             if not isdirect(host):
                 if self.command == 'CONNECT':
-                    logging.warning('%s%s do_FORWARD 链接远程主机 (%r, %r) 失败，尝试使用 "FAKECERT & GAE" 规则。', self.address_string(), hostip or '', host, port)
+                    logging.warning('%s%s do_FORWARD 连接远程主机 (%r, %r) 失败，尝试使用 "FAKECERT & GAE" 规则。', self.address_string(), hostip or '', host, port)
                     self.go_FAKECERT_GAE()
                 elif self.headers.get('Upgrade') == 'websocket':
-                    logging.warning('%s%s do_FORWARD websocket 链接远程主机 (%r, %r) 失败。', self.address_string(), hostip or '', host, port)
+                    logging.warning('%s%s do_FORWARD websocket 连接远程主机 (%r, %r) 失败。', self.address_string(), hostip or '', host, port)
                 else:
-                    logging.warning('%s%s do_FORWARD 链接远程主机 (%r, %r) 失败，尝试使用 "GAE" 规则。', self.address_string(), hostip or '', host, port)
+                    logging.warning('%s%s do_FORWARD 连接远程主机 (%r, %r) 失败，尝试使用 "GAE" 规则。', self.address_string(), hostip or '', host, port)
                     self.go_GAE()
             return
         if self.fakecert:
-            remote = http_util.get_ssl_socket(remote, self.host.encode())
+            remote = http_util.get_ssl_socket(remote, http_util.get_server_hostname(connection_cache_key, host))
             remote.connect(remote.xip)
             remote.do_handshake()
-            logging.info('%s "FWD %s %s HTTP/1.1" - -', self.address_string(remote), self.command, self.url)
-        else:
+        if self.command == 'CONNECT':
             logging.info('%s "FWD %s %s:%d HTTP/1.1" - -', self.address_string(remote), self.command, host, port)
+        else:
+            logging.info('%s "FWD %s %s HTTP/1.1" - -', self.address_string(remote), self.command, self.url)
         self.forward_socket(remote)
 
     def do_PROXY(self):
@@ -900,7 +859,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             logging.error('%s 代理地址无法解析：%s', self.address_string(), self.target)
             return
         if ipcnt > 1:
-            #优先使用未使用 IP，之后按链接速度排序
+            #优先使用未使用 IP，之后按连接速度排序
             ips.sort(key=lambda ip: self.proxy_connection_time.get(ip, 0))
         proxyport = int(proxyport)
         while ips:
@@ -956,33 +915,22 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             #重设网址
             origurl = self.url
             self.url = url = target
-            #重设主机
-            self.url_parts = url_parts = urlparse.urlsplit(target)
-            host, port = urlparse.splitport(url_parts.netloc)
-            self.host = host
-            if mhost:
-                if 'Host' in self.headers:
-                    self.headers.replace_header('Host', host)
-                else:
-                    self.headers['Host'] = host
             #重设协议
             origssl = self.ssl
+            self.url_parts = url_parts = urlparse.urlsplit(target)
             self.ssl = url_parts.scheme == 'https'
-            #重设端口
-            if port:
-                self.port = int(port)
-            elif origssl != self.ssl:
-                if self.ssl and self.port == 80:
-                    self.port = 443
-                elif origssl and self.port == 443:
-                    self.port = 80
-                else:
-                    #不改变非标准端口
-                    self.ssl = origssl
-                    scheme = 'https' if origssl else 'http'
-                    self.url_parts = url_parts = urlparse.SplitResult(scheme, host, url_parts.path, url_parts.query, '')
-                    self.url = url = url_parts.geturl()
-                    logging.warning('%s 由于 %r 使用了非标准端口且重定向目标未明确定义端口，重新内部重定向到 %r', self.address_string(), origurl, url)
+            #重设主机和端口
+            origport = self.port
+            self.parse_host(None, url_parts.netloc, mhost)
+            #未明确定义重定向端口时不改变原非标准端口
+            if origport not in (80, 443) and self.port in (80, 443):
+                self.ssl = origssl
+                self.port = origport
+                scheme = 'https' if origssl else 'http'
+                netloc = '%s:%d' % (self.host, origport)
+                self.url_parts = url_parts = urlparse.SplitResult(scheme, netloc, url_parts.path, url_parts.query, '')
+                self.url = url = url_parts.geturl()
+                logging.warning('%s 由于 %r 使用了非标准端口且重定向目标未明确定义端口，重新内部重定向到 %r', self.address_string(), origurl, url)
             #重设路径
             self.path = target[target.find('/', target.find('//')+3):]
             #重设 action
@@ -992,23 +940,23 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 else:
                     self.action, self.target = raction
             else:
-                self.action, self.target = get_action(url_parts.scheme, host, self.path[1:], url)
-            #内部重定向到加密链接，相当于已伪造证书
-            self.fakecert = self.ssl
+                self.action, self.target = get_action(url_parts.scheme, self.host, self.path[1:], url)
             self.do_action()
 
     def do_FAKECERT(self):
-        #为当前客户链接配置一个伪造证书
-        self.write(b'HTTP/1.1 200 Connection Established\r\n\r\n')
-        if not self.fakecert: return
+        #为当前客户连接配置一个伪造证书
+        if not self.ssl:
+            self.close_connection = False
+            return
         context = self.get_context()
         try:
             ssl_sock = context.wrap_socket(self.connection, server_side=True)
+            self.fakecert = True
         except ssl.SSLEOFError:
             return
         except Exception as e:
             if e.args[0] not in pass_errno:
-                logging.exception('%s 伪造加密链接失败：host=%r，%r', self.address_string(), self.host, e)
+                logging.exception('%s 伪造加密连接失败：host=%r，%r', self.address_string(), self.host, e)
             return
         #停止非加密读写
         self.finish()
@@ -1205,7 +1153,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def go_FAKECERT(self):
         self._set_temp_FAKECERT()
         self.action = 'do_FAKECERT'
-        self.fakecert = True
         self.do_action()
 
     def go_FAKECERT_GAE(self):
@@ -1222,17 +1169,22 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.write(c)
 
     def forward_socket(self, remote, tick=4, maxping=None, maxpong=None):
-        #在本地与远程链接间进行数据转发
-        if self.command == 'CONNECT':
-            self.connection.sendall(b'HTTP/1.1 200 Connection Established\r\n\r\n')
-        else:
-            request_headers, payload = self.handle_request_headers()
-            http_headers = ''.join('%s: %s\r\n' % kv for kv in request_headers.items())
-            rebuilt_request = '%s\r\n%s\r\n' % (self.requestline, http_headers)
+        #在本地与远程连接间进行数据转发
+        if self.command != 'CONNECT':
+            request_data = []
+            #某些服务器不接受包含完整网址的命令
+            #request_data.append(self.requestline)
+            request_data.append('%s %s %s' % (self.command, self.path, self.protocol_version))
+            for k, v in self.headers.items():
+                if not k.title().startswith('Proxy-'):
+                    request_data.append('%s: %s' % (k.title(), v))
+            request_data.append('\r\n')
+            rebuilt_request = '\r\n'.join(request_data).encode()
+            _, payload = self.handle_request_headers()
             if isinstance(payload, bytes) and payload:
-                remote.sendall(rebuilt_request.encode() + payload)
+                remote.sendall(rebuilt_request + payload)
             else:
-                remote.sendall(rebuilt_request.encode())
+                remote.sendall(rebuilt_request)
         local = self.connection
         buf = memoryview(bytearray(32768)) # 32K
         maxpong = maxpong or self.fwd_keeptime
@@ -1269,6 +1221,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         finally:
             remote.close()
             logging.debug('%s 转发终止："%s"', self.address_string(remote), self.url or self.host)
+            #必须在这里设置关闭，前面关闭不起作用，但是中间并没有设置过不关闭？
+            self.close_connection = True
 
     def get_context(self):
         #维护一个 ssl context 缓存
@@ -1318,7 +1272,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.address_string(), self.command, self.url)
 
     def is_offline(self):
-        #检查代理服务是否运行并释放无效链接
+        #检查代理服务是否运行并释放无效连接
         if self.server.is_offline:
             self.close_connection = True
             self.connection.close()
@@ -1350,28 +1304,18 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 class GAEProxyHandler(AutoProxyHandler):
 
     def do_CONNECT(self):
-        #处理 CONNECT 请求，使用伪造证书进行链接
-        self._do_CONNECT()
+        #处理 CONNECT 请求，使用伪造证书进行连接
+        if self._do_CONNECT():
+            return
         self.action = 'do_FAKECERT'
-        self.fakecert = True
         self.do_action()
 
     def do_METHOD(self):
         #处理其它请求，转发到 GAE 代理
-        self._do_METHOD()
-        #本地地址
-        if self.host in self.localhosts and self.port in (80, 443):
-            return self.do_LOCAL()
+        if self._do_METHOD():
+            return
         self.action = 'do_GAE'
         self.do_action()
-
-    do_GET = do_METHOD
-    do_PUT = do_METHOD
-    do_POST = do_METHOD
-    do_HEAD = do_METHOD
-    do_DELETE = do_METHOD
-    do_OPTIONS = do_METHOD
-    do_PATCH = do_METHOD
 
     def go_GAE(self):
         self.go_BAD()

@@ -14,7 +14,7 @@ from . import clogging as logging
 from select import select
 from time import time, sleep
 from .GlobalConfig import GC
-from .compat import Queue, thread, httplib, urlparse, hasattr
+from .compat import Queue, thread, httplib, hasattr
 from .compat.openssl import zero_EOF_error, SSLConnection
 from .common import cert_dir, NetWorkIOError, closed_errno, LRUCache, isip
 from .common.dns import dns, dns_resolve
@@ -123,7 +123,25 @@ class BaseHTTPUtil:
             self.context.load_verify_locations(self.cacert)
             return
         logging.error('未找到可信任 CA 证书集，GotoX 即将退出！请检查：%r', self.cacert)
-        sys.exit(-1) 
+        sys.exit(-1)
+
+    def get_server_hostname(self, cache_key, host):
+        if self.gws:
+            if cache_key == 'google_fe:443' or host and host.endswith('.appspot.com'):
+                if gws_servername is None:
+                    if host is None:
+                        if GC.GAE_APPIDS:
+                            return random.choice(GC.GAE_APPIDS).encode() + b'.appspot.com'
+                        else:
+                            return b'www.appspot.com'
+                    else:
+                        return host.encode()
+                else:
+                    return random.choice(gws_servername)
+            else:
+                return b'fonts.googleapis.com'
+        else:
+            return None if isip(host) else host.encode()
 
     def get_ssl_socket(self, sock, server_hostname=None):
         return self.context.wrap_socket(sock, do_handshake_on_connect=False, server_hostname=server_hostname)
@@ -224,7 +242,7 @@ def set_connect_start(ip):
     try:
         connect_limiter[ip].put(True)
     except KeyError:
-        #只是限制同时正在发起的链接数，并不限制链接的总数，所以设定尽量小的数字
+        #只是限制同时正在发起的连接数，并不限制连接的总数，所以设定尽量小的数字
         connect_limiter[ip] = Queue.LifoQueue(3)
         connect_limiter[ip].put(True)
 
@@ -397,23 +415,7 @@ class HTTPUtil(BaseHTTPUtil):
             # disable negal algorithm to send http request quickly.
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
             # pick up the sock socket
-            if self.gws:
-                if cache_key == 'google_fe:443' or host and host.endswith('.appspot.com'):
-                    if gws_servername is None:
-                        if host is None:
-                            if GC.GAE_APPIDS:
-                                server_hostname = random.choice(GC.GAE_APPIDS).encode() + b'.appspot.com'
-                            else:
-                                server_hostname = b'www.appspot.com'
-                        else:
-                            server_hostname = host.encode()
-                    else:
-                        server_hostname = random.choice(gws_servername)
-                else:
-                    server_hostname = b'fonts.googleapis.com'
-            else:
-                server_hostname = None if isip(host) else host.encode()
-            ssl_sock = self.get_ssl_socket(sock, server_hostname)
+            ssl_sock = self.get_ssl_socket(sock, self.get_server_hostname(cache_key, host))
             # set a short timeout to trigger timeout retry more quickly.
             ssl_sock.settimeout(test if test else 1)
             set_connect_start(ip)
@@ -593,7 +595,7 @@ class HTTPUtil(BaseHTTPUtil):
                 logging.error('create_gws_connection_withproxy 代理地址无法解析：%r', proxy)
                 return
             if ipcnt > 1:
-                #优先使用未使用 IP，之后按链接速度排序
+                #优先使用未使用 IP，之后按连接速度排序
                 ips.sort(key=self.get_gws_front_connection_time_ip)
             proxyport = int(proxyport)
             ohost, port = address
@@ -627,7 +629,7 @@ class HTTPUtil(BaseHTTPUtil):
                     if ipcnt > 1:
                         self.gws_front_connection_time['ip'][proxyhost] = cost_time
                     self.gws_front_connection_time[proxy] = cost_time
-                    logging.error('create_gws_connection_withproxy 链接代理 [%s] 失败：%r', proxy, e)
+                    logging.error('create_gws_connection_withproxy 连接代理 [%s] 失败：%r', proxy, e)
                     continue
                 else:
                     cost_time = time() - start_time

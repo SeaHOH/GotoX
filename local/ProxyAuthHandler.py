@@ -295,14 +295,6 @@ class AutoProxyAuthHandler(ProxyAuthHandler, AutoProxyHandler):
         if self.check_auth():
             AutoProxyHandler.do_METHOD(self)
 
-    do_GET = do_METHOD
-    do_PUT = do_METHOD
-    do_POST = do_METHOD
-    do_HEAD = do_METHOD
-    do_DELETE = do_METHOD
-    do_OPTIONS = do_METHOD
-    do_PATCH = do_METHOD
-
 class GAEProxyAuthHandler(ProxyAuthHandler, GAEProxyHandler):
 
     def do_CONNECT(self):
@@ -312,11 +304,3 @@ class GAEProxyAuthHandler(ProxyAuthHandler, GAEProxyHandler):
     def do_METHOD(self):
         if self.check_auth():
             GAEProxyHandler.do_METHOD(self)
-
-    do_GET = do_METHOD
-    do_PUT = do_METHOD
-    do_POST = do_METHOD
-    do_HEAD = do_METHOD
-    do_DELETE = do_METHOD
-    do_OPTIONS = do_METHOD
-    do_PATCH = do_METHOD

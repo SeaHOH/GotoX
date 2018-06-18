@@ -78,7 +78,7 @@ class RangeFetch:
         try:
             self.write(('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k, v) for k, v in response_headers.items()))))
         except Exception as e:
-            logging.info('%s RangeFetch 本地链接断开：%r, %r', self.address_string(response), self.url, e)
+            logging.info('%s RangeFetch 本地连接断开：%r, %r', self.address_string(response), self.url, e)
             self.record()
             return
         logging.info('%s >>>>>>>>>>>>>>> RangeFetch 开始 %r %d-%d', self.address_string(response), self.url, start, range_end)
@@ -146,7 +146,7 @@ class RangeFetch:
                 self.write(data)
                 self.expect_begin += len(data)
             except Exception as e:
-                logging.info('%s RangeFetch 本地链接断开：%r, %r', self.address_string(), self.url, e)
+                logging.info('%s RangeFetch 本地连接断开：%r, %r', self.address_string(), self.url, e)
                 break
         else:
             logging.info('%s RangeFetch 成功完成 %r', self.address_string(), self.url)
