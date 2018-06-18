@@ -76,7 +76,7 @@ class proxy_server:
             self.pac = server_str
             return
         elif '=' in server_str:
-            for k, v in (kv.split('=', 1) for kv in server_str.split(';')):
+            for k, v in (kv.split('=', 1) for kv in server_str.split(';') if kv):
                 self.__setattr__(k, v)
         else:
             self.http = server_str
