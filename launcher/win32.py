@@ -14,6 +14,7 @@ py_path = os.path.join(app_root, 'python')
 py_exe = sys.executable
 app_start = os.path.join(app_root, 'start.py')
 icon_gotox = os.path.join(app_root, 'gotox.ico')
+create_shortcut_js = os.path.join(app_root, 'create_shortcut.vbs')
 config_dir = os.path.join(app_root, 'config')
 ipdb_direct = os.path.join(app_root, 'data', 'directip.db')
 refresh_proxy = os.path.join(app_root, 'launcher', 'refresh_proxy_win.py')
@@ -204,6 +205,9 @@ def on_show(systray):
 def on_hide(systray):
     ctypes.windll.user32.ShowWindow(hwnd, 0)
 
+def on_create_shortcut(systray):
+    os.system(create_shortcut_js)
+
 from urllib.request import urlopen
 def on_reset_dns(systray):
     urlopen('http://localhost/docmd?cmd=reset_dns')
@@ -338,6 +342,7 @@ def build_menu(systray):
                  (None, '-'),
                  ('显示窗口', on_show, show_state, MFT_RADIOCHECK),
                  ('隐藏窗口', on_hide, hide_state, MFT_RADIOCHECK),
+                 ('创建桌面快捷方式', on_create_shortcut),
                  ('设置系统（IE）代理', sub_menu3),
                  ('重置 DNS 缓存', on_reset_dns),
                  ('重置自动规则缓存', on_reset_autorule),
