@@ -34,7 +34,7 @@ class RangeFetch:
         self.iplist = GC.IPLIST_MAP['google_gws'].copy()
 
         self.handler = handler
-        self.write = handler.write
+        self.write = handler.wfile.write
         self.bufsize = handler.bufsize
         self.command = handler.command
         self.host = handler.host
@@ -76,7 +76,7 @@ class RangeFetch:
             response_headers['Content-Length'] = str(length - start)
 
         try:
-            self.write(('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k, v) for k, v in response_headers.items()))))
+            self.handler.write(('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k, v) for k, v in response_headers.items()))))
         except Exception as e:
             logging.info('%s RangeFetch 本地连接断开：%r, %r', self.address_string(response), self.url, e)
             self.record()

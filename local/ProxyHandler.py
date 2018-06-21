@@ -154,15 +154,16 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.request.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 0)
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
 
-    def write(self, d):
-        if not isinstance(d, bytes):
+    def write(self, d, raiseerror=None):
+        if raiseerror is None and not isinstance(d, bytes):
             d = d.encode()
         try:
             self.wfile.write(d)
         except Exception as e:
             self.conaborted = True
-            logging.debug('%s 客户端连接断开：%r, %r', self.address_string(), self.url, e)
-            raise e
+            if raiseerror:
+                logging.debug('%s 客户端连接断开：%r, %r', self.address_string(), self.url, e)
+                raise e
 
     def handle_one_request(self):
         try:
@@ -309,13 +310,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 ndata = readinto(buf)
             while ndata:
                 if need_chunked:
-                    self.write(hex(ndata)[2:])
-                    self.write(b'\r\n')
-                    self.write(buf[:ndata].tobytes())
-                    self.write(b'\r\n')
+                    self.write(hex(ndata)[2:], True)
+                    self.write(b'\r\n', True)
+                    self.write(buf[:ndata].tobytes(), True)
+                    self.write(b'\r\n', True)
                     wrote += ndata
                 else:
-                    self.write(buf[:ndata].tobytes())
+                    self.write(buf[:ndata].tobytes(), True)
                     wrote += ndata
                     if wrote >= length:
                         break
@@ -324,7 +325,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             err = e
         finally:
             if need_chunked:
-                self.write(b'0\r\n\r\n')
+                self.write(b'0\r\n\r\n', True)
             return wrote, err
 
     def handle_request_headers(self):
@@ -1122,7 +1123,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                                'Content-Type: %s\r\n\r\n'
                                % (filesize, content_type))
                     while data:
-                        self.write(data)
+                        self.write(data, True)
                         data = fp.read(1048576)
             except Exception as e:
                 logging.warning('%s "%s %s HTTP/1.1" 403 -，无法打开本地文件：%r',
