@@ -6,7 +6,6 @@ import os
 import sys
 #import collections
 import re
-import fnmatch
 from .compat import ConfigParser
 from .common import config_dir, data_dir
 from .common.decompress import _brotli
@@ -48,6 +47,9 @@ class GC:
     #        CONFIG.set(m.group(1).lower(), m.group(2).lower(), value)
 
     LISTEN_IP = CONFIG.get('listen', 'ip')
+    LISTEN_IPHOST = CONFIG.get('listen', 'iphost')
+    if not LISTEN_IPHOST and LISTEN_IP not in ('0.0.0.0', '::'):
+        LISTEN_IPHOST = LISTEN_IP
     LISTEN_GAE_PORT = CONFIG.getint('listen', 'gae_port')
     LISTEN_AUTO_PORT = CONFIG.getint('listen', 'auto_port')
     LISTEN_VISIBLE = CONFIG.getboolean('listen', 'visible')
@@ -95,7 +97,7 @@ class GC:
     LINK_VERIFYG2PK = CONFIG.getboolean('link', 'verifyg2pk')
     LINK_LOCALSSLTXT = CONFIG.get('link', 'localssl') or 'TLS'
     LINK_REMOTESSLTXT = CONFIG.get('link', 'remotessl') or 'TLSv1.2'
-    LINK_LOCALSSL = _SSLv[LINK_LOCALSSLTXT]
+    LINK_LOCALSSL = _SSLv[LINK_LOCALSSLTXT] + (1 if LINK_OPENSSL else 0)
     LINK_REMOTESSL = max(_SSLv[LINK_REMOTESSLTXT], _SSLv['TLS']) + (1 if LINK_OPENSSL else 0)
     LINK_TIMEOUT = max(CONFIG.getint('link', 'timeout'), 3)
     LINK_FWDTIMEOUT = max(CONFIG.getint('link', 'fwdtimeout'), 3)
@@ -207,5 +209,4 @@ class GC:
     DNS_CACHE_ENTRIES = int(CONFIG.get('dns/cache', 'entries') or 1024)
     DNS_CACHE_EXPIRATION = int(CONFIG.get('dns/cache', 'expiration') or 7200)
 
-del CONFIG, fnmatch, ConfigParser
-del sys.modules['fnmatch']
+del CONFIG

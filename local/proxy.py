@@ -38,7 +38,7 @@
 #      s2marine0         <s2marine0@gmail.com>
 #      Toshio Xiang      <snachx@gmail.com>
 # Compatible:
-#      phuslu's GoProxy GAE Server
+#      phuslu's GoProxy GAE Server (removed)
 #          https://github.com/phuslu/goproxy/tree/server.gae
 
 from . import __version__

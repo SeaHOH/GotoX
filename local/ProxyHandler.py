@@ -16,6 +16,7 @@ from functools import partial
 from . import CertUtil
 from . import clogging as logging
 from .compat import BaseHTTPServer, urlparse, thread, hasattr
+from .compat.openssl import SSL, SSLConnection
 from .common import (
     web_dir,
     NetWorkIOError,
@@ -87,6 +88,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     rangesize = min(GC.GAE_MAXSIZE, GC.AUTORANGE_FAST_MAXSIZE * 4, 1024 * 1024 * 3)
 
     #默认值
+    ssl_server_name = GC.LISTEN_IPHOST or '127.0.0.1'
+    ssl_request = False
     ssl = False
     fakecert = False
     host = None
@@ -94,6 +97,52 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     url_parts = None
     conaborted = False
     action = ''
+
+    def __init__(self, request, client_address, server):
+        self.client_address = client_address
+        self.server = server
+        #添加 https 代理协议支持
+        leadbyte = request.recv(1, socket.MSG_PEEK)
+        #估计支持的程序都不会使用旧 SSL 协议，故不予支持
+        if leadbyte == b'\x16':
+            context = self.get_context(self.ssl_server_name)
+            context.set_tlsext_servername_callback(self.pick_certificate)
+            try:
+                request = SSLConnection(context, request)
+                request.set_accept_state()
+                self.ssl_request = True
+                rd, _, ed = select([request], [], [request], 4)
+                if ed:
+                    raise socket.error(ed)
+                byte = request.recv(1, socket.MSG_PEEK) if rd else None
+                if not byte:
+                    #未受到后续请求数据，判断证书验证失败
+                    raise ssl.SSLError('客户端证书验证失败，请检查双方主机名称设置是否匹配')
+            except Exception as e:
+                #if e.args[0] not in pass_errno:
+                server_name = request.get_servername() or self.ssl_server_name
+                logging.warning('%s https 代理失败：sni=%r，%r', self.address_string(), server_name, e)
+                return
+        self.request = request
+        self.setup()
+        try:
+            self.handle()
+        finally:
+            self.finish()
+
+    def pick_certificate(self, connection):
+        server_name = connection.get_servername()
+        if server_name is None:
+            if GC.LISTEN_IPHOST is self.ssl_server_name:
+                return
+            server_name = GC.LISTEN_IPHOST
+        else:
+            server_name = str(server_name, 'iso-8859-1')
+        if not server_name:
+            logging.warning('%s https 代理失败：对方使用 IP 访问，GotoX 未设置 IP-Host 名称', self.address_string())
+            return
+        new_context = self.get_context(server_name)
+        connection.set_context(new_context)
 
     def setup(self):
         #仅监听本机时关闭 nagle's algorithm 算法和接收缓冲
@@ -104,7 +153,16 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if sys.platform != 'darwin':
                     self.request.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 0)
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
-        self.write = lambda d: self.wfile.write(d if isinstance(d, bytes) else d.encode())
+
+    def write(self, d):
+        if not isinstance(d, bytes):
+            d = d.encode()
+        try:
+            self.wfile.write(d)
+        except Exception as e:
+            self.conaborted = True
+            logging.debug('%s 客户端连接断开：%r, %r', self.address_string(), self.url, e)
+            raise e
 
     def handle_one_request(self):
         try:
@@ -242,14 +300,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         wrote = 0
         err = None
 
-        def write(d):
-            try:
-                self.write(d)
-            except Exception as e:
-                self.conaborted = True
-                logging.debug('%s 客户端连接断开：%r, %r', self.address_string(), self.url, e)
-                raise e
-
         readinto = response.readinto
         buf = memoryview(bytearray(self.bufsize))
         try:
@@ -259,13 +309,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 ndata = readinto(buf)
             while ndata:
                 if need_chunked:
-                    write(hex(ndata)[2:])
-                    write(b'\r\n')
-                    write(buf[:ndata].tobytes())
-                    write(b'\r\n')
+                    self.write(hex(ndata)[2:])
+                    self.write(b'\r\n')
+                    self.write(buf[:ndata].tobytes())
+                    self.write(b'\r\n')
                     wrote += ndata
                 else:
-                    write(buf[:ndata].tobytes())
+                    self.write(buf[:ndata].tobytes())
                     wrote += ndata
                     if wrote >= length:
                         break
@@ -274,7 +324,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             err = e
         finally:
             if need_chunked:
-                write(b'0\r\n\r\n')
+                self.write(b'0\r\n\r\n')
             return wrote, err
 
     def handle_request_headers(self):
@@ -948,9 +998,14 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if not self.ssl:
             self.close_connection = False
             return
+        if self.ssl_request:
+            self.close_connection = True
+            logging.warning('%s https 代理失败：host=%r，请将 https 连接的代理协议设置为 http', self.address_string(), self.host)
+            return
         context = self.get_context()
         try:
-            ssl_sock = context.wrap_socket(self.connection, server_side=True)
+            ssl_sock = SSLConnection(context, self.connection)
+            ssl_sock.set_accept_state()
             self.fakecert = True
         except ssl.SSLEOFError:
             return
@@ -1224,9 +1279,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             #必须在这里设置关闭，前面关闭不起作用，但是中间并没有设置过不关闭？
             self.close_connection = True
 
-    def get_context(self):
+    def get_context(self, server_name=None):
         #维护一个 ssl context 缓存
-        host = self.host
+        host = server_name or self.host
         ip = isip(host)
         if not ip:
             hostsp = host.split('.')
@@ -1237,9 +1292,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return self.context_cache[host]
         except KeyError:
             certfile = CertUtil.get_cert(host, ip)
-            self.context_cache[host] = context = ssl.SSLContext(GC.LINK_LOCALSSL)
-            context.verify_mode = ssl.CERT_NONE
-            context.load_cert_chain(certfile, CertUtil.sub_keyfile)
+            self.context_cache[host] = context = SSL.Context(GC.LINK_LOCALSSL)
+            context.use_privatekey_file(CertUtil.sub_keyfile)
+            context.use_certificate_file(certfile)
+            context.set_session_id('GotoX_SSL_Server')
             return context
 
     def send_CA(self):
