@@ -282,7 +282,8 @@ class LocalProxyServer(SocketServer.ThreadingTCPServer):
         '''make ThreadingTCPServer happy'''
         exc_info = sys.exc_info()
         error = exc_info and len(exc_info) and exc_info[1]
-        if isinstance(error, NetWorkIOError) and len(error.args) > 1 and 'bad write' in error.args[1]:
+        if (isinstance(error, NetWorkIOError) and len(error.args) > 1 and 'bad write' in error.args[1]) or \
+                (isinstance(error.args[0], list) and any('bad write' in arg for arg in error.args[0][0])):
             exc_info = error = None
         else:
             del exc_info, error

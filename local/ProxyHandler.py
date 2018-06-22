@@ -88,7 +88,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     rangesize = min(GC.GAE_MAXSIZE, GC.AUTORANGE_FAST_MAXSIZE * 4, 1024 * 1024 * 3)
 
     #默认值
-    ssl_server_name = GC.LISTEN_IPHOST or '127.0.0.1'
+    ssl_servername = GC.LISTEN_IPHOST or '127.0.0.1'
     ssl_request = False
     ssl = False
     fakecert = False
@@ -105,7 +105,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         leadbyte = request.recv(1, socket.MSG_PEEK)
         #估计支持的程序都不会使用旧 SSL 协议，故不予支持
         if leadbyte == b'\x16':
-            context = self.get_context(self.ssl_server_name)
+            context = self.get_context(self.ssl_servername)
             context.set_tlsext_servername_callback(self.pick_certificate)
             try:
                 request = SSLConnection(context, request)
@@ -116,12 +116,12 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     raise socket.error(ed)
                 byte = request.recv(1, socket.MSG_PEEK) if rd else None
                 if not byte:
-                    #未受到后续请求数据，判断证书验证失败
+                    #未收到后续请求数据，判断证书验证失败
                     raise ssl.SSLError('客户端证书验证失败，请检查双方主机名称设置是否匹配')
             except Exception as e:
                 #if e.args[0] not in pass_errno:
-                server_name = request.get_servername() or self.ssl_server_name
-                logging.warning('%s https 代理失败：sni=%r，%r', self.address_string(), server_name, e)
+                servername = request.get_servername() or self.ssl_servername
+                logging.warning('%s https 代理失败：sni=%r，%r', self.address_string(), servername, e)
                 return
         self.request = request
         self.setup()
@@ -131,17 +131,17 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.finish()
 
     def pick_certificate(self, connection):
-        server_name = connection.get_servername()
-        if server_name is None:
-            if GC.LISTEN_IPHOST is self.ssl_server_name:
+        servername = connection.get_servername()
+        if servername is None:
+            if GC.LISTEN_IPHOST is self.ssl_servername:
                 return
-            server_name = GC.LISTEN_IPHOST
+            servername = GC.LISTEN_IPHOST
         else:
-            server_name = str(server_name, 'iso-8859-1')
-        if not server_name:
+            servername = str(servername, 'iso-8859-1')
+        if not servername:
             logging.warning('%s https 代理失败：对方使用 IP 访问，GotoX 未设置 IP-Host 名称', self.address_string())
             return
-        new_context = self.get_context(server_name)
+        new_context = self.get_context(servername)
         connection.set_context(new_context)
 
     def setup(self):
@@ -310,7 +310,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 ndata = readinto(buf)
             while ndata:
                 if need_chunked:
-                    self.write(hex(ndata)[2:], True)
+                    self.write(hex(ndata)[2:])
                     self.write(b'\r\n', True)
                     self.write(buf[:ndata].tobytes(), True)
                     self.write(b'\r\n', True)
@@ -815,7 +815,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             except Exception as e:
                 noerror = False
                 errors.append(e)
-                if e.args[0] in closed_errno or isinstance(e, NetWorkIOError) and len(e.args) > 1 and 'bad write' in e.args[1]:
+                if e.args[0] in closed_errno or \
+                        (isinstance(e, NetWorkIOError) and len(e.args) > 1 and 'bad write' in e.args[1]) or \
+                        (isinstance(e.args[0], list) and any('bad write' in arg for arg in e.args[0][0])):
                     #连接主动终止
                     logging.debug('%s do_GAE %r 返回 %r，终止', self.address_string(response), self.url, e)
                     self.close_connection = True
@@ -1280,9 +1282,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             #必须在这里设置关闭，前面关闭不起作用，但是中间并没有设置过不关闭？
             self.close_connection = True
 
-    def get_context(self, server_name=None):
+    def get_context(self, servername=None):
         #维护一个 ssl context 缓存
-        host = server_name or self.host
+        host = servername or self.host
         ip = isip(host)
         if not ip:
             hostsp = host.split('.')
