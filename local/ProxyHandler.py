@@ -53,6 +53,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
     CAPath = '/ca', '/cadownload'
     valid_cmds = {'CONNECT', 'GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'OPTIONS', 'TRACE', 'PATCH'}
+    valid_leadbytes = set(cmd[0].encode() for cmd in valid_cmds)
     gae_fetcmds = {'GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'}
     skip_request_headers = (
         'Vary',
@@ -77,7 +78,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     fwd_timeout = GC.LINK_FWDTIMEOUT
     fwd_keeptime = GC.LINK_FWDKEEPTIME
-    listen_port = str(GC.LISTEN_GAE_PORT), str(GC.LISTEN_AUTO_PORT)
+    listen_port = {GC.LISTEN_GAE_PORT, str(GC.LISTEN_GAE_PORT),
+                   GC.LISTEN_AUTO_PORT, str(GC.LISTEN_AUTO_PORT)}
     request_compress = GC.LINK_REQUESTCOMPRESS
 
     #可修改
@@ -123,6 +125,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 servername = request.get_servername() or self.ssl_servername
                 logging.warning('%s https 代理失败：sni=%r，%r', self.address_string(), servername, e)
                 return
+        elif leadbyte not in self.valid_leadbytes:
+            return
         self.request = request
         self.setup()
         try:
@@ -254,6 +258,12 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if not self.ssl:
             return True
         self.parse_host(self.headers.get('Host'), self.path)
+        #本地地址
+        if self.host in self.localhosts and \
+                self.port == 443 or \
+                self.port in self.listen_port:
+            self.do_FAKECERT()
+            return True
 
     def do_CONNECT(self):
         #处理 CONNECT 请求，根据规则过滤执行目标动作
@@ -275,7 +285,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if self.path[0] != '/':
             self.path = url[url.find('/', 12):]
         #本地地址
-        if self.host in self.localhosts and self.port in (80, 443):
+        if self.host in self.localhosts and \
+                self.port in (80, 443) or \
+                self.port in self.listen_port:
             self.do_LOCAL()
             return True
 
@@ -334,9 +346,12 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.close_connection = self.cc
             return self.request_headers.copy(), self.payload
         #处理请求
-        request_headers = dict((k.title(), v) for k, v in self.headers.items() if k.title() not in self.skip_request_headers)
+        request_headers = dict((k.title(), v) for k, v in self.headers.items() \
+                               if k.title() not in self.skip_request_headers)
         pconnection = self.headers.get('Proxy-Connection')
-        if pconnection and self.request_version < 'HTTP/1.1' and pconnection.lower() != 'keep-alive':
+        if pconnection and \
+                self.request_version < 'HTTP/1.1' and \
+                pconnection.lower() != 'keep-alive':
             self.close_connection = True
         else:
             self.close_connection = False
@@ -423,7 +438,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def handle_response_headers(self, response):
         #处理响应
-        response_headers = dict((k.title(), v) for k, v in response.headers.items() if k.title() not in self.skip_response_headers)
+        response_headers = dict((k.title(), v) for k, v in response.headers.items() \
+                                if k.title() not in self.skip_response_headers)
         #明确设置 Accept-Ranges
         if response_headers.get('Accept-Ranges') != 'bytes':
             response_headers['Accept-Ranges'] = 'none'
@@ -437,7 +453,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     response_headers['Content-Encoding'] = ce
                 else:
                     del response_headers['Content-Encoding']
-            if ce and ce not in self.headers.get('Accept-Encoding', '') and ce in decompress_readers:
+            if ce and ce not in self.headers.get('Accept-Encoding', '') and \
+                    ce in decompress_readers:
                 response = decompress_readers[ce](response)
                 del response_headers['Content-Encoding']
                 response_headers.pop('Content-Length', None)
@@ -472,7 +489,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         headers_data = 'HTTP/1.1 %s %s\r\n%s\r\n' % (response.status, response.reason, ''.join('%s: %s\r\n' % x for x in response_headers.items()))
         self.write(headers_data)
         logging.debug('headers_data=%s', headers_data)
-        if 300 <= response.status < 400 and response.status != 304 and 'Location' in response_headers:
+        if 300 <= response.status < 400 and \
+                response.status != 304 and \
+                'Location' in response_headers:
             logging.info('%r 返回包含重定向 %r', self.url, response_headers['Location'])
         if response.status == 304:
             logging.test('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), self.action[3:], self.command, self.url, response.status, length or '-')
@@ -483,9 +502,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def check_useragent(self):
         #修复某些软件无法正确处理 206 Partial Content 响应的持久连接
         user_agent = self.headers.get('User-Agent', '')
-        if (user_agent.startswith('mpv')         # mpv
-            or user_agent.endswith(('(Chrome)', 'Iceweasel/38.2.1'))): # youtube-dl 有时会传递给其它支持的播放器，导致无法辨识，统一关闭
-                                                 # 其它自定义的就没法，此处无法辨识，感觉关闭所有 206 有点划不来
+        if user_agent.startswith('mpv') or \
+            user_agent.endswith(('(Chrome)', 'Iceweasel/38.2.1')):
+            # youtube-dl 有时会传递给其它支持的播放器，导致无法辨识，统一关闭
+            # 其它自定义的就没法，此处无法辨识，感觉关闭所有 206 有点划不来
             self.close_connection = True
 
     def do_DIRECT(self):
@@ -899,7 +919,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             logging.info('%s "FWD %s %s:%d HTTP/1.1" - -', self.address_string(remote), self.command, host, port)
         else:
             logging.info('%s "FWD %s %s HTTP/1.1" - -', self.address_string(remote), self.command, self.url)
-        self.forward_socket(remote)
+        self.forward_connect(remote)
 
     def do_PROXY(self):
         #转发到其它代理
@@ -947,7 +967,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.proxy_connection_time[proxyhost] = time() - start_time
             logging.info('%s%s:%d 转发 "%s %s" 到 [%s] 代理：%s',
                          self.address_string(), proxyhost, proxyport, self.command, self.url or self.path, proxytype, self.target)
-            self.forward_socket(proxy)
+            self.forward_connect(proxy)
 
     def do_REDIRECT(self):
         #重定向到目标地址
@@ -1002,9 +1022,15 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.close_connection = False
             return
         if self.ssl_request:
-            self.close_connection = True
-            logging.warning('%s https 代理失败：host=%r，请将 https 连接的代理协议设置为 http', self.address_string(), self.host)
-            return
+            #已经使用 MSG_PEEK 预读过一次<<加密连接>>丢失可读状态
+            #再次握手无法读取到数据，故使用套接字对进行串接
+            p1, p2 = socket.socketpair()
+            payload = self.connection.recv(65536)
+            thread.start_new_thread(self.forward_socket, (self.connection, p1, payload))
+            self.connection = p2
+            logging.warning('%s 正在使用 https 代理协议代理 https 连接，host=%r，建议将 https 连接的代理协议单独设置为 http', self.address_string(), self.host)
+            #self.close_connection = True
+            #return
         context = self.get_context()
         try:
             ssl_sock = SSLConnection(context, self.connection)
@@ -1156,7 +1182,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.write(b'HTTP/1.1 200 Ok\r\n'
                    b'Cache-Control: max-age=86400\r\n'
                    b'Expires:Oct, 01 Aug 2100 00:00:00 GMT\r\n')
-        if self.url_parts and self.url_parts.path.endswith(('.jpg', '.gif', '.jpeg', '.png', '.bmp')):
+        if self.url_parts and \
+                self.url_parts.path.endswith(('.jpg', '.gif', '.jpeg', '.png', '.bmp')):
             content = (b'GIF89a\x01\x00\x01\x00\x80\xff\x00\xc0\xc0\xc0'
                        b'\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00'
                        b'\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;')
@@ -1226,28 +1253,13 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.write(b'HTTP/1.0 404\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
         self.write(c)
 
-    def forward_socket(self, remote, tick=4, maxping=None, maxpong=None):
-        #在本地与远程连接间进行数据转发
-        if self.command != 'CONNECT':
-            request_data = []
-            #某些服务器不接受包含完整网址的命令
-            #request_data.append(self.requestline)
-            request_data.append('%s %s %s' % (self.command, self.path, self.protocol_version))
-            for k, v in self.headers.items():
-                if not k.title().startswith('Proxy-'):
-                    request_data.append('%s: %s' % (k.title(), v))
-            request_data.append('\r\n')
-            rebuilt_request = '\r\n'.join(request_data).encode()
-            _, payload = self.handle_request_headers()
-            if isinstance(payload, bytes) and payload:
-                remote.sendall(rebuilt_request + payload)
-            else:
-                remote.sendall(rebuilt_request)
-        local = self.connection
-        buf = memoryview(bytearray(32768)) # 32K
-        maxpong = maxpong or self.fwd_keeptime
+    def forward_socket(self, local, remote, payload=None, timeout=60, tick=4, bufsize=8192, maxping=None, maxpong=None):
+        if payload:
+            remote.sendall(payload)
+        buf = memoryview(bytearray(bufsize))
+        maxpong = maxpong or timeout
         allins = [local, remote]
-        timecount = self.fwd_keeptime
+        timecount = timeout
         remote_silence_time = 0
         try:
             while allins and timecount > 0:
@@ -1272,12 +1284,38 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         break
                 if ins and len(allins) == 2:
                     timecount = min(timecount*2, maxpong)
+        finally:
+            remote.close()
+
+    def forward_connect(self, remote, timeout=0, tick=4, bufsize=32768, maxping=None, maxpong=None):
+        #在本地与远程连接间进行数据转发
+        payload = None
+        if self.command != 'CONNECT':
+            request_data = []
+            #某些服务器不接受包含完整网址的命令
+            #request_data.append(self.requestline)
+            request_data.append('%s %s %s' % (self.command, self.path, self.protocol_version))
+            for k, v in self.headers.items():
+                if not k.title().startswith('Proxy-'):
+                    request_data.append('%s: %s' % (k.title(), v))
+            request_data.append('\r\n')
+            rebuilt_request = '\r\n'.join(request_data).encode()
+            _, payload = self.handle_request_headers()
+            if isinstance(payload, bytes) and payload:
+                payload = rebuilt_request + payload
+            else:
+                payload = rebuilt_request
+        elif self.ssl_request:
+            #已经使用 MSG_PEEK 预读过一次<<加密连接>>
+            # select 无法获取这次的可读状态，故先读取出来
+            payload = self.connection.recv(65536)
+        try:
+            self.forward_socket(self.connection, remote, payload, timeout or self.fwd_keeptime, tick, bufsize, maxping, maxpong)
         except NetWorkIOError as e:
             if e.args[0] not in pass_errno:
                 logging.warning('%s 转发 "%s" 失败：%r', self.address_string(remote), self.url or self.host, e)
                 raise
         finally:
-            remote.close()
             logging.debug('%s 转发终止："%s"', self.address_string(remote), self.url or self.host)
             #必须在这里设置关闭，前面关闭不起作用，但是中间并没有设置过不关闭？
             self.close_connection = True
@@ -1289,7 +1327,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if not ip:
             hostsp = host.split('.')
             nhost = len(hostsp)
-            if nhost > 3 or nhost == 3 and (len(hostsp[-1]) > 2 or len(hostsp[-2]) > 3):
+            if nhost > 3 or \
+                    nhost == 3 and (
+                    len(hostsp[-1]) > 2 or \
+                    len(hostsp[-2]) > 3):
                 host = '.'.join(hostsp[1:])
         try:
             return self.context_cache[host]
