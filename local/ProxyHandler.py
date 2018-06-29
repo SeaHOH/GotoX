@@ -63,12 +63,12 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         'Proxy-Connection',
         'Upgrade',
         'X-Chrome-Variations',
-        #'Connection',
         #'Cache-Control'
         )
     skip_response_headers = (
         'Content-Length',
         'Transfer-Encoding',
+        'Connection',
         'Content-MD5',
         'Set-Cookie',
         'Upgrade',
@@ -92,6 +92,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     #默认值
     ssl_servername = GC.LISTEN_IPHOST or '127.0.0.1'
     ssl_request = False
+    tunnel = False
     ssl = False
     fakecert = False
     host = None
@@ -178,10 +179,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.command = ''
                 self.send_error(414)
                 return
-            if not self.raw_requestline:
+            if not self.raw_requestline or \
+                    self.raw_requestline[:1] not in self.valid_leadbytes or \
+                    self.server.is_offline:
                 self.close_connection = True
-                return
-            if self.is_offline():
                 return
             if not self.parse_request():
                 # An error code has been sent, just exit
@@ -197,6 +198,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         except socket.timeout as e:
             #a read or a write timed out.  Discard this connection
             self.log_error("Request timed out: %r", e)
+            self.close_connection = True
+        except SSL.Error as e:
+            if isinstance(e.args[0], list) and any('certificate unknown' in arg for arg in e.args[0][0]):
+                logging.warn('%s host=%s，客户端 https 验证失败！可能未安装 GotoX CA 证书。', self.address_string(), self.host)
             self.close_connection = True
 
     def do_action(self):
@@ -253,6 +258,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def _do_CONNECT(self):
         self.write(b'HTTP/1.1 200 Connection Established\r\n\r\n')
+        self.tunnel = True
         leadbyte = self.connection.recv(1, socket.MSG_PEEK)
         self.ssl = leadbyte in (b'\x16', b'\x80') # 0x80: ssl20
         if not self.ssl:
@@ -312,18 +318,15 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return ndata, None
         wrote = 0
         err = None
-
-        readinto = response.readinto
         buf = memoryview(bytearray(self.bufsize))
         try:
             if ndata:
                 buf[:ndata] = data
             else:
-                ndata = readinto(buf)
+                ndata = response.readinto(buf)
             while ndata:
                 if need_chunked:
-                    self.write(hex(ndata)[2:])
-                    self.write(b'\r\n', True)
+                    self.write(b'%x\r\n' % ndata, True)
                     self.write(buf[:ndata].tobytes(), True)
                     self.write(b'\r\n', True)
                     wrote += ndata
@@ -332,7 +335,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     wrote += ndata
                     if wrote >= length:
                         break
-                ndata = readinto(buf)
+                ndata = response.readinto(buf)
         except Exception as e:
             err = e
         finally:
@@ -476,7 +479,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 # HTTP/1.1 以下不支持 chunked，关闭连接
                 need_chunked = False
                 self.close_connection = True
-                response_headers['Proxy-Connection'] = 'close'
         else:
             response_headers['Content-Length'] = length
         cookies = response.headers.get_all('Set-Cookie')
@@ -484,8 +486,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             response_headers['Set-Cookie'] = '\r\nSet-Cookie: '.join(cookies)
         if 'Content-Disposition' in response_headers:
             response_headers['Content-Disposition'] = normattachment(response_headers['Content-Disposition'])
-        if not self.close_connection:
-            response_headers['Proxy-Connection'] = 'keep-alive'
+        response_headers['Connection' if self.tunnel else 'Proxy-Connection'] = 'close' if self.close_connection else 'keep-alive'
         headers_data = 'HTTP/1.1 %s %s\r\n%s\r\n' % (response.status, response.reason, ''.join('%s: %s\r\n' % x for x in response_headers.items()))
         self.write(headers_data)
         logging.debug('headers_data=%s', headers_data)
@@ -516,7 +517,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         request_headers, payload = self.handle_request_headers()
         headers_sent = False
         for retry in range(2):
-            if retry > 0 and hasattr(payload, 'readed'):
+            if retry > 0 and payload and isinstance(payload, bytes) or hasattr(payload, 'readed'):
                 logging.warning('%s do_DIRECT 由于有上传数据 "%s %s" 终止重试', self.address_string(), self.command, self.url)
                 self.close_connection = True
                 if not headers_sent:
@@ -620,7 +621,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             response.append('Access-Control-Allow-Origin: *')
         response.append('\r\n')
         self.write('\r\n'.join(response))
-        logging.warning('%s "%s FAKEOPTIONS %s HTTP/1.1" 200 0', self.address_string(response), self.action[3:], self.url)
+        logging.info('%s "%s FAKEOPTIONS %s HTTP/1.1" 200 0', self.address_string(response), self.action[3:], self.url)
 
     def do_GAE(self):
         #发送请求到 GAE 代理
@@ -782,7 +783,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if not headers_sent:
                         response, data, need_chunked = self.handle_response_headers(response)
                         self.write_response_content(data, response, need_chunked)
-                    self.close_connection = True
                     return
                 #发生异常时的判断条件，放在 read 操作之前
                 content_range = response.headers.get('Content-Range')
@@ -834,6 +834,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 return
             except Exception as e:
                 noerror = False
+                if self.conaborted:
+                    raise e
                 errors.append(e)
                 if e.args[0] in closed_errno or \
                         (isinstance(e, NetWorkIOError) and len(e.args) > 1 and 'bad write' in e.args[1]) or \
@@ -894,9 +896,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     break
                 except NetWorkIOError as e:
                     logging.warning('%s 转发到 %r 失败：%r', self.address_string(e), self.url or host, e)
-            if hasattr(remote, 'fileno'):
-                # reset timeout default to avoid long http upload failure, but it will delay timeout retry :(
-                remote.settimeout(None)
         else:
             hostip = random.choice(dns_resolve(host))
             remote = http_util.create_connection((hostip, int(port)), self.ssl, self.fwd_timeout)
@@ -1028,9 +1027,8 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             payload = self.connection.recv(65536)
             thread.start_new_thread(self.forward_socket, (self.connection, p1, payload))
             self.connection = p2
+            self.disable_nagle_algorithm = False
             logging.warning('%s 正在使用 https 代理协议代理 https 连接，host=%r，建议将 https 连接的代理协议单独设置为 http', self.address_string(), self.host)
-            #self.close_connection = True
-            #return
         context = self.get_context()
         try:
             ssl_sock = SSLConnection(context, self.connection)
@@ -1370,13 +1368,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                    'Content-Length: 0\r\n\r\n')
         logging.warning('%s "%s %s HTTP/1.1" 204 0，GotoX 命令执行完毕。',
             self.address_string(), self.command, self.url)
-
-    def is_offline(self):
-        #检查代理服务是否运行并释放无效连接
-        if self.server.is_offline:
-            self.close_connection = True
-            self.connection.close()
-            return True
 
     def log_error(self, format, *args):
         self.close_connection = True
