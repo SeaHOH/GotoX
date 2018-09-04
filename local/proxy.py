@@ -215,7 +215,7 @@ def main():
                                   '如有此现象建议暂时退出以下安全软件来保证 GotoX 运行：\n',]
                     for k, v in displaylist.items():
                         displaystr.append('    %s：%s'
-                            % (k, '、'.join(tasklist[x].filename for x in v)))
+                            % (k, '、'.join(tasklist[x.lower()].filename for x in v)))
                     title = 'GotoX 建议'
                     error = '\n'.join(displaystr)
                     logging.warning(error)

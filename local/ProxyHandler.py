@@ -265,9 +265,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return True
         self.parse_host(self.headers.get('Host'), self.path)
         #本地地址
-        if self.host in self.localhosts and \
-                self.port == 443 or \
-                self.port in self.listen_port:
+        if self.host in self.localhosts and (
+                self.port in (80, 443) or
+                self.port in self.listen_port):
             self.do_FAKECERT()
             return True
 
@@ -291,9 +291,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if self.path[0] != '/':
             self.path = url[url.find('/', 12):]
         #本地地址
-        if self.host in self.localhosts and \
-                self.port in (80, 443) or \
-                self.port in self.listen_port:
+        if self.host in self.localhosts and (
+                self.port in (80, 443) or
+                self.port in self.listen_port):
             self.do_LOCAL()
             return True
 
@@ -399,6 +399,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         elif self.action != 'do_DIRECT' or length > 65536 or 'Transfer-Encoding' in request_headers:
             #不读取，直接传递 rfile 以加快代理转发速度
             payload = self.rfile
+            self.rfile.readed = 0
         elif length:
             #小于 64KB 仍然一次读取完毕
             try:
@@ -517,7 +518,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         request_headers, payload = self.handle_request_headers()
         headers_sent = False
         for retry in range(2):
-            if retry > 0 and payload and isinstance(payload, bytes) or hasattr(payload, 'readed'):
+            if retry > 0 and payload and isinstance(payload, bytes) or hasattr(payload, 'readed') and payload.readed:
                 logging.warning('%s do_DIRECT 由于有上传数据 "%s %s" 终止重试', self.address_string(), self.command, self.url)
                 self.close_connection = True
                 if not headers_sent:
@@ -870,6 +871,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         else:
                             #干扰严重时考虑不复用
                             response.sock.close()
+                elif retry == GC.GAE_FETCHMAX - 1 and not headers_sent:
+                    c = message_html('504 GAE 响应超时', 'GAE-%r 请求超时，请稍后重试。' % self.url, str(errors)).encode()
+                    self.write(b'HTTP/1.1 504 Gateway Timeout\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
+                    self.write(c)
 
     #未配置 AppID
     if not GC.GAE_APPIDS:

@@ -304,7 +304,7 @@ class HTTPUtil(BaseHTTPUtil):
             # set struct linger{l_onoff=1,l_linger=0} to avoid 10048 socket error
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, self.offlinger_val)
             # resize socket recv buffer 8K->1M to improve browser releated application performance
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1048576)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32768)
             # disable nagle algorithm to send http request quickly.
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
@@ -415,7 +415,7 @@ class HTTPUtil(BaseHTTPUtil):
             # set struct linger{l_onoff=1,l_linger=0} to avoid 10048 socket error
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, self.offlinger_val)
             # resize socket recv buffer 8K->1M to improve browser releated application performance
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1048576)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32768)
             # disable negal algorithm to send http request quickly.
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
@@ -617,7 +617,7 @@ class HTTPUtil(BaseHTTPUtil):
                 # set struct linger{l_onoff=1,l_linger=0} to avoid 10048 socket error
                 proxy_sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, self.offlinger_val)
                 # resize socket recv buffer 8K->1M to improve browser releated application performance
-                proxy_sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1048576)
+                proxy_sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)
                 proxy_sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32768)
                 # disable nagle algorithm to send http request quickly.
                 proxy_sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
@@ -660,20 +660,22 @@ class HTTPUtil(BaseHTTPUtil):
             #避免发送多个小数据包
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, False)
             request_data = '\r\n'.join(request_data).encode()
-            payload.readed = True
+            sock.sendall(request_data)
+            readed = 0
             #以下按原样转发
             if 'Transfer-Encoding' in headers:
-                sock.sendall(request_data)
                 while True:
                     chunk_size_str = self.rfile.readline(65537)
                     if len(chunk_size_str) > 65536:
                         raise Exception('分块尺寸过大')
                     sock.sendall(chunk_size_str)
+                    readed += len(chunk_size_str)
                     chunk_size = int(chunk_size_str.split(b';')[0], 16)
                     if chunk_size == 0:
                         while True:
                             chunk = self.rfile.readline(65536)
                             sock.sendall(chunk)
+                            readed += len(chunk)
                             if chunk in (b'\r\n', b'\n', b''): # b'' 也许无法读取到空串
                                 break
                             else:
@@ -683,14 +685,17 @@ class HTTPUtil(BaseHTTPUtil):
                     if chunk[-2:] != b'\r\n':
                         raise Exception('分块尺寸不匹配 CRLF')
                     sock.sendall(chunk)
+                    readed += len(chunk)
             else:
-                left_size = int(headers.get('Content-Length', 0)) + len(request_data)
+                left_size = int(headers.get('Content-Length', 0))
                 while True:
-                    sock.sendall(request_data)
-                    left_size -= len(request_data)
                     if left_size < 1:
                         break
-                    request_data = payload.read(min(bufsize, left_size))
+                    data = payload.read(min(bufsize, left_size))
+                    sock.sendall(data)
+                    left_size -= len(data)
+                    readed += len(data)
+            payload.readed = readed
             #为下个请求恢复无延迟发送
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
         else:
@@ -744,7 +749,7 @@ class HTTPUtil(BaseHTTPUtil):
             ip = ''
             try:
                 if ssl:
-                    ssl_sock = self.create_ssl_connection(address, hostname, connection_cache_key, getfast=getfast)
+                    ssl_sock = self.create_ssl_connection(address, hostname, connection_cache_key, getfast=bool(getfast))
                 else:
                     sock = self.create_connection(address, hostname, connection_cache_key)
                 result = ssl_sock or sock
