@@ -42,8 +42,8 @@ g_handshaketimeout = 1.5
 #屏蔽列表（当前使用的新测试方法可能用不着这个了）
 g_block = GC.FINDER_BLOCK #('74.125.', '173.194.', '203.208.', '113.171.')
 #扫描时使用的主机名和匹配的域名，需配对
-g_servername = b'fonts.googleapis.com'
-g_comdomain = '*.googleapis.com'
+g_servername = GC.FINDER_SERVERNAME
+g_comdomain = GC.FINDER_COMDOMAIN
 
 g_ipfile = os.path.join(data_dir, 'ip.txt')
 g_ipfilebak = os.path.join(data_dir, 'ipbak.txt')
@@ -556,7 +556,7 @@ def randomip():
     with gLock:
         g.getgood += 1
         g.pingcnt += 1
-        if g.goodlist and g.getgood >= 5:
+        if g.goodlist and g.getgood >= 20:
             g.getgood = 0
             return g.goodlist.pop()
         if g.ipexlist:

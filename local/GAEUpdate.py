@@ -94,7 +94,7 @@ def updateip(needgws=None, needcom=None):
     thread.start_new_thread(refreship, (needgws, needcom))
 updateip.running = False
 
-timeoutb = max(GC.FINDER_MAXTIMEOUT*1.3, 1000)
+timeoutb = max(GC.FINDER_MAXTIMEOUT*1.3, 400)
 def gettimeout():
     timeout = timeoutb + min(len(GC.IPLIST_MAP['google_gws']), 20)*10 + timeToDelay[strftime('%H')]
     return int(timeout)
@@ -150,11 +150,16 @@ def _testallgaeip():
         return updateip()
     badip = set()
     timeout = gettimeout()
+    timeoutl = timeout + 500
     logging.test('连接测试开始，超时：%d 毫秒', timeout)
     network_test()
     testip.queobj.queue.clear()
     for ip in iplist:
-        thread.start_new_thread(http_gws._create_ssl_connection, ((ip, 443), getcachekey(), None, testip.queobj, timeout/1000))
+        if ip in GC.IPLIST_MAP['google_com']:
+            _timeout = timeoutl
+        else:
+            _timeout = timeout
+        thread.start_new_thread(http_gws._create_ssl_connection, ((ip, 443), getcachekey(), None, testip.queobj, _timeout/1000))
     for _ in iplist:
         result = testip.queobj.get()
         if isinstance(result, Exception):
@@ -188,6 +193,8 @@ def testonegaeip():
         return updateip()
     ip = iplist[-1]
     timeout = gettimeout()
+    if ip in GC.IPLIST_MAP['google_com']:
+        timeout += 500
     badip = False
     statistics = finder.statistics
     network_test()

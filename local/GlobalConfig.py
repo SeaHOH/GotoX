@@ -140,6 +140,8 @@ class GC:
     FILTER_SSLACTION = CONFIG.getint('filter', 'sslaction')
     FILTER_SSLACTION = FILTER_SSLACTION if FILTER_SSLACTION in (1, 2, 3, 4) else 2
 
+    FINDER_SERVERNAME = CONFIG.get('finder', 'servername').encode()
+    FINDER_COMDOMAIN = CONFIG.get('finder', 'comdomain')
     FINDER_MINIPCNT = int(CONFIG.get('finder', 'minipcnt') or 6)
     FINDER_MAXTIMEOUT = int(CONFIG.get('finder', 'maxtimeout') or 1000)
     FINDER_MAXTHREADS = int(CONFIG.get('finder', 'maxthreads') or 30)
@@ -150,6 +152,10 @@ class GC:
     FINDER_STATDAYS = max(min(FINDER_STATDAYS, 5), 2)
     FINDER_BLOCK = CONFIG.get('finder', 'block')
     FINDER_BLOCK = tuple(FINDER_BLOCK.split('|')) if FINDER_BLOCK else ()
+
+    if not FINDER_SERVERNAME:
+        logging.error('没有找到 [finder/servername]，请检查配置文件：%r，参考注释进行填写。', CONFIG_FILENAME)
+        sys.exit(-1)
 
     #PROXY_ENABLE = CONFIG.getboolean('proxy', 'enable')
     PROXY_ENABLE = False

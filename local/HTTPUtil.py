@@ -127,7 +127,7 @@ class BaseHTTPUtil:
 
     def get_server_hostname(self, cache_key, host):
         if self.gws:
-            if cache_key == 'google_fe:443' or host and host.endswith('.appspot.com'):
+            if cache_key == 'google_fe:443' or host and host.endswith(('.appspot.com', '.googlevideo.com')):
                 if gws_servername is None:
                     if host is None:
                         if GC.GAE_APPIDS:
@@ -136,10 +136,13 @@ class BaseHTTPUtil:
                             return b'www.appspot.com'
                     else:
                         return host.encode()
+                elif gws_servername[0] == b'random':
+                    fakehost = 'www.' + ''.join(random.choice(('bcdfghjklmnpqrstvwxyz','aeiou')[x&1]) for x in range(random.randint(5,20))) + random.choice(['.net', '.com', '.org'])
+                    return fakehost.encode()
                 else:
                     return random.choice(gws_servername)
             else:
-                return b'fonts.googleapis.com'
+                return GC.FINDER_SERVERNAME
         else:
             return None if isip(host) else host.encode()
 
