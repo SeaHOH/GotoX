@@ -144,6 +144,8 @@ class BaseHTTPUtil:
             else:
                 return GC.FINDER_SERVERNAME
         else:
+            if host == 'zh.wikipedia.org':
+                return b'en.wikipedia.org'
             return None if isip(host) else host.encode()
 
     def get_ssl_socket(self, sock, server_hostname=None):
