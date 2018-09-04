@@ -759,7 +759,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 elif response.app_status in (400, 415):
                     logging.error('%r 部署的可能是 GotoX 不兼容的服务端，如果这条错误反复出现请将之反馈给开发者。', appid)
                 # appid 不存在（Not Found）
-                elif response.app_status == 404:
+                elif response.app_status == 404 and not check_appid_exists(appid):
                     if len(GC.GAE_APPIDS) > 1:
                         GC.GAE_APPIDS.remove(appid)
                         for _ in range(GC.GAE_MAXREQUESTS):

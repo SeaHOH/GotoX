@@ -1,10 +1,12 @@
 # coding:utf-8
 
+import ssl
 import zlib
 import struct
 import threading
 from io import BytesIO
 from time import time, timezone, localtime, strftime, strptime, mktime
+from urllib.request import ProxyHandler, HTTPSHandler, build_opener
 from . import clogging as logging
 from .compat import Queue, httplib
 from .GlobalConfig import GC
@@ -29,6 +31,20 @@ badappids = LRUCache(len(GC.GAE_APPIDS))
 qGAE = Queue.LifoQueue()
 for _ in range(GC.GAE_MAXREQUESTS * len(GC.GAE_APPIDS)):
     qGAE.put(True)
+
+proxy_server = 'http://127.0.0.1:%d' % GC.LISTEN_GAE_PORT
+proxy_handler = ProxyHandler({
+    'http': proxy_server,
+    'https': proxy_server
+})
+context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+context.verify_mode = ssl.CERT_NONE
+https_handler = HTTPSHandler(context=context)
+proxy_opener = build_opener(proxy_handler, https_handler)
+
+def check_appid_exists(appid):
+    response = proxy_opener.open('https://%s.appspot.com/' % appid)
+    return response.status == 200
 
 def get_appid():
     global nappid
