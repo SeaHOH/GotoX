@@ -105,11 +105,13 @@ class actionfilterlist(list):
                     host = host.lower()
                 if path and path[0] == '@':
                     path = re.compile(path[1:]).search
+                if filters.action == FAKECERT and v and '*' not in v:
+                    v = v.encode()
                 if filters.action in (FORWARD, DIRECT):
                     if isempty(v):
                         v = None
                     elif '|' in v:
-                        v = pickip(' '+v.lower()) or None
+                        v = pickip(v.lower()) or None
                     elif isipuse(v):
                         v = [v]
                     elif isip(v) or not (v in GC.IPLIST_MAP or v.find('.') > 0):

@@ -283,6 +283,8 @@ class RangeFetch:
                              if xip in self.iplist and len(self.iplist) > self.minip:
                                 self.iplist.remove(xip)
                                 logging.warning('%s RangeFetch 移除故障 ip %s', self.address_string(response), xip)
+                if noerror:
+                    sleep(0.1)
 
 class RangeFetchFast(RangeFetch):
     maxsize = GC.AUTORANGE_FAST_MAXSIZE or 1024 * 1024 * 4

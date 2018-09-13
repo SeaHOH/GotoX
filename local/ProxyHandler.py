@@ -38,8 +38,7 @@ from .RangeFetch import RangeFetchs
 from .GAEFetch import qGAE, get_appid, mark_badappid, gae_urlfetch
 from .FilterUtil import (
     set_temp_action,
-    filters_cache,
-    ssl_filters_cache,
+    set_temp_connect_action,
     get_action,
     get_connect_action
     )
@@ -741,8 +740,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     response.app_msg = app_msg.encode()
                 #网关错误（Bad Gateway｜Gateway Timeout）
                 elif response.app_status in (502, 504):
-                    logging.warning('do_GAE 网关错误，url=%r，重试', self.url)
                     sleep(0.5)
+                    logging.warning('%s do_GAE 网关错误，appid=%r，url=%r，重试', self.address_string(response), appid, self.url)
+                    noerror = False
                     continue
                 #无法提供 GAE 服务（Moved Permanently｜Found｜Forbidden｜Method Not Allowed）
                 elif response.app_status in (301, 302, 403, 405):
@@ -760,8 +760,10 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 elif response.app_status in (400, 415):
                     logging.error('%r 部署的可能是 GotoX 不兼容的服务端，如果这条错误反复出现请将之反馈给开发者。', appid)
                 # appid 不存在（Not Found）
-                elif response.app_status == 404 and not check_appid_exists(appid):
-                    if len(GC.GAE_APPIDS) > 1:
+                elif response.app_status == 404:
+                    if check_appid_exists(appid):
+                        continue
+                    elif len(GC.GAE_APPIDS) > 1:
                         GC.GAE_APPIDS.remove(appid)
                         for _ in range(GC.GAE_MAXREQUESTS):
                             qGAE.get()
@@ -871,7 +873,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         else:
                             #干扰严重时考虑不复用
                             response.sock.close()
-                elif retry == GC.GAE_FETCHMAX - 1 and not headers_sent:
+                if retry == GC.GAE_FETCHMAX - 1 and not headers_sent:
                     c = message_html('504 GAE 响应超时', 'GAE-%r 请求超时，请稍后重试。' % self.url, str(errors)).encode()
                     self.write(b'HTTP/1.1 504 Gateway Timeout\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
                     self.write(c)
@@ -1206,7 +1208,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if f == 0:
                 self.badhost[host] |= 4
             elif f == 4:
-                #记录临时规则的过期时间
                 set_temp_action(*hostparts, self.path[1:])
                 logging.warning('将 %r 加入 "GAE" 规则%s。', host, GC.LINK_TEMPTIME_S)
                 self.badhost[host] |= 8
@@ -1221,11 +1222,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if f == 0:
                 self.badhost[host] |= 1
             elif f == 1:
-                action, _ = filter = ssl_filters_cache[host]
-                #防止重复替换
-                if action != 'do_FAKECERT':
-                    #设置临时规则的过期时间
-                    ssl_filters_cache.set(host, ('do_FAKECERT', filter), GC.LINK_TEMPTIME)
+                set_temp_connect_action(host)
                 logging.warning('将 %r 加入 "FAKECERT" 规则%s。', host, GC.LINK_TEMPTIME_S)
                 self.badhost[host] |= 2
         except KeyError:

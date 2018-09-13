@@ -261,9 +261,60 @@ MESSAGE_TEMPLATE = string.Template(MESSAGE_TEMPLATE).substitute
 def message_html(title, banner, detail=''):
     return MESSAGE_TEMPLATE(title=title, banner=banner, detail=detail)
 
-#import random
-#def onlytime():
-#    return int(time())+random.random()
+import random
+
+dchars = ['bcdfghjklmnpqrstvwxyz', 'aeiou', '0123456789']
+pchars = [0, 0, 0, 1, 2, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1]
+subds = [
+    'www', 'img', 'pic', 'js', 'game', 'mail', 'static', 'ajax', 'video', 'lib',
+    'login', 'player', 'image', 'api', 'upload', 'download', 'cdnjs', 'cc', 's',
+    'book', 'v', 'service', 'web', 'forum', 'bbs', 'news', 'home', 'wiki', 'it'
+    ]
+gtlds = ['org', 'com', 'net', 'gov', 'edu', 'xyz','info']
+
+def random_hostname(wildcard_host=None):
+    replace_wildcard = wildcard_host and '*' in wildcard_host
+    if replace_wildcard and '{' in wildcard_host:
+        try:
+            a = wildcard_host.find('{')
+            b = wildcard_host.find('}')
+            word_length = int(wildcard_host[a + 1:b])
+            wildcard_host = wildcard_host[:a] + wildcard_host[b + 1:]
+        except:
+            pass
+    else:
+        word_length = random.randint(5, 12)
+    maxcl = word_length * 2 // 3 or 1
+    maxcv = word_length // 2 or 1
+    maxd = word_length // 6
+    chars = []
+    for _ in range(word_length):
+        while True:
+            n = random.choice(pchars)
+            if n == 0 and maxcl:
+                maxcl -= 1
+                break
+            elif n == 1 and maxcv:
+                maxcv -= 1
+                break
+            elif n == 2 and maxd:
+                maxd -= 1
+                break
+        chars.append(random.choice(dchars[n]))
+    random.shuffle(chars)
+    if word_length > 7 and not random.randrange(3):
+        if replace_wildcard:
+            if '-' not in wildcard_host:
+                chars[random.randint(5, word_length - 4)] = '-'
+        else:
+            chars.insert(random.randint(5, word_length - 3), '-')
+    sld = ''.join(chars)
+    if replace_wildcard:
+        return wildcard_host.replace('*', sld)
+    else:
+        subd = random.choice(subds)
+        gtld = random.choice(gtlds)
+        return '.'.join((subd, sld, gtld))
 
 def isip(ip):
     if ':' in ip:

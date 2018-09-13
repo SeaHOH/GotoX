@@ -4,7 +4,7 @@ import threading
 from time import time, sleep
 from functools import partial
 from . import clogging as logging
-from .common import config_dir, LRUCache
+from .common import config_dir, LRUCache, random_hostname
 from .common.dns import reset_dns
 from .compat import urlparse
 from .GlobalConfig import GC
@@ -18,8 +18,8 @@ from .FilterConfig import (
 gLock = threading.Lock()
 gn = 0
 ACTION_FILTERS = _ACTION_FILTERS.copy()
-filters_cache = LRUCache(64)
-ssl_filters_cache = LRUCache(32)
+filters_cache = LRUCache(256)
+ssl_filters_cache = LRUCache(128)
 
 def check_reset():
     if _ACTION_FILTERS.RESET:
@@ -35,6 +35,26 @@ def check_reset():
                     reset_dns()
                     _ACTION_FILTERS.RESET = False
                     logging.warning('%r 内容被修改，已重新加载自动代理配置。', _ACTION_FILTERS.CONFIG_FILENAME)
+
+def get_fake_sni(host):
+    if not isinstance(host, str):
+        return
+    key = 'https://' + host
+    contains, expired, filter = ssl_filters_cache.getstate(key)
+    if contains:
+        if expired:
+            logging.warning('%r 的临时 "FAKECERT" 规则已经失效。', key)
+            ssl_filters_cache[key] = filter = filter[-1]
+        if filter[2] == FAKECERT:
+            rule = filter[1]
+            if isinstance(rule, tuple):
+                rule = rule[1]
+            if isinstance(rule, bytes):
+                return rule
+            elif rule == '*':
+                return random_hostname().encode()
+            elif '*' in rule:
+                return random_hostname(rule).encode()
 
 def get_redirect(target, url):
     '''Get the redirect target'''
@@ -87,7 +107,7 @@ REDIRECTS = 'do_REDIRECT', 'do_IREDIRECT'
 TEMPGAE = 'do_GAE', None
 #默认规则
 filter_DEF = '', '', numToAct[GC.FILTER_ACTION], None
-ssl_filter_DEF = numToSSLAct[GC.FILTER_SSLACTION], None
+ssl_filter_DEF = numToSSLAct[GC.FILTER_SSLACTION], None, 0
 
 def set_temp_action(scheme, host, path):
     schemes = '', scheme
@@ -105,6 +125,14 @@ def set_temp_action(scheme, host, path):
             if action != 'TEMPGAE':
                 filters[i] = '', '', 'TEMPGAE', (time() + GC.LINK_TEMPTIME, filter)
             break
+
+def set_temp_connect_action(host):
+    filter = ssl_filters_cache[host]
+    action = filter[0]
+    #防止重复替换
+    if action != 'do_FAKECERT':
+        #设置临时规则的过期时间
+        ssl_filters_cache.set(host, ('do_FAKECERT', *filter[1:], filter), GC.LINK_TEMPTIME)
 
 def get_action(scheme, host, path, url):
     check_reset()
@@ -181,8 +209,8 @@ def get_connect_action(ssl, host):
     if contains:
         if expired:
             logging.warning('%r 的临时 "FAKECERT" 规则已经失效。', key)
-            ssl_filters_cache[key] = filter = filter[1]
-        return filter
+            ssl_filters_cache[key] = filter = filter[-1]
+        return filter[:2]
     global gn
     try:
         with gLock:
@@ -191,12 +219,12 @@ def get_connect_action(ssl, host):
             for schemefilter, hostfilter, _, target in filters:
                 if schemefilter in schemes and match_host_filter(hostfilter, host):
                     #填充结果到缓存
-                    ssl_filters_cache[key] = filter = numToSSLAct[filters.action], target
+                    ssl_filters_cache[key] = filter = numToSSLAct[filters.action], target, filters.action
                     #匹配第一个，后面忽略
-                    return filter
+                    return filter[:2]
         #添加默认规则
         ssl_filters_cache[key] = ssl_filter_DEF
-        return ssl_filter_DEF
+        return ssl_filter_DEF[:2]
     finally:
         with gLock:
             gn -= 1

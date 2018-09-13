@@ -16,9 +16,10 @@ from time import time, sleep
 from .GlobalConfig import GC
 from .compat import Queue, thread, httplib, hasattr
 from .compat.openssl import zero_EOF_error, SSLConnection
-from .common import cert_dir, NetWorkIOError, closed_errno, LRUCache, isip
+from .common import cert_dir, NetWorkIOError, closed_errno, LRUCache, isip, random_hostname
 from .common.dns import dns, dns_resolve
 from .common.proxy import parse_proxy, proxy_no_rdns
+from .FilterUtil import get_fake_sni
 
 GoogleG23PKP = {
 # https://pki.google.com/GIAG2.crt
@@ -126,8 +127,11 @@ class BaseHTTPUtil:
         sys.exit(-1)
 
     def get_server_hostname(self, cache_key, host):
+        servername = get_fake_sni(host)
+        if servername:
+            return servername
         if self.gws:
-            if cache_key == 'google_fe:443' or host and host.endswith(('.appspot.com', '.googlevideo.com')):
+            if cache_key == 'google_fe:443' or host and host.endswith('.appspot.com'):
                 if gws_servername is None:
                     if host is None:
                         if GC.GAE_APPIDS:
@@ -137,15 +141,13 @@ class BaseHTTPUtil:
                     else:
                         return host.encode()
                 elif gws_servername[0] == b'random':
-                    fakehost = 'www.' + ''.join(random.choice(('bcdfghjklmnpqrstvwxyz','aeiou')[x&1]) for x in range(random.randint(5,20))) + random.choice(['.net', '.com', '.org'])
+                    fakehost = random_hostname()
                     return fakehost.encode()
                 else:
                     return random.choice(gws_servername)
             else:
                 return GC.FINDER_SERVERNAME
         else:
-            if host == 'zh.wikipedia.org':
-                return b'en.wikipedia.org'
             return None if isip(host) else host.encode()
 
     def get_ssl_socket(self, sock, server_hostname=None):
@@ -303,8 +305,8 @@ class HTTPUtil(BaseHTTPUtil):
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             # set struct linger{l_onoff=1,l_linger=0} to avoid 10048 socket error
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, self.offlinger_val)
-            # resize socket recv buffer 8K->1M to improve browser releated application performance
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)
+            # resize socket recv buffer 8K->128K to improve browser releated application performance
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 131072)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32768)
             # disable nagle algorithm to send http request quickly.
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
@@ -414,8 +416,8 @@ class HTTPUtil(BaseHTTPUtil):
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             # set struct linger{l_onoff=1,l_linger=0} to avoid 10048 socket error
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, self.offlinger_val)
-            # resize socket recv buffer 8K->1M to improve browser releated application performance
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)
+            # resize socket recv buffer 8K->128K to improve browser releated application performance
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 131072)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32768)
             # disable negal algorithm to send http request quickly.
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
@@ -616,8 +618,8 @@ class HTTPUtil(BaseHTTPUtil):
                 proxy_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 # set struct linger{l_onoff=1,l_linger=0} to avoid 10048 socket error
                 proxy_sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, self.offlinger_val)
-                # resize socket recv buffer 8K->1M to improve browser releated application performance
-                proxy_sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)
+                # resize socket recv buffer 8K->128K to improve browser releated application performance
+                proxy_sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 131072)
                 proxy_sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32768)
                 # disable nagle algorithm to send http request quickly.
                 proxy_sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)

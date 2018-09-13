@@ -32,7 +32,7 @@ qGAE = Queue.LifoQueue()
 for _ in range(GC.GAE_MAXREQUESTS * len(GC.GAE_APPIDS)):
     qGAE.put(True)
 
-proxy_server = 'http://127.0.0.1:%d' % GC.LISTEN_GAE_PORT
+proxy_server = 'http://127.0.0.1:%d' % GC.LISTEN_AUTO_PORT
 proxy_handler = ProxyHandler({
     'http': proxy_server,
     'https': proxy_server
