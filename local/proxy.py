@@ -48,6 +48,10 @@ sys.dont_write_bytecode = True
 
 #这条代码负责导入依赖库路径，不要改变位置
 from .common import gevent, app_root
+from .GlobalConfig import GC
+from . import clogging as logging
+
+logging.setLevel(GC.LISTEN_DEBUGINFO)
 
 import os
 import struct
@@ -56,9 +60,7 @@ import socket
 import ssl
 import re
 from OpenSSL import __version__ as opensslver
-from . import clogging as logging
 from .compat import Queue, thread, SocketServer
-from .GlobalConfig import GC
 from .ProxyServer import network_test, start_proxyserver
 from .ProxyHandler import AutoProxyHandler
 
@@ -235,8 +237,6 @@ def main():
         #    AutoProxyHandler.forward_socket = AutoProxyHandler.green_forward_socket
 
     from .common.region import IPDBVer
-
-    logging.setLevel(GC.LISTEN_DEBUGINFO)
 
     info = ['==================================================================================\n',]
     info.append(' GotoX  版 本 : %s (python/%s gevent/%s pyOpenSSL/%s)\n' % (__version__, sys.version.split(' ')[0], gevent.__version__, opensslver))
