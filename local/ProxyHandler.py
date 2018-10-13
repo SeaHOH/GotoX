@@ -25,7 +25,8 @@ from .common import (
     pass_errno,
     LRUCache,
     message_html,
-    isip
+    isip,
+    isipv6
     )
 from .common.decompress import decompress_readers
 from .common.dns import reset_dns, set_dns, dns_resolve
@@ -244,12 +245,19 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.host = host
         else:
             self.host = host = chost
+        if host[0] == '[':
+            self.host = host[1:-1]
         #确定端口
         self.port = port = int(port or cport or self.ssl and 443 or 80)
         #确定 Host 头域
         if mhost:
             if (bool(self.ssl), port) not in ((False, 80), (True, 443)):
-                host = '%s:%d' % (host, port)
+                if isipv6(host) and host[0] != '[':
+                    host = '[%s]:%d' % (host, port)
+                else:
+                    host = '%s:%d' % (host, port)
+            else:
+                host = self.host
             if 'Host' in self.headers:
                 self.headers.replace_header('Host', host)
             else:
@@ -513,7 +521,6 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         #直接请求目标地址
         hostname = self.hostname
         http_util = http_gws if hostname.startswith('google') else http_nor
-        host = self.host
         request_headers, payload = self.handle_request_headers()
         headers_sent = False
         for retry in range(2):
@@ -542,7 +549,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         self.write(c)
                         return
                     #非默认规则、直连 IP
-                    elif self.target is not None or isdirect(host):
+                    elif self.target is not None or isdirect(self.host):
                         logging.warning('%s do_DIRECT "%s %s" 没有正确响应，重试。', self.address_string(response), self.command, self.url)
                         continue
                     else:
@@ -552,7 +559,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if response.status >= 400:
                     noerror = False
                 #拒绝服务、非直连 IP
-                if response.status == 403 and not isdirect(host):
+                if response.status == 403 and not isdirect(self.host):
                     logging.warn('%s do_DIRECT "%s %s" 连接被拒绝，尝试使用 "GAE" 规则。', self.address_string(response), self.command, self.url)
                     return self.go_GAE()
                 #修复某些软件无法正确处理持久连接（停用）
@@ -570,7 +577,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     raise e
                 #连接重置
                 if e.args[0] in reset_errno:
-                    if isdirect(host):
+                    if isdirect(self.host):
                         logging.warning('%s do_DIRECT "%s %s" 连接被重置，重试。', self.address_string(response), self.command, self.url)
                         continue
                     else:

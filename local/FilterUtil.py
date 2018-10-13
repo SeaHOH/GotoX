@@ -20,6 +20,7 @@ gn = 0
 ACTION_FILTERS = _ACTION_FILTERS.copy()
 filters_cache = LRUCache(256)
 ssl_filters_cache = LRUCache(128)
+reset_method_list = [reset_dns]
 
 def check_reset():
     if _ACTION_FILTERS.RESET:
@@ -32,7 +33,8 @@ def check_reset():
                     ACTION_FILTERS = _ACTION_FILTERS.copy()
                     filters_cache.clear()
                     ssl_filters_cache.clear()
-                    reset_dns()
+                    for reset_method in reset_method_list:
+                        reset_method()
                     _ACTION_FILTERS.RESET = False
                     logging.warning('%r 内容被修改，已重新加载自动代理配置。', _ACTION_FILTERS.CONFIG_FILENAME)
 
@@ -41,20 +43,22 @@ def get_fake_sni(host):
         return
     key = 'https://' + host
     contains, expired, filter = ssl_filters_cache.getstate(key)
-    if contains:
-        if expired:
-            logging.warning('%r 的临时 "FAKECERT" 规则已经失效。', key)
-            ssl_filters_cache[key] = filter = filter[-1]
-        if filter[2] == FAKECERT:
-            rule = filter[1]
-            if isinstance(rule, tuple):
-                rule = rule[1]
-            if isinstance(rule, bytes):
-                return rule
-            elif rule == '*':
-                return random_hostname().encode()
-            elif '*' in rule:
-                return random_hostname(rule).encode()
+    if not contains:
+        get_connect_action(True, host)
+        contains, expired, filter = ssl_filters_cache.getstate(key)
+    if expired:
+        logging.warning('%r 的临时 "FAKECERT" 规则已经失效。', key)
+        ssl_filters_cache[key] = filter = filter[-1]
+    if filter[2] == FAKECERT:
+        rule = filter[1]
+        if isinstance(rule, tuple):
+            rule = rule[1]
+        if isinstance(rule, bytes):
+            return rule
+        elif rule == '*':
+            return random_hostname().encode()
+        elif '*' in rule:
+            return random_hostname(rule).encode()
 
 def get_redirect(target, url):
     '''Get the redirect target'''

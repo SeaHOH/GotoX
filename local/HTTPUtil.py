@@ -19,7 +19,7 @@ from .compat.openssl import zero_EOF_error, SSLConnection
 from .common import cert_dir, NetWorkIOError, closed_errno, LRUCache, isip, random_hostname
 from .common.dns import dns, dns_resolve
 from .common.proxy import parse_proxy, proxy_no_rdns
-from .FilterUtil import get_fake_sni
+from .FilterUtil import reset_method_list, get_fake_sni
 
 GoogleG23PKP = {
 # https://pki.google.com/GIAG2.crt
@@ -243,6 +243,10 @@ class BaseHTTPUtil:
                             break
                 except Exception as e:
                     logging.error('check_ssl_connection_cache(%s) 错误：%r', cache_key, e)
+
+    def clear_all_connection_cache(self):
+        self.tcp_connection_cache.clear()
+        self.ssl_connection_cache.clear()
 
 connect_limiter = LRUCache(512)
 def set_connect_start(ip):
@@ -818,3 +822,5 @@ res_ciphers = ssl._RESTRICTED_SERVER_CIPHERS
 # max_window=4, timeout=8, proxy='', ssl_ciphers=None, max_retry=2
 http_gws = HTTPUtil(GC.LINK_WINDOW, GC.GAE_TIMEOUT, GC.proxy, gws_ciphers)
 http_nor = HTTPUtil(GC.LINK_WINDOW, GC.LINK_TIMEOUT, GC.proxy, res_ciphers)
+reset_method_list.append(http_gws.clear_all_connection_cache)
+reset_method_list.append(http_nor.clear_all_connection_cache)

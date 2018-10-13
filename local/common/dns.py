@@ -142,7 +142,7 @@ def _https_resolve(qname, qtype, queobj):
         if response and response.status == 200:
             reply = jsondecoder.decode(response.read().decode())
             # NOERROR = 0
-            if reply and reply['Status'] == 0:
+            if reply and reply['Status'] == 0 and 'Answer' in reply:
                 for answer in reply['Answer']:
                     if answer['type'] == qtype:
                         iplist.append(answer['data'])
@@ -296,6 +296,7 @@ def get_dnsserver_list():
             winreg.CloseKey(interfaces)
         return NameServers
     elif os.path.isfile('/etc/resolv.conf'):
+        import re
         with open('/etc/resolv.conf', 'rb') as fp:
             return re.findall(r'(?m)^nameserver\s+(\S+)', fp.read())
     else:
@@ -308,7 +309,10 @@ if '127.0.0.1' in local_dnsservers and '::1' in local_dnsservers:
     #视为同一个本地服务器，大多数情况下这是正确地
     local_dnsservers.remove('::1')
 local_dnsservers = list(local_dnsservers)
-logging.test('已读取系统当前 DNS 设置：%r', local_dnsservers)
+if local_dnsservers:
+    logging.test('已读取系统当前 DNS 设置：%r', local_dnsservers)
+else:
+    logging.warning('读取系统当前 DNS 设置失败')
 
 def dns_system_resolve(host):
     now = time()
