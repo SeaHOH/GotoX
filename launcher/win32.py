@@ -16,7 +16,8 @@ app_start = os.path.join(app_root, 'start.py')
 icon_gotox = os.path.join(app_root, 'gotox.ico')
 create_shortcut_js = os.path.join(app_root, 'create_shortcut.vbs')
 config_dir = os.path.join(app_root, 'config')
-ipdb_direct = os.path.join(app_root, 'data', 'directip.db')
+direct_ipdb = os.path.join(app_root, 'data', 'directip.db')
+direct_domains = os.path.join(app_root, 'data', 'directdomains.txt')
 refresh_proxy = os.path.join(app_root, 'launcher', 'refresh_proxy_win.py')
 
 #使用安装版 Python
@@ -294,6 +295,7 @@ def on_right_click(systray):
 
 from winsystray import SysTrayIcon, win32_adapter
 import buildipdb
+import builddomains
 
 MFS_CHECKED = win32_adapter.MFS_CHECKED
 MFS_DISABLED = win32_adapter.MFS_DISABLED
@@ -301,19 +303,34 @@ MFS_DEFAULT = win32_adapter.MFS_DEFAULT
 MFT_RADIOCHECK = win32_adapter.MFT_RADIOCHECK
 fixed_fState = MFS_CHECKED | MFS_DISABLED
 
+def download_cniplist(p):
+    msg = buildipdb.download_cniplist_as_db(direct_ipdb, p)
+    if msg:
+        balloons_warning(msg)
+
+def download_domains(p):
+    msg = builddomains.download_domains_as_txt(direct_domains, p)
+    if msg:
+        balloons_warning(msg)
+
 last_main_menu = None
 sub_menu1 = (('打开默认配置', lambda x: Popen(CONFIG_FILENAME, shell=True)), #双击打开第一个有效命令
              ('打开用户配置', lambda x: Popen(CONFIG_USER_FILENAME, shell=True)),
              ('打开自动规则配置', lambda x: Popen(CONFIG_AUTO_FILENAME, shell=True)))
 sub_menu2 = (('建议更新频率：10～30 天一次', 'pass', MFS_DISABLED),
              (None, '-'),
-             ('Ⅰ 从 APNIC 下载（每日更新）', lambda x: buildipdb.download_cniplist_as_db(ipdb_direct, buildipdb.p_APNIC)),
-             ('Ⅱ 从 17mon 下载（每月初更新）', lambda x: buildipdb.download_cniplist_as_db(ipdb_direct, buildipdb.p_17MON)),
-             ('Ⅲ 从 gaoyifan 下载（每日更新）', lambda x: buildipdb.download_cniplist_as_db(ipdb_direct, buildipdb.p_GAOYIFAN)),
-             ('从 Ⅰ、Ⅱ 下载后合并', lambda x: buildipdb.download_cniplist_as_db(ipdb_direct, buildipdb.p_APNIC | buildipdb.p_17MON)),
-             ('从 Ⅰ、Ⅲ 下载后合并', lambda x: buildipdb.download_cniplist_as_db(ipdb_direct, buildipdb.p_APNIC | buildipdb.p_GAOYIFAN)),
-             ('从 Ⅱ、Ⅲ 下载后合并', lambda x: buildipdb.download_cniplist_as_db(ipdb_direct, buildipdb.p_17MON | buildipdb.p_GAOYIFAN)),
-             ('全部下载后合并', lambda x: buildipdb.download_cniplist_as_db(ipdb_direct, buildipdb.p_APNIC | buildipdb.p_17MON | buildipdb.p_GAOYIFAN)))
+             ('Ⅰ 从 APNIC 下载（每日更新）', lambda x: download_cniplist(buildipdb.p_APNIC)),
+             ('Ⅱ 从 17mon 下载（每月初更新）', lambda x: download_cniplist(buildipdb.p_17MON)),
+             ('Ⅲ 从 gaoyifan 下载（每日更新）', lambda x: download_cniplist(buildipdb.p_GAOYIFAN)),
+             ('从 Ⅰ、Ⅱ 下载后合并', lambda x: download_cniplist(buildipdb.p_APNIC | buildipdb.p_17MON)),
+             ('从 Ⅰ、Ⅲ 下载后合并', lambda x: download_cniplist(buildipdb.p_APNIC | buildipdb.p_GAOYIFAN)),
+             ('从 Ⅱ、Ⅲ 下载后合并', lambda x: download_cniplist(buildipdb.p_17MON | buildipdb.p_GAOYIFAN)),
+             ('全部下载后合并', lambda x: download_cniplist(buildipdb.p_ALL)))
+sub_menu3 = (('建议更新频率：1～7 天一次', 'pass', MFS_DISABLED),
+             (None, '-'),
+             ('Ⅰ 从 felixonmars/accelerated-domains 下载（每日更新）', lambda x: download_domains(builddomains.p_FCHINA)),
+             ('Ⅱ 从 felixonmars/apple 下载（次要，无固定更新）', 'pass', MFS_DISABLED),
+             ('全部下载后合并', lambda x: download_domains(builddomains.p_ALL)))
 
 def build_menu(systray):
     global proxy_state_menu, last_main_menu
@@ -325,7 +342,7 @@ def build_menu(systray):
     disable_socks_state = disable_state or proxy_state.type & 2 and not proxy_state.socks and fixed_fState or 0
     auto_state = proxy_state.type == 2 and LISTEN_AUTO in proxy_state and fixed_fState or 0
     gae_state = proxy_state.type == 2 and LISTEN_GAE in proxy_state  and fixed_fState or 0
-    sub_menu3 = (
+    sub_menu4 = (
                  ('使用自动代理', on_enable_auto_proxy, auto_state, MFT_RADIOCHECK),
                  ('使用 GAE 代理', on_enable_gae_proxy, gae_state, MFT_RADIOCHECK),
                  ('完全禁用代理', on_disable_proxy, disable_state, MFT_RADIOCHECK),
@@ -339,11 +356,12 @@ def build_menu(systray):
     hide_state = not visible and fixed_fState or 0
     main_menu = (('GotoX 设置', sub_menu1, icon_gotox, MFS_DEFAULT),
                  ('更新直连 IP 库', sub_menu2),
+                 ('更新直连域名列表', sub_menu3),
                  (None, '-'),
                  ('显示窗口', on_show, show_state, MFT_RADIOCHECK),
                  ('隐藏窗口', on_hide, hide_state, MFT_RADIOCHECK),
                  ('创建桌面快捷方式', on_create_shortcut),
-                 ('设置系统（IE）代理', sub_menu3),
+                 ('设置系统（IE）代理', sub_menu4),
                  ('重置 DNS 缓存', on_reset_dns),
                  ('重置自动规则缓存', on_reset_autorule),
                  ('重启 GotoX', on_refresh),
@@ -363,29 +381,33 @@ start_GotoX()
 
 from time import sleep
 
+def balloons_info(text, title='GotoX 通知'):
+    systray_GotoX.update(
+        hover_text='GotoX\n当前系统（IE）代理：\n%s' % proxy_state,
+        balloons=(text, title, 4 | 32, 15)
+        )
+
+def balloons_warning(text, title='注意'):
+    systray_GotoX.update(
+        hover_text='GotoX\n当前系统（IE）代理：\n%s' % proxy_state,
+        balloons=(text, title, 2 | 32, 15)
+        )
+
 proxy_state = get_proxy_state()
 sleep(1)
-systray_GotoX.update(
-    hover_text='GotoX\n当前系统（IE）代理：\n%s' % proxy_state,
-    balloons=('\nGotoX 已经启动。        \n\n'
+balloons_info('\nGotoX 已经启动。        \n\n'
               '左键单击：打开菜单\n\n'
               '左键双击：打开配置\n\n'
-              '右键单击：隐藏窗口\n\n'
+              '右键单击：隐显窗口\n\n'
               '当前系统代理设置为：\n'
-              '%s' % proxy_state,
-              'GotoX 通知', 4 | 32, 15)
-    )
-
+              '%s' % proxy_state)
 running = True
 while running:
     now_proxy_state = get_proxy_state()
     if proxy_state.str != now_proxy_state.str:
         text = '设置由：\n%s\n变更为：\n%s' % (proxy_state, now_proxy_state)
         proxy_state = now_proxy_state
-        systray_GotoX.update(
-            hover_text='GotoX\n当前系统（IE）代理：\n%s' % proxy_state,
-            balloons=(text, '系统代理改变', 2 | 32, 15)
-            )
+        balloons_warning(text, '系统代理改变')
     for _ in range(50):
         if running:
             sleep(0.1)

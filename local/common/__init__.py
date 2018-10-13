@@ -317,12 +317,16 @@ def random_hostname(wildcard_host=None):
         return '.'.join((subd, sld, gtld))
 
 def isip(ip):
-    if ':' in ip:
+    if '.' in ip:
+        return isipv4(ip)
+    elif ':' in ip:
         return isipv6(ip)
     else:
-        return isipv4(ip)
+        return False
 
 def isipv4(ip, inet_aton=socket.inet_aton):
+    if '.' not in ip:
+        return False
     try:
         inet_aton(ip)
     except:
@@ -331,6 +335,8 @@ def isipv4(ip, inet_aton=socket.inet_aton):
         return True
 
 def isipv6(ip, AF_INET6=socket.AF_INET6, inet_pton=socket.inet_pton):
+    if ':' not in ip:
+        return False
     try:
         inet_pton(AF_INET6, ip)
     except:

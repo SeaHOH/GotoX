@@ -4,8 +4,80 @@ import os
 import socket
 import _thread as thread
 from time import sleep
-from . import logging, data_dir, launcher_dir, LRUCache, isip, isipv4
+from . import logging, data_dir, launcher_dir, LRUCache, isip, isipv4, isipv6
 from local.GlobalConfig import GC
+
+direct_ipdb = os.path.join(data_dir, 'directip.db')
+direct_domains = os.path.join(data_dir, 'directdomains.txt')
+direct_cache = LRUCache(GC.DNS_CACHE_ENTRIES//2)
+direct_tlds = (
+    # https://en.wikipedia.org/wiki/List_of_Internet_top-level_domains
+    # Country code top-level domains
+    'cn', 'hk', 'mo',
+    # Internationalized country code top-level domains
+    'xn--fiqs8s',  #中国
+    'xn--fiqz9s',  #中國
+    'xn--j6w193g', #香港
+    'xn--mix082f', #澳门
+    'xn--mix891f', #澳門
+    # Internationalized geographic top-level domains
+    'xn--1qqw23a', #佛山
+    'xn--xhq521b', #广东
+    # ICANN-era generic top-level domains
+    'ren',     #人人 Beijing Qianxiang Wangjing Technology Development Co.
+    'top',     # Jiangsu Bangning
+    'wang',    #网、王
+    'shouji',  #手机 QIHOO 360 TECHNOLOGY CO. LTD.
+    'tushu',   #图书 Amazon Registry Services, Inc.
+    'wanggou', #网购 Amazon Registry Services, Inc.
+    'weibo',   #微博 Sina Corporation
+    'xihuan',  #喜欢 QIHOO 360 TECHNOLOGY CO. LTD.
+    # Internationalized generic top-level domains
+    'xn--3ds443g',    #在线
+    'xn--fiq228c5hs', #中文网
+    'xn--ses554g',    #网址
+    'xn--5tzm5g',     #网站
+    'xn--io0a7i',     #网络
+    'xn--55qx5d',     #公司
+    'xn--czru2d',     #商城
+    'xn--nqv7f',      #机构
+    'xn--6qq986b3xl', #我爱你
+    'xn--czr694b',    #商标
+    'xn--rhqv96g',    #世界
+    'xn--3bst00m',    #集团
+    'xn--30rr7y',     #慈善
+    'xn--45q11c',     #八卦
+    'xn--55qw42g',    #公益
+    # Brand top-level domains
+    'alibaba', # Alibaba Group Holding Limited
+    'alipay',  # Alibaba Group Holding Limited
+    'baidu',   # Baidu, Inc.
+    'citic',   # CITIC Group
+    'sina',    # Sina Corporation
+    'taobao',  # Alibaba Group Holding Limited
+    'unicom',  # China United Network Communications Corporation Limited
+    # Internationalized brand top-level domains
+    'xn--8y0a063a',         #联通 China United Network Communications Corporation Limited
+    'xn--6frz82g',          #移动 China Mobile Communications Corporation
+    'xn--fiq64b',           #中信 CITIC Group
+    'xn--5su34j936bgsg',    #香格里拉 Shangri‐La International Hotel Management Limited
+    'xn--b4w605ferd',       #淡马锡 Temasek Holdings (Private) Limited
+    'xn--3oq18vl8pn36a',    #大众汽车 Volkswagen (China) Investment Co., Ltd.
+    'xn--flw351e',          #谷歌 Google
+    'xn--estv75g',          #工行 Industrial and Commercial Bank of China Limited
+    'xn--w4rs40l',          #嘉里 Kerry Trading Co. Limited
+    'xn--w4r85el8fhu5dnra', #嘉里大酒店 Kerry Trading Co. Limited
+    'xn--kcrx77d1x4a',      #飞利浦 Koninklijke Philips N.V.
+    'xn--jlq61u9w7b',       #诺基亚 Nokia Corporation
+    'xn--fzys8d69uvgm',     #電訊盈科 PCCW Enterprises Limited
+    # Special-Use Domains (reserved)
+    'example',
+    'invalid',
+    'local',
+    'localhost',
+    'onion',
+    'test',
+    )
 
 if '4' in GC.LINK_PROFILE:
     from .dns import dns_resolve
@@ -17,7 +89,7 @@ else:
             return host,
         return _dns_resolve(host)
 
-class DirectIPv4Database:
+class IPv4Database:
     #载入 IPv4 保留地址和 CN 地址数据库，数据来源：
     #    https://ftp.apnic.net/apnic/stats/apnic/delegated-apnic-latest
     #    https://github.com/17mon/china_ip_list/raw/master/china_ip_list.txt
@@ -76,10 +148,68 @@ class DirectIPv4Database:
         #根据位置序数奇偶确定是否属于直连 IP
         return lo & 1
 
-directipdb = os.path.join(data_dir, 'directip.db')
-direct_cache = LRUCache(GC.DNS_CACHE_ENTRIES//2)
-direct_top_level = 'cn', 'hk', 'mo'
-direct_endswith = *direct_top_level, *GC.LINK_TEMPWHITELIST
+class DomainsDict:
+    def __init__(self):
+        self.dict = {'ip': set()}
+        self.levels = []
+        self.update = 'N/A'
+
+    def add(self, domain):
+        if not domain or not isinstance(domain, str):
+            return
+        domain = domain.lower()
+        if domain[0] == '.':
+            domain = domain[1:]
+        if self.add_ip(domain):
+            return
+        level = domain.count('.') + 1
+        try:
+            ds = self.dict[level]
+        except KeyError:
+            self.dict[level] = ds = set()
+            self.levels.append(level)
+            self.levels.sort()
+        ds.add(domain)
+
+    def add_ip(self, ip):
+        if isipv6(ip):
+            ip = socket.inet_pton(socket.AF_INET6, ip)
+        elif not isipv4(ip):
+            return
+        self.dict['ip'].add(ip)
+        return True
+
+    def add_file(self, file):
+        with open(file, 'r') as fd:
+            has_update = None
+            line = fd.readline()
+            if line[0] in ('#', ';') and 'pdate:' in line:
+                self.update = line.split('pdate:')[-1].strip('\r\n\t ')
+                has_update = True
+            elif line and line[0] not in ('#', ';'):
+                domain = line.strip('\r\n\t ')
+                self.add(domain)
+            for line in fd:
+                if line and line[0] not in ('#', ';'):
+                    domain = line.strip('\r\n\t ')
+                    self.add(domain)
+            if has_update and line[:4] != '#end':
+                logging.warning('直连域名列表文件 %r 不完整，请更新', file)
+
+    def __contains__(self, host):
+        if isipv6(host):
+            host = socket.inet_pton(socket.AF_INET6, host)
+        elif not isipv4(host):
+            hostsp = host.split('.')
+            max_level = len(hostsp)
+            for level in self.levels:
+                if level > max_level:
+                    break
+                domain = '.'.join(hostsp[-level:])
+                if domain in self.dict[level]:
+                    return True
+            return False
+        return host in self.dict['ip']
 
 def isdirect(host):
     if ipdb is None:
@@ -87,50 +217,87 @@ def isdirect(host):
     try:
         return direct_cache[host]
     except KeyError:
-        if host.endswith(direct_endswith):
-            direct_cache[host] = True
-            return True
-        ipv4 = None
-        for ip in dns_resolve(host):
-            if isipv4(ip):
-                ipv4 = ip
-                break
-        direct_cache[host] = direct = ipv4 in ipdb if ipv4 else False
-        return direct
+        pass
+    if host in direct_domains_dict:
+        direct_cache[host] = True
+        return True
+    direct = False
+    for ip in dns_resolve(host):
+        if isipv4(ip) and ip in ipdb:
+            direct = True
+            break
+    direct_cache[host] = direct
+    return direct
 
 def load_ipdb():
     global ipdb, IPDBVer
-    ipdb = DirectIPv4Database(directipdb)
-    IPDBVer = ipdb.update
+    if os.path.exists(direct_ipdb):
+        ipdb = IPv4Database(direct_ipdb)
+        IPDBVer = ipdb.update
+    else:
+        ipdb = None
+        IPDBVer = '数据库文件未安装'
+        buildscript = os.path.join(launcher_dir, 'buildipdb.py')
+        logging.warning('无法在找到直连 IP 数据库，Win 用户可用托盘工具下载更新，'
+                        '其它系统请运行脚本 %r 下载更新。', buildscript)
+
+def load_domains():
+    global direct_domains_dict, DDDVer
+    domains_dict = DomainsDict()
+    for domain in direct_tlds:
+        domains_dict.add(domain)
+    for domain in GC.LINK_TEMPWHITELIST:
+        domains_dict.add(domain)
+    if os.path.exists(direct_domains):
+        domains_dict.add_file(direct_domains)
+        DDDVer = domains_dict.update
+    else:
+        DDDVer = '列表文件未安装'
+        buildscript = os.path.join(launcher_dir, 'builddomains.py')
+        logging.warning('无法找到直连域名列表文件，Win 用户可用托盘工具下载更新，'
+                        '其它系统请运行脚本 %r 下载更新。', buildscript)
+    direct_domains_dict = domains_dict
 
 def check_modify():
-    if os.path.exists(directipdb):
-        ipdbmtime = os.path.getmtime(directipdb)
+    if os.path.exists(direct_ipdb):
+        ipdb_mtime = os.path.getmtime(direct_ipdb)
     else:
-        ipdbmtime = 0
+        ipdb_mtime = 0
+    if os.path.exists(direct_domains):
+        domains_mtime = os.path.getmtime(direct_domains)
+    else:
+        domains_mtime = 0
     while True:
         sleep(10)
-        if os.path.exists(directipdb):
-            filemtime = os.path.getmtime(directipdb)
+        if os.path.exists(direct_ipdb):
+            ipdb_file_mtime = os.path.getmtime(direct_ipdb)
         else:
-            filemtime = 0
-        if filemtime > ipdbmtime:
+            ipdb_file_mtime = 0
+        if ipdb_file_mtime > ipdb_mtime:
             try:
                 load_ipdb()
-                ipdbmtime = filemtime
-                direct_cache.clear()
-                logging.warning('检测到直连 IP 数据库更新，已重新加载：%s。', IPDBVer)
             except Exception as e:
                 logging.warning('检测到直连 IP 数据库更新，重新加载时出现错误，'
                                 '请重新下载：%r', e)
+            else:
+                ipdb_mtime = ipdb_file_mtime
+                direct_cache.clear()
+                logging.warning('检测到直连 IP 数据库更新，已重新加载：%s。', IPDBVer)
+        if os.path.exists(direct_domains):
+            domains_file_mtime = os.path.getmtime(direct_domains)
+        else:
+            domains_file_mtime = 0
+        if domains_file_mtime > domains_mtime:
+            try:
+                load_domains()
+            except Exception as e:
+                logging.warning('检测到直连域名列表更新，重新加载时出现错误，'
+                                '请重新下载：%r', e)
+            else:
+                domains_mtime = domains_file_mtime
+                direct_cache.clear()
+                logging.warning('检测到直连域名列表更新，已重新加载：%s。', DDDVer)
 
-if os.path.exists(directipdb):
-    load_ipdb()
-else:
-    ipdb = None
-    IPDBVer = '数据库文件未安装'
-    buildscript = os.path.join(launcher_dir, 'buildipdb.py')
-    logging.warning('无法在找到直连 IP 数据库，Win 用户可用托盘工具下载更新，'
-                    '其它系统请运行脚本 %r 下载更新。', buildscript)
-
+load_ipdb()
+load_domains()
 thread.start_new_thread(check_modify, ())
