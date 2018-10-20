@@ -7,19 +7,14 @@ sys.dont_write_bytecode = True
 
 import time
 import socket
-from urllib.request import Request
 from common import (
-    file_dir, root_dir, p_ALL, download_safe, get_data_source,
+    file_dir, root_dir, DataSourceManager, download_as_list,
     parse_set_proxy, select_path, getlogger
     )
 
 
 Url_FCHINA = 'https://raw.githubusercontent.com/felixonmars/dnsmasq-china-list/master/accelerated-domains.china.conf'
 Url_FAPPLE = 'https://raw.githubusercontent.com/felixonmars/dnsmasq-china-list/master/apple.china.conf'
-Req_FCHINA = None
-Req_FAPPLE = None
-p_FCHINA = 1
-p_FAPPLE = 1 << 1
 downloading = False
 
 def save_domains_as_txt(txt, domains_list):
@@ -28,60 +23,46 @@ def save_domains_as_txt(txt, domains_list):
             fd.write(domain)
             fd.write(b'\n')
 
-def download_domains(parse_domains, url):
-    global Req_FCHINA, Req_FAPPLE
-    if url is Url_FCHINA:
-        if Req_FCHINA is None:
-            Req_FCHINA = Request(url)
-        req = Req_FCHINA
-        name = 'accelerated-domains.china.conf'
-    elif url is Url_FAPPLE:
-        if Req_FAPPLE is None:
-            Req_FAPPLE = Request(url)
-        req = Req_FAPPLE
-        name = 'apple.china.conf'
-    return download_safe(name, parse_domains, req)
-
-def parse_domains(fd, domains_list):
+def parse_dnsmasq_domains(fd, ds):
     read = 0
     try:
         for line in fd:
             read += len(line)
             linesp = line.split(b'/')
             if len(linesp) == 3:
-                domains_list.append(linesp[1])
-    except:
-        pass
+                ds.itemlist.append(linesp[1])
+    except Exception as e:
+        logging.warning('parse_apnic_iplist 解析出错：%s', e)
     return read
 
-def download_domains_as_txt(txt, p=p_FCHINA):
+def download_domains_as_txt(txt, p=1):
     global downloading
     if downloading:
         msg = '已经有更新直连域名列表任务正在进行中，请稍后再试'
         logging.warning(msg)
         return msg
     downloading = True
+    #数据将保存为文本，使用容易阅读的日期格式
     update = time.strftime('%Y-%m-%d', time.localtime(time.time()))
     count = 0
     domains_list = []
     domains_list.append(b'# Update: ' + update.encode())
 
-    try:
-        if p & p_FAPPLE:
-            domains_list.append(b'')
-            domains_list.append(b'# apple.china')
-            domains_list.append(b'# ' + Url_FAPPLE.encode())
-            _domains_list = download_domains(parse_domains, Url_FAPPLE)
-            domains_list.extend(_domains_list)
-            count += len(_domains_list)
+    def add(ds):
+        nonlocal count
+        download_as_list(ds)
+        domains_list.append(b'')
+        domains_list.append(b'# ' + ds.fullname.encode())
+        domains_list.append(b'# ' + ds.url.encode())
+        domains_list.extend(ds.itemlist)
+        count += len(ds.itemlist)
 
-        if p & p_FCHINA:
-            domains_list.append(b'')
-            domains_list.append(b'# accelerated-domains.china')
-            domains_list.append(b'# ' + Url_FCHINA.encode())
-            _domains_list = download_domains(parse_domains, Url_FCHINA)
-            domains_list.extend(_domains_list)
-            count += len(_domains_list)
+    try:
+        if p & ds_FELIX:
+            for child_ds in ds_FELIX.get_all_children():
+                if ds_FELIX.check_ext(child_ds.name):
+                    add(child_ds)
+            add(ds_FELIX)
 
         domains_list.append(b'')
         domains_list.append(b'#end')
@@ -94,6 +75,10 @@ def download_domains_as_txt(txt, p=p_FCHINA):
         logging.warning('更新直连域名列表 %r 失败：%s' % (txt, e))
     finally:
         downloading = False
+
+data_source_manager = DataSourceManager()
+ds_FELIX = data_source_manager.add('Felix', Url_FCHINA, parse_dnsmasq_domains, 'felixonmars/accelerated-domains.china')
+ds_FAPPLE = ds_FELIX.add_child('Apple', Url_FAPPLE, fullname='felixonmars/apple.china')
 
 is_main = __name__ == '__main__'
 logging = getlogger(is_main)
@@ -110,8 +95,9 @@ if is_main:
 
     指定可用数据源，交互模式中无效
 
-    --fchina   使用 felixonmars/accelerated-domains 数据源
-    --fapple   使用 felixonmars/apple 数据源
+    --felix[ apple]
+               使用 felixonmars 数据源
+                 apple 保存 felixonmars/apple 数据源
     --all      使用以上全部数据源
 
     指定数据源并配合以下参数时不会进入交互模式，适用于自动／无人职守模式
@@ -124,12 +110,8 @@ if is_main:
 
     txt1 = os.path.join(root_dir, 'data', 'directdomains.txt')
     txt2 = os.path.join(file_dir, 'directdomains.txt')
-    data_source_valid = {
-        '--fchina': p_FCHINA,
-        '--fapple': p_FAPPLE
-        }
-    data_source = get_data_source(data_source_valid)
-    if parse_set_proxy():
+    data_source = data_source_manager.get_source(*sys.argv)
+    if parse_set_proxy(data_source):
         data_source = 0
     if data_source:
         txt = txt1 if '-u' in sys.argv else txt2
@@ -139,8 +121,8 @@ if is_main:
     Tips2 = '''
  ***********************************************
  *   请选择数据来源，可多选：                  *
- *   felixonmars/accelerated-domains -- 按 1   *
- *   felixonmars/apple ---------------- 按 2   *
+ *                   felixonmars ------ 按 1   *
+ *                   保存 apple 数据 -- 按 7   *
  *                      全部 ---------- 按 8   *
  *                      测试空白列表 -- 按 9   *
  *                      退出 ---------- 按 0   *
@@ -166,15 +148,16 @@ if is_main:
             download_domains_as_txt(txt, 0)
             continue
         if 8 in ns:
-            data_source = p_ALL
+            data_source = data_source_manager.sign_all
         else:
             if 1 in ns:
-                data_source |= p_FCHINA
-            if 2 in ns:
-                data_source |= p_FAPPLE
+                data_source |= ds_FELIX
+            if 7 in ns:
+                ds_FELIX.set_ext('apple')
         if data_source == 0:
             print('输入错误！')
             continue
 
         download_domains_as_txt(txt, data_source)
         data_source = 0
+        ds_FELIX.ext = 0

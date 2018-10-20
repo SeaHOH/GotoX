@@ -297,6 +297,9 @@ from winsystray import SysTrayIcon, win32_adapter
 import buildipdb
 import builddomains
 
+buildipdb.ds_APNIC.load_ext()
+builddomains.ds_FELIX.load_ext()
+
 MFS_CHECKED = win32_adapter.MFS_CHECKED
 MFS_DISABLED = win32_adapter.MFS_DISABLED
 MFS_DEFAULT = win32_adapter.MFS_DEFAULT
@@ -317,22 +320,27 @@ last_main_menu = None
 sub_menu1 = (('打开默认配置', lambda x: Popen(CONFIG_FILENAME, shell=True)), #双击打开第一个有效命令
              ('打开用户配置', lambda x: Popen(CONFIG_USER_FILENAME, shell=True)),
              ('打开自动规则配置', lambda x: Popen(CONFIG_AUTO_FILENAME, shell=True)))
-sub_menu2 = (('建议更新频率：10～30 天一次', 'pass', MFS_DISABLED),
-             (None, '-'),
-             ('Ⅰ 从 APNIC 下载（每日更新）', lambda x: download_cniplist(buildipdb.p_APNIC)),
-             ('Ⅱ 从 17mon 下载（每月初更新）', lambda x: download_cniplist(buildipdb.p_17MON)),
-             ('Ⅲ 从 gaoyifan 下载（每日更新）', lambda x: download_cniplist(buildipdb.p_GAOYIFAN)),
-             ('从 Ⅰ、Ⅱ 下载后合并', lambda x: download_cniplist(buildipdb.p_APNIC | buildipdb.p_17MON)),
-             ('从 Ⅰ、Ⅲ 下载后合并', lambda x: download_cniplist(buildipdb.p_APNIC | buildipdb.p_GAOYIFAN)),
-             ('从 Ⅱ、Ⅲ 下载后合并', lambda x: download_cniplist(buildipdb.p_17MON | buildipdb.p_GAOYIFAN)),
-             ('全部下载后合并', lambda x: download_cniplist(buildipdb.p_ALL)))
-sub_menu3 = (('建议更新频率：1～7 天一次', 'pass', MFS_DISABLED),
-             (None, '-'),
-             ('Ⅰ 从 felixonmars/accelerated-domains 下载（每日更新）', lambda x: download_domains(builddomains.p_FCHINA)),
-             ('Ⅱ 从 felixonmars/apple 下载（次要，无固定更新）', 'pass', MFS_DISABLED),
-             ('全部下载后合并', lambda x: download_domains(builddomains.p_ALL)))
 
 def build_menu(systray):
+    mo_state = buildipdb.ds_APNIC.check_ext('mo') and MFS_CHECKED
+    hk_state = buildipdb.ds_APNIC.check_ext('hk') and MFS_CHECKED
+    sub_menu2 = (('建议更新频率：10～30 天一次', 'pass', MFS_DISABLED),
+                 (None, '-'),
+                 ('Ⅰ 从 APNIC 下载（每日更新）', lambda x: download_cniplist(buildipdb.ds_APNIC)),
+                 ('    ├─ 包含澳门', lambda x: buildipdb.ds_APNIC.switch_ext('mo', save=True), mo_state, MFT_RADIOCHECK),
+                 ('    └─ 包含香港', lambda x: buildipdb.ds_APNIC.switch_ext('hk', save=True), hk_state, MFT_RADIOCHECK),
+                 ('Ⅱ 从 17mon 下载（每月初更新）', lambda x: download_cniplist(buildipdb.ds_17MON)),
+                 ('Ⅲ 从 gaoyifan 下载（每日更新）', lambda x: download_cniplist(buildipdb.ds_GAOYIFAN)),
+                 ('从 Ⅰ、Ⅱ 下载后合并', lambda x: download_cniplist(buildipdb.ds_APNIC | buildipdb.ds_17MON)),
+                 ('从 Ⅰ、Ⅲ 下载后合并', lambda x: download_cniplist(buildipdb.ds_APNIC | buildipdb.ds_GAOYIFAN)),
+                 ('从 Ⅱ、Ⅲ 下载后合并', lambda x: download_cniplist(buildipdb.ds_17MON | buildipdb.ds_GAOYIFAN)),
+                 ('全部下载后合并', lambda x: download_cniplist(buildipdb.data_source_manager.sign_all)))
+    fapple_state = builddomains.ds_FELIX.check_ext('apple') and MFS_CHECKED
+    sub_menu3 = (('建议更新频率：1～7 天一次', 'pass', MFS_DISABLED),
+                 (None, '-'),
+                 ('Ⅰ 从 felixonmars 下载（每日更新）', lambda x: download_domains(builddomains.ds_FELIX)),
+                 ('    └─ 包含 apple（次要，无固定更新）', lambda x: builddomains.ds_FELIX.switch_ext('apple', save=True), fapple_state, MFT_RADIOCHECK),
+                 ('全部下载后合并', lambda x: download_domains(builddomains.data_source_manager.sign_all)))
     global proxy_state_menu, last_main_menu
     proxy_state_menu = proxy_state = get_proxy_state()
     disable_state = proxy_state.type == 0 and fixed_fState or 0

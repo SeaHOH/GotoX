@@ -5,13 +5,10 @@ import os
 import sys
 sys.dont_write_bytecode = True
 
-import time
 import struct
 import socket
-from urllib.request import Request
-#from _functools import reduce
 from common import (
-    file_dir, root_dir, p_ALL, download_safe, get_data_source,
+    file_dir, root_dir, DataSourceManager, download_as_list,
     parse_set_proxy, select_path, getlogger
     )
 
@@ -19,27 +16,18 @@ from common import (
 def ip2int(ip, unpack=struct.unpack, inet_aton=socket.inet_aton):
     '''将 IPv4 地址转换为整数'''
     return unpack('>I', inet_aton(ip))[0]
-    #return reduce(lambda a, b: a << 8 | b, map(int, ip.split('.')))
 
 def int2bytes2(n, pack=struct.pack):
     '''将整数转换为大端序字节'''
     return pack('>H', n)
-    #return bytes(map(lambda b: (-1 >> b & 255), (8, 0)))
 
 def int2bytes4(n, pack=struct.pack):
     '''将整数转换为大端序字节'''
     return pack('>I', n)
-    #return bytes(map(lambda b: (n >> b & 255), (24, 16, 8, 0)))
 
 Url_APNIC = 'https://ftp.apnic.net/apnic/stats/apnic/delegated-apnic-latest'
 Url_17MON = 'https://raw.githubusercontent.com/17mon/china_ip_list/master/china_ip_list.txt'
 Url_GAOYIFAN = 'https://raw.githubusercontent.com/gaoyifan/china-operator-ip/ip-lists/china.txt'
-Req_APNIC = None
-Req_17MON = None
-Req_GAOYIFAN = None
-p_APNIC = 1
-p_17MON = 1 << 1
-p_GAOYIFAN = 1 << 2
 downloading = False
 mask_dict = dict((str(2**i), i) for i in range(8, 25))
 # https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml
@@ -146,91 +134,61 @@ def save_iplist_as_db(ipdb, iplist, padding=b'\xff\xff'):
     logging.debug('包含 IP 范围条目数：%s' % count)
     logging.debug('保存地址：%s' % ipdb)
 
-def download_cniplist(parse_cniplist, url):
-    global Req_APNIC, Req_17MON, Req_GAOYIFAN, update
-    if url is Url_APNIC:
-        if Req_APNIC is None:
-            Req_APNIC = Request(url)
-        req = Req_APNIC
-        update = None
-        name = 'APNIC'
-    elif url is Url_17MON:
-        if Req_17MON is None:
-            Req_17MON = Request(url)
-        req = Req_17MON
-        #更新一般在月初几天，由于内容不包含日期信息，故记录为获取时的日期信息
-        update = '17mon-' + time.strftime('%Y%m%d', time.localtime(time.time()))
-        name = '17mon'
-    elif url is Url_GAOYIFAN:
-        if Req_GAOYIFAN is None:
-            Req_GAOYIFAN = Request(url)
-        req = Req_GAOYIFAN
-        #每日 3:00 之后更新
-        update = 'gaoyifan-' + time.strftime('%Y%m%d', time.localtime(time.time()))
-        name = 'gaoyifan'
-    return download_safe(name, parse_cniplist, req)
-
-def parse_apnic_cniplist(fd, iplist):
-    global update
-    _update = update
+def parse_apnic_iplist(fd, ds):
     read = 0
     try:
         for line in fd:
             read += len(line)
-            if line.startswith(b'apnic|CN|ipv4'):
-                ip = line.decode().split('|')
-                if len(ip) > 5:
-                    iplist.append((ip2int(ip[3]), mask_dict[ip[4]]))
-            elif _update is None and line.startswith(b'2|apnic'):
-                date = line.decode().split('|')
-                if len(date) > 6:
-                    update = _update = 'APNIC-%s/%s' % (date[2], date[5])
-            elif line.startswith(b'apnic|JP|ipv6'):
+            linesp = line.decode().split('|')
+            if len(linesp) != 7:
+                continue
+            if linesp[2] == 'ipv4' and (linesp[1] == 'CN' or ds.check_ext(linesp[1])):
+                ds.itemlist.append((ip2int(ip[3]), mask_dict[ip[4]]))
+            elif ds.update is None and linesp[0] == '2':
+                ds.update = '%s/%s' % (linesp[2], linesp[5])
+            elif linesp[2] == 'ipv6':
                 #不需要 IPv6 数据，提前结束
                 return
-    except:
-        pass
+    except Exception as e:
+        logging.warning('parse_apnic_iplist 解析出错：%s', e)
     return read
 
-def parse_CIDR_cniplist(fd, iplist):
+def parse_cidr_iplist(fd, ds):
     read = 0
     try:
         for line in fd:
             read += len(line)
             if b'/' in line:
                 ip, mask = line.decode().strip('\r\n').split('/')
-                iplist.append((ip2int(ip), 32 - int(mask)))
-    except:
-        pass
+                ds.itemlist.append((ip2int(ip), 32 - int(mask)))
+    except Exception as e:
+        logging.warning('parse_cidr_iplist 解析出错：%s', e)
     return read
 
-def download_cniplist_as_db(ipdb, p=p_APNIC):
+def download_cniplist_as_db(ipdb, p=1):
     global downloading, update
     if downloading:
         msg = '已经有更新直连 IP 库任务正在进行中，请稍后再试'
         logging.warning(msg)
         return msg
     downloading = True
-    _update = []
     iplist = []
+    _update = []
+
+    def add(ds):
+        download_as_list(ds)
+        iplist.extend(ds.itemlist)
+        _update.append(ds.update)
 
     try:
-        if p & p_APNIC:
-            _iplist = download_cniplist(parse_apnic_cniplist, Url_APNIC)
-            iplist.extend(_iplist)
-            _update.append(update)
+        if p & ds_APNIC:
+            add(ds_APNIC)
 
+        if p & ds_17MON:
+            add(ds_17MON)
 
-        if p & p_17MON:
-            _iplist = download_cniplist(parse_CIDR_cniplist, Url_17MON)
-            iplist.extend(_iplist)
-            _update.append(update)
-
-
-        if p & p_GAOYIFAN:
-            _iplist = download_cniplist(parse_CIDR_cniplist, Url_GAOYIFAN)
-            iplist.extend(_iplist)
-            _update.append(update)
+        if p & ds_GAOYIFAN:
+            add(ds_GAOYIFAN)
 
         update = ' and '.join(_update)
         save_iplist_as_db(ipdb, iplist)
@@ -245,6 +203,16 @@ def test(ipdb):
     update = 'keep IP test'
     save_iplist_as_db(ipdb, [])
     print('IP 保留地址已保存完毕')
+
+data_source_manager = DataSourceManager()
+ds_APNIC = data_source_manager.add('APNIC', Url_APNIC, parse_apnic_iplist)
+ds_17MON = data_source_manager.add('17mon', Url_17MON, parse_cidr_iplist)
+ds_GAOYIFAN = data_source_manager.add('GaoYiFan', Url_GAOYIFAN, parse_cidr_iplist)
+ds_APNIC.add_ext(['mo', 'hk'])
+#更新一般在月初几天，由于内容不包含日期信息，故记录为获取时的日期信息
+ds_17MON.datefmt = '%Y%m%d'
+#每日 3:00 之后更新
+ds_GAOYIFAN.datefmt = '%Y%m%d'
 
 is_main = __name__ == '__main__'
 logging = getlogger(is_main)
@@ -261,7 +229,10 @@ if is_main:
 
     指定可用数据源，交互模式中无效
 
-    --apnic    使用 APNIC 数据源
+    --apnic[ mo][ hk]
+               使用 APNIC 数据源
+                 mo  保存澳门数据
+                 hk  保存香港数据
     --17mon    使用 17mon 数据源
     --gaoyifan 使用 gaoyifan 数据源
     --all      使用以上全部数据源
@@ -275,13 +246,8 @@ if is_main:
 ''')
     ipdb1 = os.path.join(root_dir, 'data', 'directip.db')
     ipdb2 = os.path.join(file_dir, 'directip.db')
-    data_source_valid = {
-        '--apnic': p_APNIC,
-        '--17mon': p_17MON,
-        '--gaoyifan': p_GAOYIFAN
-        }
-    data_source = get_data_source(data_source_valid)
-    if parse_set_proxy():
+    data_source = data_source_manager.get_source(*sys.argv)
+    if parse_set_proxy(data_source):
         data_source = 0
     if data_source:
         ipdb = ipdb1 if '-u' in sys.argv else ipdb2
@@ -294,7 +260,9 @@ if is_main:
  *                      APNIC --------- 按 1   *
  *                      17mon --------- 按 2   *
  *                      gaoyifan ------ 按 3   *
- *                      全部 ---------- 按 8   *
+ *                      全部 ---------- 按 6   *
+ *                      保存澳门数据 -- 按 7   *
+ *                      保存香港数据 -- 按 8   *
  *                      测试保留地址 -- 按 9   *
  *                      退出 ---------- 按 0   *
  ***********************************************
@@ -318,18 +286,23 @@ if is_main:
         if 9 in ns:
             test(ipdb)
             continue
-        if 8 in ns:
-            data_source = p_ALL
+        if 6 in ns:
+            data_source = data_source_manager.sign_all
         else:
             if 1 in ns:
-                data_source |= p_APNIC
+                data_source |= ds_APNIC
             if 2 in ns:
-                data_source |= p_17MON
+                data_source |= ds_17MON
             if 3 in ns:
-                data_source |= p_GAOYIFAN
+                data_source |= ds_GAOYIFAN
+            if 7 in ns:
+                ds_APNIC.set_ext('mo')
+            if 8 in ns:
+                ds_APNIC.set_ext('hk')
         if data_source == 0:
             print('输入错误！')
             continue
 
         download_cniplist_as_db(ipdb, data_source)
         data_source = 0
+        ds_APNIC.ext = 0
