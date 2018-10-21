@@ -5,8 +5,10 @@ Set objShell = WScript.CreateObject("WScript.Shell")
 linkFile = objShell.SpecialFolders("Desktop") & "\GotoX.lnk"
 isCreateShortcut = True
 
-if fso.fileExists(linkFile) And MsgBox("快捷方式已经存在，是否覆盖？", 52, "请确认") = 7 then
-    isCreateShortcut = False
+if fso.fileExists(linkFile) then
+    if (MsgBox("快捷方式已经存在，是否覆盖？", 52, "请确认") = 7) then
+        isCreateShortcut = False
+    End if
 End if
 
 if isCreateShortcut then
