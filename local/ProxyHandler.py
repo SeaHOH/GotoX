@@ -1333,11 +1333,9 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         ip = isip(host)
         if not ip:
             hostsp = host.split('.')
-            nhost = len(hostsp)
-            if nhost > 3 or \
-                    nhost == 3 and (
-                    len(hostsp[-1]) > 2 or \
-                    len(hostsp[-2]) > 3):
+            #浏览器不会对域名本身的有效性进行验证
+            #如：com.cn 可以作为主机名，也可以使用未注册的顶级域名
+            if len(hostsp) > 2:
                 host = '.'.join(hostsp[1:])
         try:
             return self.context_cache[host]

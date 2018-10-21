@@ -1,6 +1,7 @@
 # coding:utf-8
 
 import os
+import re
 import socket
 import _thread as thread
 from time import sleep
@@ -11,7 +12,10 @@ direct_ipdb = os.path.join(data_dir, 'directip.db')
 direct_domains = os.path.join(data_dir, 'directdomains.txt')
 direct_cache = LRUCache(GC.DNS_CACHE_ENTRIES//2)
 direct_tlds = (
+    # https://icannwiki.org
     # https://en.wikipedia.org/wiki/List_of_Internet_top-level_domains
+    # http://gtldresult.icann.org/application-result/applicationstatus
+    # https://www.icann.org/resources/pages/registries/registries-agreements-en
     # Country code top-level domains
     'cn', 'hk', 'mo',
     # Internationalized country code top-level domains
@@ -21,55 +25,64 @@ direct_tlds = (
     'xn--mix082f', #澳门
     'xn--mix891f', #澳門
     # Internationalized geographic top-level domains
-    'xn--1qqw23a', #佛山
-    'xn--xhq521b', #广东
+    'xn--1qqw23a', #佛山 Guangzhou YU Wei Information Technology Co., Ltd.
+    'xn--xhq521b', #广东 Guangzhou YU Wei Information Technology Co., Ltd.
     # ICANN-era generic top-level domains
+    'anquan',  #安全 QIHOO 360 TECHNOLOGY CO. LTD.
+    'cyou',    #畅游 Beijing Gamease Age Digital Technology Co., Ltd.
     'ren',     #人人 Beijing Qianxiang Wangjing Technology Development Co.
     'top',     # Jiangsu Bangning
-    'wang',    #网、王
+    'wang',    #网 Zodiac Wang Limited
     'shouji',  #手机 QIHOO 360 TECHNOLOGY CO. LTD.
     'tushu',   #图书 Amazon Registry Services, Inc.
     'wanggou', #网购 Amazon Registry Services, Inc.
     'weibo',   #微博 Sina Corporation
     'xihuan',  #喜欢 QIHOO 360 TECHNOLOGY CO. LTD.
+    'yun',     #云 QIHOO 360 TECHNOLOGY CO. LTD.
+    'xin',     # Elegant Leader Limited
     # Internationalized generic top-level domains
-    'xn--3ds443g',    #在线
-    'xn--fiq228c5hs', #中文网
-    'xn--ses554g',    #网址
-    'xn--5tzm5g',     #网站
-    'xn--io0a7i',     #网络
-    'xn--55qx5d',     #公司
-    'xn--czru2d',     #商城
-    'xn--nqv7f',      #机构
-    'xn--6qq986b3xl', #我爱你
-    'xn--czr694b',    #商标
-    'xn--rhqv96g',    #世界
-    'xn--3bst00m',    #集团
-    'xn--30rr7y',     #慈善
-    'xn--45q11c',     #八卦
-    'xn--55qw42g',    #公益
+    'xn--zfr164b',    #政务 China Organizational Name Administration Center
+    'xn--55qw42g',    #公益 China Organizational Name Administration Center
+    'xn--io0a7i',     #网络 Computer Network Information Center of Chinese Academy of Sciences (CNNIC)
+    'xn--55qx5d',     #公司 Computer Network Information Center of Chinese Academy of Sciences (CNNIC)
+    'xn--vuq861b',    #信息 Beijing Tele-info Network Technology Co., Ltd.
+    'xn--kput3i ',    #手机 Beijing RITT-Net Technology Development Co., Ltd.
+    'xn--efvy88h',    #新闻 Guangzhou  YU  Wei  Information  Technology  Co.,  Ltd.
+    'xn--9krt00a',    #微博 Sina Corporation
+    'xn--45q11c',     #八卦 Zodiac Gemini Limited
+    'xn--3bst00m',    #集团 Eagle  Horizon  Limited
+    'xn--hxt814e',    #网店 Zodiac Taurus Limited
+    'xn--czru2d',     #商城 Zodiac Aquarius Limited
+    'xn--30rr7y',     #慈善 Excellent First Limited
+    'xn--9et52u',     #时尚 Rise  Victory  Limited
+    'xn--6qq986b3xl', #我爱你 Tycoon  Treasure  Limited
+    'xn--ses554g',    #网址 KNET Co., Ltd.
+    'xn--rhqv96g',    #世界 Stable Tone Limited (HK)
+    'xn--nyqy26a',    #健康 Stable Tone Limited (HK)
+    'xn--czr694b',    #商标 Hu Yi Global Information Resources (Holding) Company. Hong Kong Limited (HK)
+    'xn--imr513n',    #餐厅 Hu Yi Global Information Resources (Holding) Company. Hong Kong Limited (HK)
+    'xn--otu796d',    #招聘 Dot Trademark TLD Holding Company Limited (HK)
+    'xn--5tzm5g',     #网站 Global Website TLD Asia Limited (HK)
     # Brand top-level domains
-    'alibaba', # Alibaba Group Holding Limited
-    'alipay',  # Alibaba Group Holding Limited
-    'baidu',   # Baidu, Inc.
-    'citic',   # CITIC Group
-    'sina',    # Sina Corporation
-    'taobao',  # Alibaba Group Holding Limited
-    'unicom',  # China United Network Communications Corporation Limited
+    'alibaba',     #阿里巴巴 Alibaba Group Holding Limited
+    'alipay',      #阿里支付 Alibaba Group Holding Limited
+    'baidu',       #百度 Baidu, Inc.
+    'citic',       #中信 CITIC Group
+    'icbc',        #工行 Industrial and Commercial Bank of China Limited
+    'sina',        #新浪 Sina Corporation
+    'taobao',      #淘宝 Alibaba Group Holding Limited
+    'tmall',       #天猫 Alibaba Group Holding Limited
+    'unicom',      #联通 China United Network Communications Corporation Limited
+    'kerryhotels', #嘉里大酒店 Kerry Trading Co. Limited (HK)
     # Internationalized brand top-level domains
     'xn--8y0a063a',         #联通 China United Network Communications Corporation Limited
     'xn--6frz82g',          #移动 China Mobile Communications Corporation
     'xn--fiq64b',           #中信 CITIC Group
-    'xn--5su34j936bgsg',    #香格里拉 Shangri‐La International Hotel Management Limited
-    'xn--b4w605ferd',       #淡马锡 Temasek Holdings (Private) Limited
-    'xn--3oq18vl8pn36a',    #大众汽车 Volkswagen (China) Investment Co., Ltd.
-    'xn--flw351e',          #谷歌 Google
     'xn--estv75g',          #工行 Industrial and Commercial Bank of China Limited
-    'xn--w4rs40l',          #嘉里 Kerry Trading Co. Limited
-    'xn--w4r85el8fhu5dnra', #嘉里大酒店 Kerry Trading Co. Limited
-    'xn--kcrx77d1x4a',      #飞利浦 Koninklijke Philips N.V.
-    'xn--jlq61u9w7b',       #诺基亚 Nokia Corporation
-    'xn--fzys8d69uvgm',     #電訊盈科 PCCW Enterprises Limited
+    'xn--3oq18vl8pn36a',    #大众汽车 Volkswagen (China) Investment Co., Ltd.
+    'xn--5su34j936bgsg',    #香格里拉 Shangri‐La International Hotel Management Limited (HK)
+    'xn--w4rs40l',          #嘉里 Kerry Trading Co. Limited (HK)
+    'xn--w4r85el8fhu5dnra', #嘉里大酒店 Kerry Trading Co. Limited (HK)
     # Special-Use Domains (reserved)
     'example',
     'invalid',
@@ -127,16 +140,15 @@ class IPv4Database:
         #转换 IP 为 BE Uint32，实际类型 bytes
         nip = inet_aton(ip)
         #确定索引范围
-        index = self.index
         fip = nip[0]
         #从 224 开始都属于保留地址
         if fip >= 224:
             return True
         fip *= 2
-        lo = index[fip]
+        lo = self.index[fip]
         if lo < 0:
             return False
-        hi = index[fip + 1]
+        hi = self.index[fip + 1]
         #与 IP 范围比较确定 IP 位置
         data = self.data
         while lo < hi:
@@ -149,13 +161,19 @@ class IPv4Database:
         return lo & 1
 
 class DomainsDict:
+    check_domain = re.compile(r'^[a-zA-z0-9\-\.]+$').match
+
     def __init__(self):
         self.dict = {'ip': set()}
         self.levels = []
         self.update = 'N/A'
+        self.count_dm = 0
+        self.count_ip = 0
 
     def add(self, domain):
-        if not domain or not isinstance(domain, str):
+        if not domain or not isinstance(domain, str) or \
+                len(domain) > 253 or \
+                self.check_domain(domain) is None:
             return
         domain = domain.lower()
         if domain[0] == '.':
@@ -170,6 +188,7 @@ class DomainsDict:
             self.levels.append(level)
             self.levels.sort()
         ds.add(domain)
+        self.count_dm += 1
 
     def add_ip(self, ip):
         if isipv6(ip):
@@ -177,21 +196,22 @@ class DomainsDict:
         elif not isipv4(ip):
             return
         self.dict['ip'].add(ip)
+        self.count_ip += 1
         return True
 
     def add_file(self, file):
         with open(file, 'r') as fd:
             has_update = None
             line = fd.readline()
-            if line[0] in ('#', ';') and 'pdate:' in line:
-                self.update = line.split('pdate:')[-1].strip('\r\n\t ')
+            if line[0] in '#;' and 'pdate:' in line:
+                self.update = line.split('pdate:')[-1].strip()
                 has_update = True
-            elif line and line[0] not in ('#', ';'):
-                domain = line.strip('\r\n\t ')
+            elif line[0] not in '#;':
+                domain = line.strip()
                 self.add(domain)
             for line in fd:
-                if line and line[0] not in ('#', ';'):
-                    domain = line.strip('\r\n\t ')
+                if line[0] not in '#;':
+                    domain = line.strip()
                     self.add(domain)
             if has_update and line[:4] != '#end':
                 logging.warning('直连域名列表文件 %r 不完整，请更新', file)
@@ -250,7 +270,8 @@ def load_domains():
         domains_dict.add(domain)
     if os.path.exists(direct_domains):
         domains_dict.add_file(direct_domains)
-        DDDVer = domains_dict.update
+        DDDVer = '%s, domains count: %d, IPs count: %d' % (
+                domains_dict.update, domains_dict.count_dm, domains_dict.count_ip)
     else:
         DDDVer = '列表文件未安装'
         buildscript = os.path.join(launcher_dir, 'builddomains.py')

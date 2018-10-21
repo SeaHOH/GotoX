@@ -339,7 +339,7 @@ def build_menu(systray):
     sub_menu3 = (('建议更新频率：1～7 天一次', 'pass', MFS_DISABLED),
                  (None, '-'),
                  ('Ⅰ 从 felixonmars 下载（每日更新）', lambda x: download_domains(builddomains.ds_FELIX)),
-                 ('    └─ 包含 apple（次要，无固定更新）', lambda x: builddomains.ds_FELIX.switch_ext('apple', save=True), fapple_state, MFT_RADIOCHECK),
+                 ('    └─ 包含 apple', lambda x: builddomains.ds_FELIX.switch_ext('apple', save=True), fapple_state, MFT_RADIOCHECK),
                  ('全部下载后合并', lambda x: download_domains(builddomains.data_source_manager.sign_all)))
     global proxy_state_menu, last_main_menu
     proxy_state_menu = proxy_state = get_proxy_state()

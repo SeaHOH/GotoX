@@ -297,7 +297,7 @@ def download_as_list(ds):
     if ds.req is None:
         ds.req = Request(ds.url)
     ds.req.headers['Range'] = 'bytes=0-'
-    if ds.datefmt is None
+    if ds.datefmt is None:
         ds.update = None
     else:
         ds.update = time.strftime(ds.datefmt, time.localtime(time.time()))
