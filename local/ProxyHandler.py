@@ -912,7 +912,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     logging.warning('%s 转发到 %r 失败：%r', self.address_string(e), self.url or host, e)
         else:
             hostip = random.choice(dns_resolve(host))
-            remote = http_util.create_connection((hostip, int(port)), self.ssl, self.fwd_timeout)
+            remote = http_util.create_connection((hostip, port), self.ssl, self.fwd_timeout)
         if remote is None:
             if not isdirect(host):
                 if self.command == 'CONNECT':

@@ -385,7 +385,7 @@ systray_GotoX = SysTrayIcon(icon_gotox, 'GotoX', None, quit_item,
                             right_click=on_right_click)
 systray_GotoX.start()
 start_GotoX()
-#LISTEN_GAE, LISTEN_AUTO = get_listen_addr()
+#load_config()
 
 from time import sleep
 

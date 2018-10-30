@@ -702,6 +702,7 @@ class HTTPUtil(BaseHTTPUtil):
                     left_size -= len(data)
                     readed += len(data)
             payload.readed = readed
+            sock.wfile.flush()
             #为下个请求恢复无延迟发送
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
         else:

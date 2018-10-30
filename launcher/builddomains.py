@@ -130,6 +130,9 @@ if is_main:
 '''
 
     while True:
+        data_source = 0
+        ds_FELIX.ext = 0
+
         path = select_path(txt1, txt2)
         if path:
             txt = path
@@ -159,5 +162,3 @@ if is_main:
             continue
 
         download_domains_as_txt(txt, data_source)
-        data_source = 0
-        ds_FELIX.ext = 0

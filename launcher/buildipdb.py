@@ -143,7 +143,7 @@ def parse_apnic_iplist(fd, ds):
             if len(linesp) != 7:
                 continue
             if linesp[2] == 'ipv4' and (linesp[1] == 'CN' or ds.check_ext(linesp[1])):
-                ds.itemlist.append((ip2int(ip[3]), mask_dict[ip[4]]))
+                ds.itemlist.append((ip2int(linesp[3]), mask_dict[linesp[4]]))
             elif ds.update is None and linesp[0] == '2':
                 ds.update = '%s/%s' % (linesp[2], linesp[5])
             elif linesp[2] == 'ipv6':
@@ -269,6 +269,9 @@ if is_main:
 '''
 
     while True:
+        data_source = 0
+        ds_APNIC.ext = 0
+
         path = select_path(ipdb1, ipdb2)
         if path:
             ipdb = path
@@ -304,5 +307,3 @@ if is_main:
             continue
 
         download_cniplist_as_db(ipdb, data_source)
-        data_source = 0
-        ds_APNIC.ext = 0

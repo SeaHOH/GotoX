@@ -44,7 +44,7 @@ proxy_opener = build_opener(proxy_handler, https_handler)
 
 def check_appid_exists(appid):
     response = proxy_opener.open('https://%s.appspot.com/' % appid)
-    return response.status == 200
+    return response.status in (200, 503)
 
 def get_appid():
     global nappid
