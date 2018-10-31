@@ -26,10 +26,5 @@ RawConfigParser.optionxform = lambda s, opt: opt
 _read = ConfigParser.read
 ConfigParser.read = lambda s, f, encoding='utf8': _read(s, f, encoding)
 
-#可添加属性，强制使用 gevent 后已经不需要此 patch
-#import socket
-#class socketMod(socket.socket): pass
-#socket.socket = socketMod
-
 #重写了类方法 __getattr__ 时，修正 hasattr
 hasattr = lambda o, a: getattr(o, a, None) != None

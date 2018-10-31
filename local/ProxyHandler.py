@@ -938,7 +938,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         #转发到其它代理
         proxytype, proxyuser, proxypass, proxyaddress = parse_proxy(self.target)
         proxyhost, _, proxyport = proxyaddress.rpartition(':')
-        ips = dns_resolve(proxyhost)
+        ips = dns_resolve(proxyhost).copy()
         if ips:
             ipcnt = len(ips) 
         else:
@@ -949,38 +949,38 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             ips.sort(key=lambda ip: self.proxy_connection_time.get(ip, 0))
         proxyport = int(proxyport)
         while ips:
-            proxyhost = ips.pop(0)
+            proxyip = ips.pop(0)
             host = dns_resolve(self.host)[0] if self.target in proxy_no_rdns else self.host
             if proxytype:
                 proxytype = proxytype.upper()
             if proxytype not in socks.PROXY_TYPES:
                 proxytype = 'HTTP'
-            proxy = socks.socksocket()
-            proxy.set_proxy(socks.PROXY_TYPES[proxytype], proxyhost, proxyport, True, proxyuser, proxypass)
+            proxy_sock = http_nor.get_proxy_socket(proxyip, 8)
+            proxy_sock.set_proxy(socks.PROXY_TYPES[proxytype], proxyip, proxyport, True, proxyuser, proxypass)
             if ipcnt > 1:
                 start_time = time()
             try:
                 if self.fakecert:
-                    proxy = http_nor.get_ssl_socket(proxy, None if isip(self.host) else self.host.encode())
-                proxy.connect((host, self.port))
+                    proxy_sock = http_nor.get_ssl_socket(proxy_sock, None if isip(self.host) else self.host.encode())
+                proxy_sock.connect((host, self.port))
                 if self.fakecert:
-                    proxy.do_handshake()
+                    proxy_sock.do_handshake()
             except Exception as e:
                 if '0x5b' in e.msg and not isip(host):
                     proxy_no_rdns.add(self.target)
-                    ips.insert(0, proxyhost)
+                    ips.insert(0, proxyip)
                 else:
                     if ipcnt > 1:
-                        self.proxy_connection_time[proxyhost] = self.fwd_timeout + 1 + random.random()
+                        self.proxy_connection_time[proxyip] = self.fwd_timeout + 1 + random.random()
                     logging.error('%s%s:%d 转发 "%s %s" 到 [%s] 代理失败：%s',
-                                  self.address_string(), proxyhost, proxyport, self.command, self.url or self.path, proxytype, self.target)
+                                  self.address_string(), proxyip, proxyport, self.command, self.url or self.path, proxytype, self.target)
                 continue
             else:
                 if ipcnt > 1:
-                    self.proxy_connection_time[proxyhost] = time() - start_time
+                    self.proxy_connection_time[proxyip] = time() - start_time
             logging.info('%s%s:%d 转发 "%s %s" 到 [%s] 代理：%s',
-                         self.address_string(), proxyhost, proxyport, self.command, self.url or self.path, proxytype, self.target)
-            self.forward_connect(proxy)
+                         self.address_string(), proxyip, proxyport, self.command, self.url or self.path, proxytype, self.target)
+            self.forward_connect(proxy_sock)
 
     def do_REDIRECT(self):
         #重定向到目标地址

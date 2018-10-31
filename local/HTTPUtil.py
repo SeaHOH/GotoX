@@ -4,11 +4,13 @@
 import sys
 import os
 import re
+import gc
 import socket
 import ssl
 import struct
 import random
 import socks
+import collections
 import OpenSSL
 from . import clogging as logging
 from select import select
@@ -16,7 +18,10 @@ from time import time, sleep
 from .GlobalConfig import GC
 from .compat import Queue, thread, httplib, hasattr
 from .compat.openssl import zero_EOF_error, SSLConnection
-from .common import cert_dir, NetWorkIOError, closed_errno, LRUCache, isip, random_hostname
+from .common import (
+    cert_dir, NetWorkIOError, closed_errno, LRUCache, LimiterFull, Limiter,
+    isip, random_hostname
+    )
 from .common.dns import dns, dns_resolve
 from .common.proxy import parse_proxy, proxy_no_rdns
 from .FilterUtil import reset_method_list, get_fake_sni
@@ -59,12 +64,53 @@ gws_servername = GC.GAE_SERVERNAME
 gae_testgwsiplist = GC.GAE_TESTGWSIPLIST
 autorange_threads = GC.AUTORANGE_FAST_THREADS
 
+class LimitConnection:
+    'A connection limiter wrapper for remote IP.'
+
+    limiters = LRUCache(4096)
+    _sock = None
+    max_per_ip = GC.LINK_MAXPERIP
+    timeout = 3
+
+    def __init__(self, sock, ip, max_per_ip=None, timeout=None):
+        max_per_ip = max_per_ip or self.max_per_ip
+        timeout = timeout or self.timeout
+        #利用 __del__ 需及时触发回收
+        gc.collect()
+        try:
+            limiter = self.limiters[ip]
+        except KeyError:
+            self.limiters[ip] = limiter = Limiter(max_per_ip)
+        limiter.push(timeout=timeout)
+        self._sock = sock
+        self._ip = ip
+
+    def __del__(self):
+        if self._sock:
+            self._sock.close()
+            self._sock = None
+            try:
+                limiter = self.limiters[self._ip]
+            except KeyError:
+                pass
+            else:
+                limiter.pop(block=False)
+                if limiter.empty():
+                    del self.limiters[self._ip]
+
+    def __getattr__(self, attr):
+        return getattr(self._sock, attr)
+
+    def close(self):
+        self.__del__()
+
 class BaseHTTPUtil:
     '''Basic HTTP Request Class'''
 
     use_openssl = 0
     ssl_ciphers = ssl._RESTRICTED_SERVER_CIPHERS
-    wtimeout = 0
+    new_sock4_cache = collections.deque()
+    new_sock6_cache = collections.deque()
 
     def __init__(self, use_openssl=None, cacert=None, ssl_ciphers=None):
         if use_openssl:
@@ -80,16 +126,14 @@ class BaseHTTPUtil:
         self.gws = gws = self.ssl_ciphers is gws_ciphers
         if gws:
             self.keeptime = GC.GAE_KEEPTIME
-            self.wtimeout = GC.FINDER_MAXTIMEOUT * 1.2 / 1000
         else:
             self.keeptime = GC.LINK_KEEPTIME
             self.google_verify = lambda x: None
         self.set_ssl_option()
-        import collections
         self.tcp_connection_cache = collections.defaultdict(collections.deque)
         self.ssl_connection_cache = collections.defaultdict(collections.deque)
-        thread.start_new_thread(self.check_tcp_connection_cache, ())
-        thread.start_new_thread(self.check_ssl_connection_cache, ())
+        thread.start_new_thread(self.check_connection_cache, ('tcp',))
+        thread.start_new_thread(self.check_connection_cache, ('ssl',))
 
     def set_ssl_option(self):
         #强制 GWS 使用 TLSv1.2
@@ -150,6 +194,49 @@ class BaseHTTPUtil:
         else:
             return None if isip(host) else host.encode()
 
+    @staticmethod
+    def set_tcp_socket(sock, timeout=None, set_buffer=True):
+        # set reuseaddr option to avoid 10048 socket error
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # set struct linger{l_onoff=1,l_linger=0} to avoid 10048 socket error
+        # struct.pack('ii', 1, 0) == b'\x01\x00\x00\x00\x00\x00\x00\x00'
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, b'\x01\x00\x00\x00\x00\x00\x00\x00')
+        # resize socket recv buffer 8K->*K to improve browser releated application performance
+        if set_buffer:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, GC.LINK_RECVBUFFER)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32768)
+        # disable negal algorithm to send http request quickly.
+        sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
+        # set a short timeout to trigger timeout retry more quickly.
+        sock.settimeout(timeout if timeout else 1)
+
+    def _get_tcp_socket(self, _socket, ip, timeout=None):
+        if not ':' in ip:
+            new_sock_cache = self.new_sock4_cache
+            AF_INETX = socket.AF_INET
+        else:
+            new_sock_cache = self.new_sock6_cache
+            AF_INETX = socket.AF_INET6
+        if new_sock_cache:
+            sock = new_sock_cache.popleft()
+        else:
+            # create a ipv4/ipv6 socket object
+            sock = _socket(AF_INETX)
+            self.set_tcp_socket(sock, timeout)
+        try:
+            # wrap for connect limit
+            sock = LimitConnection(sock, ip)
+        except LimiterFull as e:
+            sock = new_sock_cache.append(sock)
+            raise e
+        return sock
+
+    def get_tcp_socket(self, ip, timeout=None):
+        return self._get_tcp_socket(socket.socket, ip, timeout)
+
+    def get_proxy_socket(self, proxyip, timeout=None):
+        return self._get_tcp_socket(socks.socksocket, proxyip, timeout)
+
     def get_ssl_socket(self, sock, server_hostname=None):
         return self.context.wrap_socket(sock, do_handshake_on_connect=False, server_hostname=server_hostname)
 
@@ -183,7 +270,9 @@ class BaseHTTPUtil:
         return certs[0]
 
     @staticmethod
-    def check_connection_alive(keeptime, wtimeout, ctime, sock):
+    def check_connection_alive(sock, keeptime, ctime):
+        if hasattr(sock, '_sock'):
+            sock = sock._sock
         if time() - ctime > keeptime:
             sock.close()
             return
@@ -192,79 +281,44 @@ class BaseHTTPUtil:
             if rd or ed:
                 sock.close()
                 return
-            if wtimeout:
-                _, wd, ed = select([], [sock], [sock], wtimeout)
-                if not wd or ed:
-                    sock.close()
-                    return
         except OSError:
             return
         return True
 
-    def check_tcp_connection_cache(self):
+    def check_connection_cache(self, type='tcp'):
         check_connection_alive = self.check_connection_alive
-        tcp_connection_cache = self.tcp_connection_cache
+        if type == 'tcp':
+            connection_cache = self.tcp_connection_cache
+        elif type == 'ssl':
+            connection_cache = self.ssl_connection_cache
+        else:
+            raise ValueError('unknown connection cache type: %r' % type)
         keeptime = self.keeptime
-        wtimeout = self.wtimeout or 2.0
         while True:
-            sleep(30)
+            sleep(1)
             #将键名放入元组
-            keys = tuple(tcp_connection_cache.keys())
+            keys = tuple(connection_cache.keys())
             for cache_key in keys:
-                cache = tcp_connection_cache[cache_key]
+                cache = connection_cache[cache_key]
                 if not cache:
-                    del tcp_connection_cache[cache_key]
+                    del connection_cache[cache_key]
                 try:
                     while cache:
-                        ctime, sock = cachedsock = cache.popleft()
-                        if check_connection_alive(keeptime, wtimeout, ctime, sock):
-                            cache.appendleft(cachedsock)
+                        ctime, connection = cached_connection = cache.popleft()
+                        if check_connection_alive(connection._sock, keeptime, ctime):
+                            cache.appendleft(cached_connection)
                             break
                 except Exception as e:
-                    logging.error('check_tcp_connection_cache(%s) 错误：%r', cache_key, e)
-
-    def check_ssl_connection_cache(self):
-        check_connection_alive = self.check_connection_alive
-        ssl_connection_cache = self.ssl_connection_cache
-        keeptime = self.keeptime
-        wtimeout = self.wtimeout or 2.0
-        while True:
-            sleep(30)
-            keys = tuple(ssl_connection_cache.keys())
-            for cache_key in keys:
-                cache = ssl_connection_cache[cache_key]
-                if not cache:
-                    del ssl_connection_cache[cache_key]
-                try:
-                    while cache:
-                        ctime, ssl_sock = cachedsock = cache.popleft()
-                        if check_connection_alive(keeptime, wtimeout, ctime, ssl_sock.sock):
-                            cache.appendleft(cachedsock)
-                            break
-                except Exception as e:
-                    logging.error('check_ssl_connection_cache(%s) 错误：%r', cache_key, e)
+                    logging.error('check_connection_cache(type=%r, key=%r) 错误：%s', type, cache_key, e)
 
     def clear_all_connection_cache(self):
         self.tcp_connection_cache.clear()
         self.ssl_connection_cache.clear()
 
-connect_limiter = LRUCache(512)
-def set_connect_start(ip):
-    try:
-        connect_limiter[ip].put(True)
-    except KeyError:
-        #只是限制同时正在发起的连接数，并不限制连接的总数，所以设定尽量小的数字
-        connect_limiter[ip] = Queue.LifoQueue(3)
-        connect_limiter[ip].put(True)
-
-def set_connect_finish(ip):
-    connect_limiter[ip].get()
-
 class HTTPUtil(BaseHTTPUtil):
     '''HTTP Request Class'''
 
     protocol_version = 'HTTP/1.1'
-    offlinger_val = struct.pack('ii', 1, 0)
 
     def __init__(self, max_window=4, timeout=8, proxy='', ssl_ciphers=None, max_retry=2):
         # http://docs.python.org/dev/library/ssl.html
@@ -300,23 +354,15 @@ class HTTPUtil(BaseHTTPUtil):
     def get_ssl_connection_time(self, addr):
         return self.ssl_connection_time.get(addr, self.timeout)
 
-    def _create_connection(self, ipaddr, forward, queobj):
-        ip = ipaddr[0]
+    def _create_connection(self, ipaddr, forward, queobj, get_cache_sock=None):
+        if get_cache_sock:
+            sock = get_cache_sock()
+            if sock:
+                queobj.put(sock)
+                return
+
         try:
-            # create a ipv4/ipv6 socket object
-            sock = socket.socket(socket.AF_INET if ':' not in ip else socket.AF_INET6)
-            # set reuseaddr option to avoid 10048 socket error
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            # set struct linger{l_onoff=1,l_linger=0} to avoid 10048 socket error
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, self.offlinger_val)
-            # resize socket recv buffer 8K->128K to improve browser releated application performance
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 131072)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32768)
-            # disable nagle algorithm to send http request quickly.
-            sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
-            # set a short timeout to trigger timeout retry more quickly.
-            sock.settimeout(forward if forward else 1)
-            set_connect_start(ip)
+            sock = self.get_tcp_socket(ipaddr[0], forward)
             # start connection time record
             start_time = time()
             # TCP connect
@@ -332,10 +378,6 @@ class HTTPUtil(BaseHTTPUtil):
             queobj.put(e)
             # reset a large and random timeout to the ipaddr
             self.tcp_connection_time[ipaddr] = self.timeout + 1
-            # close tcp socket
-            sock.close()
-        finally:
-            set_connect_finish(ip)
 
     def _close_connection(self, cache, count, queobj, first_tcp_time):
         now = time()
@@ -349,27 +391,30 @@ class HTTPUtil(BaseHTTPUtil):
                     sock.close()
 
     def create_connection(self, address, hostname, cache_key, ssl=None, forward=None, **kwargs):
+        def get_cache_sock():
+            used_sock = []
+            try:
+                while cache:
+                    ctime, sock = cachedsock = cache.pop()
+                    if newconn and hasattr(sock, 'used'):
+                        used_sock.append(cachedsock)
+                        continue
+                    if self.check_connection_alive(sock, self.keeptime, ctime):
+                        if forward:
+                            sock.settimeout(forward)
+                        return sock
+            except IndexError:
+                pass
+            finally:
+                if newconn and used_sock:
+                    used_sock.reverse()
+                    cache.extend(used_sock)
+
         cache = self.tcp_connection_cache[cache_key]
         newconn = forward and ssl
-        keeptime = self.keeptime
-        wtimeout = self.wtimeout
-        used_sock = []
-        try:
-            while cache:
-                ctime, sock = cachedsock = cache.pop()
-                if newconn and hasattr(sock, 'used'):
-                    used_sock.append(cachedsock)
-                    continue
-                if self.check_connection_alive(keeptime, wtimeout, ctime, sock):
-                    if forward:
-                        sock.settimeout(forward)
-                    return sock
-        except IndexError:
-            pass
-        finally:
-            if newconn and used_sock:
-                used_sock.reverse()
-                cache.extend(used_sock)
+        sock = get_cache_sock()
+        if sock:
+            return sock
 
         result = None
         host, port = address
@@ -388,7 +433,7 @@ class HTTPUtil(BaseHTTPUtil):
                 addrs = addresses
             queobj = Queue.Queue()
             for addr in addrs:
-                thread.start_new_thread(self._create_connection, (addr, forward, queobj))
+                thread.start_new_thread(self._create_connection, (addr, forward, queobj, get_cache_sock))
             addrslen = len(addrs)
             for n in range(addrslen):
                 result = queobj.get()
@@ -401,7 +446,7 @@ class HTTPUtil(BaseHTTPUtil):
                             addresseslen -= 1
                         except ValueError:
                             pass
-                    if i == n == 0:
+                    if i == n == 0 and not isinstance(result, LimiterFull):
                         #only output first error
                         logging.warning('%s _create_connection %r 返回 %r，重试', addr[0], host, result)
                 else:
@@ -411,64 +456,54 @@ class HTTPUtil(BaseHTTPUtil):
         if result:
             raise result
 
-    def _create_ssl_connection(self, ipaddr, cache_key, host, queobj, test=None, retry=None):
-        ip = ipaddr[0]
-        try:
-            # create a ipv4/ipv6 socket object
-            sock = socket.socket(socket.AF_INET if ':' not in ip else socket.AF_INET6)
-            # set reuseaddr option to avoid 10048 socket error
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            # set struct linger{l_onoff=1,l_linger=0} to avoid 10048 socket error
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, self.offlinger_val)
-            # resize socket recv buffer 8K->128K to improve browser releated application performance
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 131072)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32768)
-            # disable negal algorithm to send http request quickly.
-            sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
-            # pick up the sock socket
-            ssl_sock = self.get_ssl_socket(sock, self.get_server_hostname(cache_key, host))
-            # set a short timeout to trigger timeout retry more quickly.
-            ssl_sock.settimeout(test if test else 1)
-            set_connect_start(ip)
-            # start connection time record
-            start_time = time()
-            # TCP connect
-            ssl_sock.connect(ipaddr)
-            #connected_time = time()
-            # set a short timeout to trigger timeout retry more quickly.
-            ssl_sock.settimeout(test if test else 1.5)
-            # SSL handshake
-            ssl_sock.do_handshake()
-            handshaked_time = time()
-            # record TCP connection time
-            #self.tcp_connection_time[ipaddr] = ssl_sock.tcp_time = connected_time - start_time
-            # record SSL connection time
-            self.ssl_connection_time[ipaddr] = ssl_sock.ssl_time = handshaked_time - start_time
-            if test:
-                if ssl_sock.ssl_time > test:
-                    raise socket.timeout('%d 超时' % int(ssl_sock.ssl_time*1000))
-            # verify Google SSL certificate.
-            self.google_verify(ssl_sock)
-            # sometimes, we want to use raw tcp socket directly(select/epoll), so setattr it to ssl socket.
-            ssl_sock.sock = sock
-            ssl_sock.xip = ipaddr
-            if test:
-                self.ssl_connection_cache[cache_key].append((time(), ssl_sock))
-                return queobj.put((ip, ssl_sock.ssl_time))
-            # put ssl socket object to output queobj
-            queobj.put(ssl_sock)
-        except NetWorkIOError as e:
-            # reset a large and random timeout to the ipaddr
-            self.ssl_connection_time[ipaddr] = self.timeout + 1
-            # close tcp socket
-            sock.close()
-            # any socket.error, put Excpetions to output queobj.
-            e.xip = ipaddr
-            if test and not retry and e.args == zero_EOF_error:
-                return self._create_ssl_connection(ipaddr, cache_key, host, queobj, test, True)
-            queobj.put(e)
-        finally:
-            set_connect_finish(ip)
+    def _create_ssl_connection(self, ipaddr, cache_key, host, queobj, test=None, get_cache_sock=None):
+        retry = None
+        while True:
+            if get_cache_sock:
+                sock = get_cache_sock()
+                if sock:
+                    queobj.put(sock)
+                    return
+
+            ip = ipaddr[0]
+            try:
+                sock = self.get_tcp_socket(ip, test)
+                ssl_sock = self.get_ssl_socket(sock, self.get_server_hostname(cache_key, host))
+                # start connection time record
+                start_time = time()
+                # TCP connect
+                ssl_sock.connect(ipaddr)
+                #connected_time = time()
+                # set a short timeout to trigger timeout retry more quickly.
+                ssl_sock.settimeout(test if test else 1.5)
+                # SSL handshake
+                ssl_sock.do_handshake()
+                handshaked_time = time()
+                # record TCP connection time
+                #self.tcp_connection_time[ipaddr] = ssl_sock.tcp_time = connected_time - start_time
+                # record SSL connection time
+                self.ssl_connection_time[ipaddr] = ssl_sock.ssl_time = handshaked_time - start_time
+                if test:
+                    if ssl_sock.ssl_time > test:
+                        raise socket.timeout('%d 超时' % int(ssl_sock.ssl_time*1000))
+                # verify Google SSL certificate.
+                self.google_verify(ssl_sock)
+                ssl_sock.xip = ipaddr
+                if test:
+                    self.ssl_connection_cache[cache_key].append((time(), ssl_sock))
+                    return queobj.put((ip, ssl_sock.ssl_time))
+                # put ssl socket object to output queobj
+                queobj.put(ssl_sock)
+            except NetWorkIOError as e:
+                # reset a large and random timeout to the ipaddr
+                self.ssl_connection_time[ipaddr] = self.timeout + 1
+                # any socket.error, put Excpetions to output queobj.
+                e.xip = ipaddr
+                if test and not retry and e.args == zero_EOF_error:
+                    retry = True
+                    continue
+                queobj.put(e)
+            break
 
     def _close_ssl_connection(self, cache, count, queobj, first_ssl_time):
         now = time()
@@ -479,19 +514,22 @@ class HTTPUtil(BaseHTTPUtil):
                 if ssl_sock.ssl_time < ssl_time_threshold:
                     cache.append((now, ssl_sock))
                 else:
-                    ssl_sock.sock.close()
+                    ssl_sock._sock.close()
 
     def create_ssl_connection(self, address, hostname, cache_key, getfast=None, **kwargs):
+        def get_cache_sock():
+            try:
+                while cache:
+                    ctime, ssl_sock = cache.pop()
+                    if self.check_connection_alive(ssl_sock._sock, self.keeptime, ctime):
+                        return ssl_sock
+            except IndexError:
+                pass
+
         cache = self.ssl_connection_cache[cache_key]
-        keeptime = self.keeptime
-        wtimeout = self.wtimeout
-        try:
-            while cache:
-                ctime, ssl_sock = cache.pop()
-                if self.check_connection_alive(keeptime, wtimeout, ctime, ssl_sock.sock):
-                    return ssl_sock
-        except IndexError:
-            pass
+        sock = get_cache_sock()
+        if sock:
+            return sock
 
         result = None
         host, port = address
@@ -511,7 +549,7 @@ class HTTPUtil(BaseHTTPUtil):
                     addrs = addresses
             queobj = Queue.Queue()
             for addr in addrs:
-                thread.start_new_thread(self._create_ssl_connection, (addr, cache_key, host, queobj))
+                thread.start_new_thread(self._create_ssl_connection, (addr, cache_key, host, queobj, None, get_cache_sock))
             addrslen = len(addrs)
             for n in range(addrslen):
                 result = queobj.get()
@@ -524,7 +562,7 @@ class HTTPUtil(BaseHTTPUtil):
                             addresseslen -= 1
                         except ValueError:
                             pass
-                    if i == n == 0:
+                    if i == n == 0 and not isinstance(result, LimiterFull):
                         #only output first error
                         logging.warning('%s _create_ssl_connection %r 返回 %r，重试', addr[0], host, result)
                 else:
@@ -572,7 +610,7 @@ class HTTPUtil(BaseHTTPUtil):
 #        try:
 #            sock = self.__create_connection_withproxy(address, timeout, source_address)
 #            ssl_sock = self.get_ssl_socket(sock)
-#            ssl_sock.sock = sock
+#            ssl_sock._sock = sock
 #            return ssl_sock
 #        except Exception as e:
 #            logging.error('__create_ssl_connection_withproxy error %s', e)
@@ -599,7 +637,7 @@ class HTTPUtil(BaseHTTPUtil):
             proxy = self.get_gws_front(getfast)
             proxytype, proxyuser, proxypass, proxyaddress = parse_proxy(proxy)
             proxyhost, _, proxyport = proxyaddress.rpartition(':')
-            ips = dns_resolve(proxyhost)
+            ips = dns_resolve(proxyhost).copy()
             if ips:
                 ipcnt = len(ips) 
             else:
@@ -611,44 +649,34 @@ class HTTPUtil(BaseHTTPUtil):
             proxyport = int(proxyport)
             ohost, port = address
             while ips:
-                proxyhost = ips.pop(0)
-                host = random.choice(dns[hostname])
+                proxyip = ips.pop(0)
+                ip = random.choice(dns[hostname])
                 if proxytype:
                     proxytype = proxytype.upper()
                 if proxytype not in socks.PROXY_TYPES:
                     proxytype = 'HTTP'
-                proxy_sock = socks.socksocket(socket.AF_INET if ':' not in proxyhost else socket.AF_INET6)
-                # set reuseaddr option to avoid 10048 socket error
-                proxy_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                # set struct linger{l_onoff=1,l_linger=0} to avoid 10048 socket error
-                proxy_sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, self.offlinger_val)
-                # resize socket recv buffer 8K->128K to improve browser releated application performance
-                proxy_sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 131072)
-                proxy_sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32768)
-                # disable nagle algorithm to send http request quickly.
-                proxy_sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
-                proxy_sock.set_proxy(socks.PROXY_TYPES[proxytype], proxyhost, proxyport, True, proxyuser, proxypass)
+                proxy_sock = self.get_proxy_socket(proxyip, 8)
+                proxy_sock.set_proxy(socks.PROXY_TYPES[proxytype], proxyip, proxyport, True, proxyuser, proxypass)
                 start_time = time()
                 try:
                     proxy_ssl_sock = self.get_ssl_socket(proxy_sock, ohost.encode())
                     proxy_ssl_sock.settimeout(self.timeout)
                     #proxy_ssl_sock.set_connect_state()
-                    proxy_ssl_sock.connect((host, port))
+                    proxy_ssl_sock.connect((ip, port))
                     proxy_ssl_sock.do_handshake()
                 except Exception as e:
                     cost_time = self.timeout + 1 + random.random()
                     if ipcnt > 1:
-                        self.gws_front_connection_time['ip'][proxyhost] = cost_time
+                        self.gws_front_connection_time['ip'][proxyip] = cost_time
                     self.gws_front_connection_time[proxy] = cost_time
                     logging.error('create_gws_connection_withproxy 连接代理 [%s] 失败：%r', proxy, e)
                     continue
                 else:
                     cost_time = time() - start_time
                     if ipcnt > 1:
-                        self.gws_front_connection_time['ip'][proxyhost] = cost_time
+                        self.gws_front_connection_time['ip'][proxyip] = cost_time
                     self.gws_front_connection_time[proxy] = cost_time
-                proxy_ssl_sock.sock = proxy_sock
-                proxy_ssl_sock.xip = proxyhost, proxyport
+                proxy_ssl_sock.xip = proxyip, proxyport
                 return proxy_ssl_sock
 
     def _request(self, sock, method, path, protocol_version, headers, payload, bufsize=8192):
@@ -750,7 +778,7 @@ class HTTPUtil(BaseHTTPUtil):
             if 'Content-Length' not in headers:
                 headers['Content-Length'] = str(len(payload))
 
-        for _ in range(self.max_retry):
+        for i in range(self.max_retry):
             sock = None
             ssl_sock = None
             ip = ''
@@ -765,11 +793,13 @@ class HTTPUtil(BaseHTTPUtil):
                     response =  self._request(result, method, request_params.path, self.protocol_version, headers, payload, bufsize=bufsize)
                     return response
             except Exception as e:
+                if i < self.max_retry - 1 and isinstance(e, LimiterFull):
+                    continue
                 if 'timed out' in str(e):
                     timeout += 10
                 if ssl_sock:
                     ip = ssl_sock.xip
-                    ssl_sock.sock.close()
+                    ssl_sock._sock.close()
                 elif sock:
                     ip = sock.xip
                     sock.close()

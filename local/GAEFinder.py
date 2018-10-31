@@ -123,7 +123,7 @@ def readstatistics():
             with open(file, 'r') as fd:
                 for line in fd:
                     try:
-                        ip, good, bad = (x.strip('\r\n ') for x in line.split('*'))
+                        ip, good, bad = (x.strip() for x in line.split('*'))
                     except:
                         pass
                     else:
@@ -195,7 +195,7 @@ def readiplist(otherset):
     if not ipexset and exists(g_ipexfile):
         with open(g_ipexfile, 'r') as fd:
             for line in fd:
-                ip = line.strip('\r\n')
+                ip = line.strip()
                 source_ipexset.add(ip)
                 if not line.startswith(g_block):
                     ipexset.add(ip)
@@ -204,7 +204,7 @@ def readiplist(otherset):
         with open(g_ipfile, 'r') as fd:
             for line in fd:
                 source_ipcnt += 1
-                ip = line.strip('\r\n')
+                ip = line.strip()
                 source_ipset.add(ip)
                 if not line.startswith(g_block):
                     ipset.add(ip)
@@ -293,7 +293,7 @@ def readbadlist():
         with open(g_badfile, 'r') as fd:
             for line in fd:
                 #兼容之前的格式，下个版本会去掉
-                entry = line.strip('\r\n ').split('*')
+                entry = line.strip().split('*')
                 entrylen = len(entry)
                 if entrylen is 4:
                     ip, timesblock, blocktime, timesdel = entry
@@ -325,7 +325,7 @@ def readdellist():
     if exists(g_delfile):
         with open(g_delfile, 'r') as fd:
             for line in fd:
-                ipset.add(line.strip('\r\n'))
+                ipset.add(line.strip())
     return ipset
 
 def savedellist(delset=None):
@@ -419,9 +419,7 @@ class GAE_Finder:
         ssl_sock = None
         try:
             sock = socket.socket(socket.AF_INET if ':' not in ip else socket.AF_INET6)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, http_gws.offlinger_val)
-            sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
+            http_gws.set_tcp_socket(sock, set_buffer=False)
             ssl_sock = http_gws.get_ssl_socket(sock, g_servername)
             ssl_sock.settimeout(conntimeout)
             ssl_sock.connect((ip, 443))
@@ -479,6 +477,7 @@ def runfinder(ip):
         com = ssldomain == g_comdomain
         if com:
             ssldomain = '*.google.com'
+            return
         PRINT('剩余：%s，%s，%sms，%s', str(remain).rjust(4), ip.rjust(15),
               str(costtime).rjust(4), ssldomain)
         #判断是否够快

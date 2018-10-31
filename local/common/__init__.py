@@ -229,6 +229,77 @@ class LRUCache:
             self.key_noexpire.clear()
             self.key_order.clear()
 
+class LimiterEmpty(OSError):
+    pass
+
+class LimiterFull(OSError):
+    pass
+
+class Limiter:
+    'A queue.Queue-like class use for count and limit.'
+
+    def __init__(self, maxsize=1):
+        if maxsize < 1:
+            raise ValueError('The maxsize can not be less than 1.')
+        self.maxsize = maxsize
+        self.mutex = threading.Lock()
+        self.not_empty = threading.Condition(self.mutex)
+        self.not_full = threading.Condition(self.mutex)
+        self.__qsize = 0
+
+    def qsize(self):
+        with self.mutex:
+            return self.__qsize
+
+    def empty(self):
+        with self.mutex:
+            return not self.__qsize
+
+    def full(self):
+        with self.mutex:
+            return self.maxsize <= self.__qsize
+
+    def push(self, block=True, timeout=None):
+        with self.not_full:
+            if self.maxsize > 0:
+                if not block:
+                    if self.__qsize >= self.maxsize:
+                        raise LimiterFull(-1)
+                elif timeout is None:
+                    while self.__qsize >= self.maxsize:
+                        self.not_full.wait()
+                elif timeout < 0:
+                    raise ValueError("'timeout' must be a non-negative number")
+                else:
+                    endtime = time() + timeout
+                    while self.__qsize >= self.maxsize:
+                        remaining = endtime - time()
+                        if remaining <= 0.0:
+                            raise LimiterFull(-1)
+                        self.not_full.wait(remaining)
+            self.__qsize += 1
+            self.not_empty.notify()
+
+    def pop(self, block=True, timeout=None):
+        with self.not_empty:
+            if not block:
+                if self.__qsize <= 0:
+                    raise LimiterEmpty(-1)
+            elif timeout is None:
+                while self.__qsize <= 0:
+                    self.not_empty.wait()
+            elif timeout < 0:
+                raise ValueError("'timeout' must be a non-negative number")
+            else:
+                endtime = time() + timeout
+                while self.__qsize <= 0:
+                    remaining = endtime - time()
+                    if remaining <= 0.0:
+                        raise LimiterEmpty(-1)
+                    self.not_empty.wait(remaining)
+            self.__qsize -= 1
+            self.not_full.notify()
+
 MESSAGE_TEMPLATE = '''
 <html><head>
 <meta http-equiv="content-type" content="text/html;charset=utf-8">

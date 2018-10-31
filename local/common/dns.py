@@ -37,10 +37,10 @@ def set_dns(host, iporname):
             return _host
     #生成唯一别名
     namea = str(id(iporname)) if isinstance(iporname, list) else iporname
-    if namea.startswith('google_'):
+    if namea.startswith(('google_', 'cdn_')):
         #host = get_main_domain(host)
-        host = 'appspot.com' if host.endswith('.appspot.com') else ''
-    elif '.google' in host:
+        host = ''
+    if '.google' in host:
         namea = 'google_' + namea
     hostname = '%s|%s' % (namea, host)
     if hostname in dns:

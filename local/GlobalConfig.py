@@ -89,8 +89,10 @@ class GC:
 
     LINK_PROFILE = CONFIG.get('link', 'profile')
     if LINK_PROFILE not in ('ipv4', 'ipv6', 'ipv46'):
-        LINK_PROFILE = 'ipv4'
-    LINK_WINDOW = min(CONFIG.getint('link', 'window'), 2)
+        LINK_PROFILE = 'ipv46'
+    LINK_WINDOW = max(min(CONFIG.getint('link', 'window'), 12), 2)
+    LINK_MAXPERIP = max(min(CONFIG.getint('link', 'maxperip'), 32), 3)
+    LINK_RECVBUFFER = max(min(CONFIG.getint('link', 'recvbuffer'), 4194304), 32768)
     LINK_REQUESTCOMPRESS = _brotli and CONFIG.getboolean('link', 'requestcompress')
     #LINK_OPENSSL = CONFIG.getboolean('link', 'openssl')
     LINK_OPENSSL = 1

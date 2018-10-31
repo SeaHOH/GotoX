@@ -52,6 +52,8 @@ def removeip(ip):
 def _refreship(gaeip):
     with lLock:
         for name in gaeip:
+            if name is 'google_com':
+                continue
             GC.IPLIST_MAP[name][:] = gaeip[name] + GC.IPLIST_MAP[name]
     testip.lastupdate = time()
 
@@ -150,7 +152,7 @@ def _testallgaeip():
         return updateip()
     badip = set()
     timeout = gettimeout()
-    timeoutl = timeout + 500
+    timeoutl = timeout + 1000
     logging.test('连接测试开始，超时：%d 毫秒', timeout)
     network_test()
     testip.queobj.queue.clear()
@@ -193,8 +195,10 @@ def testonegaeip():
         return updateip()
     ip = iplist[-1]
     timeout = gettimeout()
-    if ip in GC.IPLIST_MAP['google_com']:
-        timeout += 500
+    if ip in GC.IPLIST_MAP['google_com'] and len(GC.IPLIST_MAP['google_com']) < len(iplist):
+        iplist.insert(0, iplist.pop())
+        testip.running = False
+        return
     badip = False
     statistics = finder.statistics
     network_test()
