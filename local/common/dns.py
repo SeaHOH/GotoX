@@ -291,7 +291,7 @@ def get_dnsserver_list():
         return NameServers
     elif os.path.isfile('/etc/resolv.conf'):
         import re
-        with open('/etc/resolv.conf', 'rb') as fp:
+        with open('/etc/resolv.conf', 'r') as fp:
             return re.findall(r'(?m)^nameserver\s+(\S+)', fp.read())
     else:
         import sys
