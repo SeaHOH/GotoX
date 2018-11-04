@@ -5,9 +5,9 @@ import socket
 import random
 import collections
 import dnslib
+import logging
 from time import sleep
 from select import select
-from . import clogging as logging
 from .compat import thread, SocketServer
 from .common import NetWorkIOError, pass_errno
 from .common.dns import reset_dns, update_dns_params
@@ -203,6 +203,7 @@ def network_test(first=None):
         start_proxyserver()
 
 def start_proxyserver():
+    reset_dns()
     try:
         AutoProxy.bind_and_activate()
         GAEProxy.bind_and_activate()
@@ -218,7 +219,6 @@ def start_proxyserver():
 def stop_proxyserver():
     AutoProxy.server_close()
     GAEProxy.server_close()
-    reset_dns()
 
 def get_localhosts():
     _localhosts = []

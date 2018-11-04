@@ -4,10 +4,10 @@ import ssl
 import zlib
 import struct
 import threading
+import logging
 from io import BytesIO
 from time import time, timezone, localtime, strftime, strptime, mktime
 from urllib.request import ProxyHandler, HTTPSHandler, build_opener
-from . import clogging as logging
 from .compat import Queue, httplib
 from .GlobalConfig import GC
 from .GAEUpdate import testipuseable

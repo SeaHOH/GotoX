@@ -1,18 +1,12 @@
 # coding:utf-8
 
-try:
-    import dnslib
-except ImportError:
-    import sys
-    from . import logging, packages
-    logging.error(u'无法找到 dnslib，请安装 dnslib-0.8.3 以上版本，或将相应 .egg 放到 %r 文件夹！', packages)
-    sys.exit(-1)
-
 import socket
+import dnslib
+import logging
 from select import select
 from time import time, sleep
 from json.decoder import JSONDecoder
-from . import logging, LRUCache, isip, isipv4, isipv6, get_wan_ip, classlist
+from . import LRUCache, isip, isipv4, isipv6, get_wan_ip, classlist
 from local.compat import Queue, thread
 from local.GlobalConfig import GC
 

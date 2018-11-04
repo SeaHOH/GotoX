@@ -3,9 +3,11 @@
 import os
 import re
 import socket
+import logging
 import _thread as thread
 from time import sleep
-from . import logging, data_dir, launcher_dir, LRUCache, isip, isipv4, isipv6
+from . import LRUCache, isip, isipv4, isipv6
+from local.path import data_dir, launcher_dir
 from local.GlobalConfig import GC
 
 direct_ipdb = os.path.join(data_dir, 'directip.db')

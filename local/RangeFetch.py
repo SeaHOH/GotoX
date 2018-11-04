@@ -5,7 +5,7 @@
 import re
 import threading
 import random
-from . import clogging as logging
+import logging
 from time import time, sleep
 from .compat import Queue, thread, urlparse
 from .common import spawn_later

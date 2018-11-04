@@ -46,10 +46,11 @@ from . import __version__
 import sys
 sys.dont_write_bytecode = True
 
-#这条代码负责导入依赖库路径，不要改变位置
-from .common import gevent, app_root
+#这条代码负责添加依赖库路径，不要改变位置
+from .compat import Queue, thread, SocketServer
+
+import logging
 from .GlobalConfig import GC
-from . import clogging as logging
 
 logging.setLevel(GC.LISTEN_DEBUGINFO)
 
@@ -59,8 +60,9 @@ import threading
 import socket
 import ssl
 import re
+from gevent import __version__ as geventver
 from OpenSSL import __version__ as opensslver
-from .compat import Queue, thread, SocketServer
+from .path import icon_gotox
 from .ProxyServer import network_test, start_proxyserver
 from .ProxyHandler import AutoProxyHandler
 
@@ -158,9 +160,8 @@ def main():
             import ctypes
             ctypes.windll.kernel32.SetConsoleTitleW('GotoX v%s' % __version__)
             hwnd = ctypes.windll.kernel32.GetConsoleWindow()
-            icon_file = os.path.join(app_root, 'gotox.ico')
-            if os.path.exists(icon_file):
-                hicon = ctypes.windll.user32.LoadImageW(0, icon_file, 1, 0, 0, 16)
+            if os.path.exists(icon_gotox):
+                hicon = ctypes.windll.user32.LoadImageW(0, icon_gotox, 1, 0, 0, 16)
                 if hicon == 0:
                     logging.warning('加载图标文件“GotoX.ico”失败。')
                 else:
@@ -239,7 +240,7 @@ def main():
     from .common.region import IPDBVer, DDDVer
 
     info = ['==================================================================================\n',]
-    info.append(' GotoX  版 本 : %s (python/%s gevent/%s pyOpenSSL/%s)\n' % (__version__, sys.version.split(' ')[0], gevent.__version__, opensslver))
+    info.append(' GotoX  版 本 : %s (python/%s gevent/%s pyOpenSSL/%s)\n' % (__version__, sys.version.split(' ')[0], geventver, opensslver))
     #info.append(' Uvent Version    : %s (pyuv/%s libuv/%s)\n' % (__import__('uvent').__version__, __import__('pyuv').__version__, __import__('pyuv').LIBUV_VERSION) if all(x in sys.modules for x in ('pyuv', 'uvent')) else '')
     info.append('\n GAE    AppID : %s\n' % ('|'.join(GC.GAE_APPIDS) or '请填入 AppID'))
     info.append('\n GAE 远程验证 : %s启用\n' % '已' if GC.GAE_SSLVERIFY else '未')

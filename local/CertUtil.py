@@ -7,12 +7,13 @@ import threading
 import glob
 import binascii
 import random
+import logging
 import OpenSSL
 from OpenSSL import crypto
 from time import time
 from datetime import datetime, timedelta
-from . import clogging as logging
-from .common import cert_dir, LRUCache
+from .path import cert_dir
+from .common import LRUCache
 from .GlobalConfig import GC
 
 ca_vendor = 'GotoX'

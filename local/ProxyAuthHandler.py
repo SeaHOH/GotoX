@@ -1,8 +1,9 @@
 # coding:utf-8
 
+import logging
 from .GlobalConfig import GC
 from .ProxyHandler import AutoProxyHandler, GAEProxyHandler
-from .common import logging, LRUCache
+from .common import LRUCache
 
 if GC.LISTEN_AUTH == 2:
     import string

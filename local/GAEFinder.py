@@ -12,10 +12,11 @@ import ssl
 import select
 import random
 import OpenSSL
-from . import clogging as logging
+import logging
 from shutil import copyfile
 from time import time, localtime, strftime
-from .common import cert_dir, data_dir, NetWorkIOError, isip, isipv4, isipv6
+from .path import cert_dir, data_dir
+from .common import NetWorkIOError, isip, isipv4, isipv6
 from .compat.openssl import zero_EOF_error
 from .ProxyServer import network_test
 from .GlobalConfig import GC

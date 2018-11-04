@@ -7,10 +7,9 @@ import sys
 #import collections
 import re
 from .compat import ConfigParser
-from .common import config_dir, data_dir
-from .common.decompress import _brotli
+from .path import config_dir, data_dir
 #from .common.proxy import get_system_proxy, parse_proxy
-from . import clogging as logging
+import logging
 
 _LOGLv = {
     0 : logging.WARNING,
@@ -93,7 +92,6 @@ class GC:
     LINK_WINDOW = max(min(CONFIG.getint('link', 'window'), 12), 2)
     LINK_MAXPERIP = max(min(CONFIG.getint('link', 'maxperip'), 32), 3)
     LINK_RECVBUFFER = max(min(CONFIG.getint('link', 'recvbuffer'), 4194304), 32768)
-    LINK_REQUESTCOMPRESS = _brotli and CONFIG.getboolean('link', 'requestcompress')
     #LINK_OPENSSL = CONFIG.getboolean('link', 'openssl')
     LINK_OPENSSL = 1
     LINK_VERIFYG2PK = CONFIG.getboolean('link', 'verifyg2pk')
@@ -217,4 +215,7 @@ class GC:
     DNS_CACHE_ENTRIES = int(CONFIG.get('dns/cache', 'entries') or 1024)
     DNS_CACHE_EXPIRATION = int(CONFIG.get('dns/cache', 'expiration') or 7200)
 
+from .common.decompress import _brotli
+
+GC.LINK_REQUESTCOMPRESS = _brotli and CONFIG.getboolean('link', 'requestcompress')
 del CONFIG

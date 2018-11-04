@@ -10,15 +10,15 @@ import socket
 import random
 import socks
 import threading
+import logging
 from select import select
 from time import time, sleep
 from functools import partial
 from . import CertUtil
-from . import clogging as logging
+from .path import web_dir
 from .compat import BaseHTTPServer, urlparse, thread, hasattr
 from .compat.openssl import SSL, SSLConnection
 from .common import (
-    web_dir,
     NetWorkIOError,
     reset_errno,
     closed_errno,
@@ -980,6 +980,7 @@ class AutoProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.proxy_connection_time[proxyip] = time() - start_time
             logging.info('%s%s:%d 转发 "%s %s" 到 [%s] 代理：%s',
                          self.address_string(), proxyip, proxyport, self.command, self.url or self.path, proxytype, self.target)
+            proxy_sock.xip = proxyip, proxyport
             self.forward_connect(proxy_sock)
 
     def do_REDIRECT(self):

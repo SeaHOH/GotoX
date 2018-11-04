@@ -1,10 +1,11 @@
 # coding:utf-8
 
 import threading
+import logging
 from time import time, sleep
 from functools import partial
-from . import clogging as logging
-from .common import config_dir, LRUCache, random_hostname
+from .path import config_dir
+from .common import LRUCache, random_hostname
 from .common.dns import reset_dns
 from .compat import urlparse
 from .GlobalConfig import GC

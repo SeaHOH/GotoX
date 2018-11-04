@@ -3,11 +3,12 @@
 import os
 import re
 import threading
+import logging
 from functools import partial
 from time import sleep
-from . import clogging as logging
+from .path import config_dir
 from .compat import thread, ConfigParser
-from .common import config_dir, isip, isipv4, isipv6, classlist
+from .common import isip, isipv4, isipv6, classlist
 from .GlobalConfig import GC
 
 BLOCK     = 1

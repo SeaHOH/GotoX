@@ -2,45 +2,6 @@
 
 import os
 import sys
-from local import clogging as logging
-
-logging.replace_logging()
-logging.addLevelName(15, 'TEST', logging.COLORS.GREEN)
-
-app_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-cert_dir = os.path.join(app_root, 'cert')
-config_dir = os.path.join(app_root, 'config')
-data_dir = os.path.join(app_root, 'data')
-launcher_dir = os.path.join(app_root, 'launcher')
-py_dir = os.path.join(app_root, 'python')
-web_dir = os.path.join(app_root, 'web')
-packages = os.path.join(py_dir, 'site-packages')
-
-#自带 py 已经添加
-if os.path.dirname(sys.executable) != py_dir:
-    import glob
-    #优先导入当前运行 py 已安装模块
-    sys.path.append(packages)
-    sys.path.extend(glob.glob('%s/*.egg' % packages))
-
-try:
-    import gevent
-    import gevent.monkey
-    gevent.monkey.patch_all(os=False, signal=False, subprocess=False, Event=True)
-except ImportError:
-    logging.warning('无法找到 gevent 或者与 Python 版本不匹配，请安装 gevent-1.0.0 以上版本，或将相应 .egg 放到 %r 文件夹！\n正在退出……', packages)
-    sys.exit(-1)
-except TypeError:
-    gevent.monkey.patch_all(os=False)
-    logging.warning('警告：请更新 gevent 至 1.0.0 以上版本！')
-
-try:
-    import OpenSSL
-except ImportError:
-    logging.exception('无法找到 pyOpenSSL，请安装 pyOpenSSL-16.0.0 以上版本，或将相应 .egg 放到 %r 文件夹！\n正在退出……', packages)
-    sys.exit(-1)
-
-from local.compat import thread
 import re
 import ssl
 import errno
@@ -48,7 +9,9 @@ import socket
 import string
 import threading
 import collections
+import OpenSSL
 from time import time, sleep
+from local.compat import thread
 
 NetWorkIOError = (socket.error, ssl.SSLError, OSError, OpenSSL.SSL.Error) if OpenSSL else (socket.error, ssl.SSLError, OSError)
 # Windows: errno.WSAENAMETOOLONG = 10063

@@ -402,5 +402,5 @@ def getlogger(is_main):
             class logging:
                 warning = info = debug = print
         else:
-            import local.clogging as logging
+            import logging
     return logging

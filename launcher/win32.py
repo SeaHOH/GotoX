@@ -10,8 +10,7 @@ if os.path.islink(__file__):
     __file__ = getattr(os, 'readlink', lambda x: x)(__file__)
 
 app_root = os.path.dirname(os.path.dirname(__file__))
-py_path = os.path.join(app_root, 'python')
-py_exe = sys.executable
+py_dir = os.path.join(app_root, 'python')
 app_start = os.path.join(app_root, 'start.py')
 icon_gotox = os.path.join(app_root, 'gotox.ico')
 create_shortcut_js = os.path.join(app_root, 'create_shortcut.vbs')
@@ -21,8 +20,8 @@ direct_domains = os.path.join(app_root, 'data', 'directdomains.txt')
 refresh_proxy = os.path.join(app_root, 'launcher', 'refresh_proxy_win.py')
 
 #使用安装版 Python
-if os.path.dirname(py_exe) != py_path:
-    helpers = os.path.join(py_path, 'site-packages', 'helpers_win32.egg')
+if os.path.dirname(sys.executable) != py_dir:
+    helpers = os.path.join(py_dir, 'site-packages', 'helpers_win32.egg')
     sys.path.insert(0, helpers)
 sys.path.insert(0, app_root)
 
@@ -165,7 +164,7 @@ def refresh_proxy_state(enable=None):
         #导入默认代理例外地址
         if not ProxyOverride:
             winreg.SetValueEx(SETTINGS, 'ProxyOverride', 0,  winreg.REG_SZ, ProxyOverride)
-    Popen((py_exe, refresh_proxy))
+    Popen((sys.executable, refresh_proxy))
 
 from subprocess import Popen
 from local import __version__ as gotoxver, clogging as logging
@@ -184,7 +183,7 @@ GotoX_app = None
 def start_GotoX():
     global GotoX_app
     load_config()
-    GotoX_app = Popen((py_exe, app_start))
+    GotoX_app = Popen((sys.executable, app_start))
     os.environ['HTTPS_PROXY'] = os.environ['HTTP_PROXY'] = LISTEN_AUTO.http
 
 def stop_GotoX():

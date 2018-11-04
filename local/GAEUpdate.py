@@ -2,10 +2,10 @@
 '''Auto check and update GAE IP'''
 
 import threading
-from . import clogging as logging
+import logging
 from time import time, sleep, strftime
+from .path import config_dir
 from .compat import thread, Queue
-from .common import config_dir
 from .GlobalConfig import GC
 from .ProxyServer import network_test
 from .HTTPUtil import http_gws

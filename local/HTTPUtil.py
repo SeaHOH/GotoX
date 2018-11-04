@@ -12,14 +12,15 @@ import random
 import socks
 import collections
 import OpenSSL
-from . import clogging as logging
+import logging
 from select import select
 from time import time, sleep
 from .GlobalConfig import GC
+from .path import cert_dir
 from .compat import Queue, thread, httplib, hasattr
 from .compat.openssl import zero_EOF_error, SSLConnection
 from .common import (
-    cert_dir, NetWorkIOError, closed_errno, LRUCache, LimiterFull, Limiter,
+    NetWorkIOError, closed_errno, LRUCache, LimiterFull, Limiter,
     isip, random_hostname
     )
 from .common.dns import dns, dns_resolve
@@ -737,17 +738,8 @@ class HTTPUtil(BaseHTTPUtil):
             request_data = '\r\n'.join(request_data).encode() + payload
             sock.sendall(request_data)
 
-        try:
-            response = httplib.HTTPResponse(sock, method=method)
-            response.begin()
-        except Exception as e:
-            #这里有时会捕捉到奇怪的异常，找不到来源路径
-            # py2 的 raise 不带参数会导致捕捉到错误的异常，但使用 exc_clear 或换用 py3 还是会出现
-            if hasattr(e, 'xip'):
-                #logging.warning('4444 %r | %r | %r', sock.getpeername(), sock.xip, e.xip)
-                del e.xip
-            raise e
-
+        response = httplib.HTTPResponse(sock, method=method)
+        response.begin()
         response.xip =  sock.xip
         response.sock = sock
         return response
