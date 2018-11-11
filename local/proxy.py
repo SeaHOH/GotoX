@@ -146,7 +146,7 @@ def main():
                 logging.info('IP 列表 %r 解析结果：iplist=%r', name, resolved_iplist)
                 GC.IPLIST_MAP[name] = resolved_iplist
 
-        network_test(True)
+        network_test(first=True)
         if sys.platform == 'cygwin':
             logging.info('cygwin is not officially supported, please continue at your own risk :)')
             #sys.exit(-1)
