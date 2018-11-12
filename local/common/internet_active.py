@@ -168,14 +168,14 @@ class InternetActiveCheck:
             if self.type != 'IPv6 Teredo':
                 if self.type != 'IPv6x':
                     logging.warning('检测到 IPv6 网络变动，当前使用 Teredo 隧道，IP：%s', addr6)
-                if not self.only_check_ip
+                if not self.only_check_ip:
                     self.set_dns_servers(dns_ips_v6w)
                 self.type = 'IPv6 Teredo'
         else:
             if self.type != 'IPv6':
                 if self.type != 'IPv6x':
                     logging.warning('检测到 IPv6 网络变动，当前使用非 Teredo 隧道，IP：%s', addr6)
-                if not self.only_check_ip
+                if not self.only_check_ip:
                     self.set_dns_servers(dns_ips_v6)
                 self.type = 'IPv6'
 
