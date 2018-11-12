@@ -9,6 +9,8 @@ import socket
 import string
 import threading
 import collections
+import ipaddress
+import logging
 import OpenSSL
 from time import time, sleep
 from local.compat import thread
@@ -409,19 +411,62 @@ def get_main_domain(host):
 from local.GlobalConfig import GC
 from local.compat import urllib2
 
-def get_wan_ip():
+direct_opener = urllib2.OpenerDirector()
+handler_names = ['UnknownHandler', 'HTTPHandler', 'HTTPSHandler',
+                 'HTTPDefaultErrorHandler', 'HTTPRedirectHandler',
+                 'HTTPErrorProcessor']
+for handler_name in handler_names:
+    klass = getattr(urllib2, handler_name, None)
+    if klass:
+        direct_opener.add_handler(klass())
+
+def get_wan_ipv4():
     for url in GC.DNS_IP_API:
+        response = None
         try:
-            resp = urllib2.urlopen(url).read().decode().strip()
-            if isip(resp):
-                return resp
+            response = direct_opener.open(url, timeout=10)
+            content = response.read().decode().strip()
+            if isip(content):
+                logging.test('当前 IPv4 公网出口 IP 是：%s', content)
+                return content
         except:
             pass
+        finally:
+            if response:
+                response.close()
+    logging.warning('获取 IPv4 公网出口 IP 失败，请增加更多的 IP-API')
+
+def get_wan_ipv6():
+    sock = None
+    try:
+        sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+        sock.connect(('2001:4860:4860::8888', 80))
+        addr6 = ipaddress.IPv6Address(sock.getsockname()[0])
+        if addr6.is_global or addr6.teredo:
+            return addr6
+    except:
+        pass
+    finally:
+        if sock:
+            sock.close()
 
 class classlist(list): pass
 
 def spawn_later(seconds, target, *args, **kwargs):
     def wrap(*args, **kwargs):
         sleep(seconds)
-        target(*args, **kwargs)
+        try:
+            target(*args, **kwargs)
+        except Exception as e:
+            logging.warning('%s.%s 错误：%s', target.__module__, target.__name__, e)
+    thread.start_new_thread(wrap, args, kwargs)
+
+def spawn_loop(seconds, target, *args, **kwargs):
+    def wrap(*args, **kwargs):
+        while True:
+            sleep(seconds)
+            try:
+                target(*args, **kwargs)
+            except Exception as e:
+                logging.warning('%s.%s 错误：%s', target.__module__, target.__name__, e)
     thread.start_new_thread(wrap, args, kwargs)

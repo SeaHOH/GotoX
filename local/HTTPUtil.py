@@ -25,6 +25,7 @@ from .common import (
     )
 from .common.dns import dns, dns_resolve
 from .common.proxy import parse_proxy, proxy_no_rdns
+from .common.internet_active import internet_v4, internet_v6
 from .FilterUtil import reset_method_list, get_fake_sni
 
 GoogleG23PKP = {
@@ -213,9 +214,15 @@ class BaseHTTPUtil:
 
     def _get_tcp_socket(self, _socket, ip, timeout=None):
         if not ':' in ip:
+            if not internet_v4.last_stat:
+                sleep(1)
+                raise socket.error('无法连接 IPv4 互联网')
             new_sock_cache = self.new_sock4_cache
             AF_INETX = socket.AF_INET
         else:
+            if not internet_v6.last_stat:
+                sleep(1)
+                raise socket.error('无法连接 IPv6 互联网')
             new_sock_cache = self.new_sock6_cache
             AF_INETX = socket.AF_INET6
         if new_sock_cache:

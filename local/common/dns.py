@@ -6,7 +6,7 @@ import logging
 from select import select
 from time import time, sleep
 from json.decoder import JSONDecoder
-from . import LRUCache, isip, isipv4, isipv6, get_wan_ip, classlist
+from . import LRUCache, isip, isipv4, isipv6, get_wan_ipv4, classlist, spawn_loop
 from local.compat import Queue, thread
 from local.GlobalConfig import GC
 
@@ -113,12 +113,12 @@ class dns_params:
 
 def update_dns_params():
     if GC.DNS_OVER_HTTPS_ECS == 'auto':
-        ip = get_wan_ip()
+        ip = get_wan_ipv4()
         if ip:
             dns_params.DNSServerPath = dns_params._DNSServerPath + ip
-            logging.test('update_dns_params 当前公网出口 IP 是：%s', ip)
-        else:
-            logging.warning('update_dns_params 获取公网出口 IP 失败。')
+
+if GC.DNS_OVER_HTTPS_ECS == 'auto':
+    spawn_loop(3600, update_dns_params)
 
 def _https_resolve(qname, qtype, queobj):
     '''

@@ -19,9 +19,12 @@ def network_test(type=GC.LINK_PROFILE, first=None):
         #对应网络全部发生故障时才停止代理线程
         if type != 'ipv46' or not internet_v4.last_stat and not internet_v6.last_stat:
             stop_server = True
-        if stop_server and not first:
-            stop_proxyserver()
-        is_active(type, 10)
+        if stop_server:
+            if not first:
+                stop_proxyserver()
+            is_active(type, 10)
+        else:
+            thread.start_new_thread(is_active, (type, 10))
     if stop_server or first:
         get_localhosts()
     #重新开始代理线程

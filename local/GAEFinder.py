@@ -17,6 +17,7 @@ from shutil import copyfile
 from time import time, localtime, strftime
 from .path import cert_dir, data_dir
 from .common import NetWorkIOError, isip, isipv4, isipv6
+from .common.internet_active import internet_v6
 from .compat.openssl import zero_EOF_error
 from .ProxyServer import network_test
 from .GlobalConfig import GC
@@ -531,7 +532,7 @@ class Finder(threading.Thread):
     def run(self):
         ip = randomip()
         while ip:
-            if isip(ip):
+            if isipv4(ip) or internet_v6.last_stat and isipv6(ip):
                 if runfinder(ip):
                     break
             else:

@@ -1,5 +1,6 @@
 # coding:utf-8
 #此脚本通过域名解析测试网络状态，不支持 UDP 的前端代理无法使用
+#即使前置代理支持 UDP，还需要修改套接字使用代理
 
 import os
 import socket
@@ -7,9 +8,11 @@ import random
 import dnslib
 import logging
 import collections
-from time import sleep
+from time import time, sleep
 from select import select
-from . import isipv4, isipv6
+from . import isipv4, isipv6, get_wan_ipv6, spawn_loop
+from local.GlobalConfig import GC
+from local.compat import Queue, thread
 
 #网络测试要求稳定、快速，所以选国内的 DNS IP
 dns_ips_v4 = (
@@ -75,6 +78,37 @@ dns_ips_v6 = (
     #http://dudns.baidu.com/intro/publicdns/
     '2400:da00::6666',
     )
+#用于 Teredo 隧道等
+dns_ips_v6w = (
+    #Google
+    #https://developers.google.com/speed/public-dns/docs/using
+    '2001:4860:4860::8888',
+    '2001:4860:4860::8844',
+    #OpenDNS
+    #https://www.opendns.com/about/innovations/ipv6/
+    '2620:119:35::35',
+    '2620:119:53::53',
+    #Cloudflare
+    #https://developers.cloudflare.com/1.1.1.1/setting-up-1.1.1.1/
+    '2606:4700:4700::1111',
+    '2606:4700:4700::1001',
+    #Quad9
+    #https://www.quad9.net/faq/
+    '2620:fe::fe',
+    '2620:fe::9',
+    #Neustar UltraDNS
+    #https://www.security.neustar/digital-performance/dns-services/recursive-dns
+    '2610:a1:1018::1',
+    '2610:a1:1019::1',
+    '2610:a1:1018::5',
+    '2610:a1:1019::5',
+    #'2610:a1:1018::2',
+    #'2610:a1:1019::2',
+    #'2610:a1:1018::3',
+    #'2610:a1:1019::3',
+    #'2610:a1:1018::4',
+    #'2610:a1:1019::4',
+    )
 
 def read_domains(file):
     domains = set()
@@ -92,36 +126,69 @@ domains = read_domains(domains_file)
 
 class InternetActiveCheck:
     max_qdata_num = 256
+    only_check_ip = None
 
-    def __init__(self, dns_ips, domains):
-        ip = dns_ips[0]
-        if isipv4(ip):
+    def __init__(self, type, domains=domains):
+        self.in_check = False
+        self.last_stat = None
+        self.qdata = None
+        if type.lower() == 'ipv4':
             self.type = 'IPv4'
-        elif isipv6(ip):
-            self.type = 'IPv6'
-        else:
-            raise TypeError('%s 参数错误：dns_ips[0]=%r' % (self.__class__, ip))
-        #生成乱序 DNS 服务器列表
+            self.set_dns_servers(dns_ips_v4)
+        elif type.lower().startswith('ipv6'):
+            self.type = 'IPv6x'
+            self.only_check_ip = GC.LINK_FASTV6CHECK
+            self.set_dns_servers_v6()
+            spawn_loop(10, self.set_dns_servers_v6)
+        domains = domains.copy()
+        random.shuffle(domains)
+        del domains[self.max_qdata_num:]
+        self.qdata_list = collections.deque(dnslib.DNSRecord.question(qname).pack() for qname in domains)
+        self.sock = socket.socket(socket.AF_INET if self.type == 'IPv4' else socket.AF_INET6, socket.SOCK_DGRAM)
+
+    def set_dns_servers(self, dns_ips):
         dns_servers = [(ip, 53) for ip in dns_ips]
         random.shuffle(dns_servers)
         self.max_check_times = len(dns_servers)
         self._dns_servers = dns_servers
         self.dns_servers = None
-        #生成 A 类型 DNS 请求数据列表
-        random.shuffle(domains)
-        del domains[self.max_qdata_num:]
-        self.qdata_list = collections.deque(dnslib.DNSRecord.question(qname).pack() for qname in domains)
-        self.qdata = None
-        #生成测试用 UDP 套接字
-        self.sock = socket.socket(socket.AF_INET if self.type == 'IPv4' else socket.AF_INET6, socket.SOCK_DGRAM)
-        self.in_check = False
-        self.last_stat = None
+
+    def set_dns_servers_v6(self):
+        addr6 = get_wan_ipv6()
+        if addr6:
+            if self.only_check_ip and self.last_stat == 0:
+                logging.warning('IPv6 网络恢复连接')
+            self.last_stat = 1
+        else:
+            if self.only_check_ip and self.last_stat != 0:
+                logging.error('IPv6 网络现在不可用，将每 10 秒检测一次……')
+            self.last_stat = 0
+            return
+        if addr6.teredo:
+            if self.type != 'IPv6 Teredo':
+                if self.type != 'IPv6x':
+                    logging.warning('检测到 IPv6 网络变动，当前使用 Teredo 隧道，IP：%s', addr6)
+                if not self.only_check_ip
+                    self.set_dns_servers(dns_ips_v6w)
+                self.type = 'IPv6 Teredo'
+        else:
+            if self.type != 'IPv6':
+                if self.type != 'IPv6x':
+                    logging.warning('检测到 IPv6 网络变动，当前使用非 Teredo 隧道，IP：%s', addr6)
+                if not self.only_check_ip
+                    self.set_dns_servers(dns_ips_v6)
+                self.type = 'IPv6'
 
     def is_active(self, keep_on=None):
+        if self.only_check_ip:
+            while not self.last_stat and keep_on:
+                sleep(5)
+            return self.last_stat
         if self.in_check:
-            while self.in_check:
+            start = time()
+            while self.in_check and time() - start < 10:
                 sleep(0.01)
-            if not keep_on:
+            if self.in_check or not keep_on:
                 return self.last_stat
         
         self.in_check = True
@@ -135,12 +202,10 @@ class InternetActiveCheck:
             ins, _, _ = select([self.sock], [], [], 0)
             if ins:
                 self.sock.recvfrom(512)
-        #通过域名解析测试网络状态
         while ok is None:
             check_times += 1
             if check_times > self.max_check_times:
                 if not haserr:
-                    #发生网络故障
                     if not keep_on:
                         ok = False
                         break
@@ -152,35 +217,62 @@ class InternetActiveCheck:
                     logging.error('%s 网络现在不可用，将每 %d 秒检测一次……', self.type, keep_on)
                 sleep(keep_on)
             if not self.dns_servers:
-                #更换下一个域名的请求数据
                 self.dns_servers = self._dns_servers.copy()
                 self.qdata = self.qdata_list.pop()
                 self.qdata_list.appendleft(self.qdata)
             dns_server = self.dns_servers.pop()
-            sent.append(dns_server)
-            self.sock.sendto(self.qdata, dns_server)
-            ins, _, _ = select([self.sock], [], [], 0.5)
-            if ins:
-                try:
+            try:
+                self.sock.sendto(self.qdata, dns_server)
+                sent.append(dns_server)
+                ins, _, _ = select([self.sock], [], [], 0.5)
+                if ins:
                     _, peername = self.sock.recvfrom(512)
                     if peername[:2] in sent:
                         ok = True
-                except:
-                    pass
+            except:
+                pass
         self.last_stat = int(ok is True)
         self.in_check = False
+        if haserr:
+            logging.warning('%s 网络恢复连接', self.type)
         return self.last_stat
 
-internet_v4 = InternetActiveCheck(dns_ips_v4, domains)
-internet_v6 = InternetActiveCheck(dns_ips_v6, domains)
+internet_v4 = InternetActiveCheck('ipv4')
+internet_v6 = InternetActiveCheck('ipv6')
+
+qobj_cache = Queue.deque()
+
+def _is_active(type, qobj, keep_on):
+    if type == 4:
+        stat = internet_v4.is_active(keep_on)
+    elif type == 6:
+        stat = internet_v6.is_active(keep_on)
+    qobj.put((type, stat))
 
 def is_active(type='ipv4', keep_on=None):
     stat_v4 = stat_v6 = None
+    n = 0
+    try:
+        qobj = qobj_cache.pop()
+        qobj.queue.clear()
+    except IndexError:
+        qobj = Queue.LifoQueue()
     if type.lower() in ('ipv4', 'ipv46') or isipv4(type):
-        stat_v4 = internet_v4.is_active(keep_on)
+        thread.start_new_thread(_is_active, (4, qobj, keep_on))
+        n += 1
     if type.lower() in ('ipv6', 'ipv46') or isipv6(type):
-        stat_v6 = internet_v6.is_active(keep_on)
-    if stat_v4 is None and stat_v6 is None:
+        thread.start_new_thread(_is_active, (6, qobj, keep_on))
+        n += 1
+    for _ in range(n):
+        type, stat = qobj.get()
+        if type == 4:
+            stat_v4 = stat
+        elif type == 6:
+            stat_v6 = stat
+        if stat and keep_on:
+            return stat
+    qobj_cache.append(qobj)
+    if not n:
         logging.error('is_active：错误的 type：%s', type)
     elif stat_v4 is None:
         return stat_v6
