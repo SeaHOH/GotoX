@@ -135,7 +135,7 @@ class InternetActiveCheck:
         if type.lower() == 'ipv4':
             self.type = 'IPv4'
             self.set_dns_servers(dns_ips_v4)
-        elif type.lower().startswith('ipv6'):
+        elif type.lower() == 'ipv6':
             self.type = 'IPv6x'
             self.only_check_ip = GC.LINK_FASTV6CHECK
             self.set_dns_servers_v6()
@@ -181,15 +181,19 @@ class InternetActiveCheck:
 
     def is_active(self, keep_on=None):
         if self.only_check_ip:
-            while not self.last_stat and keep_on:
+            while keep_on and not self.last_stat:
                 sleep(5)
             return self.last_stat
         if self.in_check:
-            start = time()
-            while self.in_check and time() - start < 10:
-                sleep(0.01)
-            if self.in_check or not keep_on:
-                return self.last_stat
+            time_pass = 0
+            while self.in_check:
+                if time_pass < 10:
+                    sleep(0.01)
+                    time_pass += 0.01
+                elif self.in_check or not keep_on:
+                    return self.last_stat
+                else:
+                    time_pass = 0
         
         self.in_check = True
         ok = None
@@ -247,10 +251,10 @@ def _is_active(type, qobj, keep_on):
         stat = internet_v4.is_active(keep_on)
     elif type == 6:
         stat = internet_v6.is_active(keep_on)
-    qobj.put((type, stat))
+    qobj.put(stat)
 
 def is_active(type='ipv4', keep_on=None):
-    stat_v4 = stat_v6 = None
+    stat = 0
     n = 0
     try:
         qobj = qobj_cache.pop()
@@ -264,19 +268,12 @@ def is_active(type='ipv4', keep_on=None):
         thread.start_new_thread(_is_active, (6, qobj, keep_on))
         n += 1
     for _ in range(n):
-        type, stat = qobj.get()
-        if type == 4:
-            stat_v4 = stat
-        elif type == 6:
-            stat_v6 = stat
-        if stat and keep_on:
-            return stat
+        _stat = qobj.get()
+        if _stat and keep_on:
+            return _stat
+        stat |= _stat
     qobj_cache.append(qobj)
-    if not n:
-        logging.error('is_active：错误的 type：%s', type)
-    elif stat_v4 is None:
-        return stat_v6
-    elif stat_v6 is None:
-        return stat_v4
+    if n:
+        return stat
     else:
-        return stat_v4 and stat_v6
+        logging.error('is_active：错误的 type 参数：%s', type)

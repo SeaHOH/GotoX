@@ -213,6 +213,7 @@ def _dns_remote_resolve(qname, dnsservers, blacklist=[], timeout=2, qtypes=qtype
         socks.append(sock_v6)
     timeout_at = time() + timeout
     iplist = classlist()
+    _iplist = []
     xips = []
     v4_resolved = not A in qtypes
     v6_resolved = not AAAA in qtypes
@@ -235,9 +236,10 @@ def _dns_remote_resolve(qname, dnsservers, blacklist=[], timeout=2, qtypes=qtype
                 reply_data, xip = sock.recvfrom(512)
                 query_times -= 1
                 reply = dnslib.DNSRecord.parse(reply_data)
-                #未处理 qtypes 包含 ANY 的情况
+                #只处理 qtypes 包含 A、AAAA 的情况
                 _v4_resolved = v4_resolved
                 _v6_resolved = v6_resolved
+                _iplist.clear()
                 for r in reply.rr:
                     if r.rtype in qtypes:
                         ip = None
@@ -250,12 +252,14 @@ def _dns_remote_resolve(qname, dnsservers, blacklist=[], timeout=2, qtypes=qtype
                         if ip:
                             if ip in blacklist:
                                 query_times += 1
+                                _iplist.clear()
                                 logging.warning('query qname=%r reply bad ip=%r', qname, ip)
                                 break
-                            if ip not in iplist:
-                                iplist.append(ip)
-                v4_resolved = _v4_resolved
-                v6_resolved = _v6_resolved
+                            _iplist.append(ip)
+                if _iplist:
+                    v4_resolved = _v4_resolved
+                    v6_resolved = _v6_resolved
+                    iplist.extend(_iplist)
                 if xip[0] not in xips:
                     xips.append(xip[0])
         except socket.error as e:
@@ -346,8 +350,8 @@ def dns_over_https_resolve(host):
 
 #设置使用 DNS 的优先级别
 _DNSLv = {
-    'system'    : dns_system_resolve,
-    'remote'    : dns_remote_resolve,
-    'overhttps' : dns_over_https_resolve
+    'system'   : dns_system_resolve,
+    'remote'   : dns_remote_resolve,
+    'overhttps': dns_over_https_resolve
     }
 dns_resolves = tuple(_DNSLv[lv] for lv in GC.DNS_PRIORITY)

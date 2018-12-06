@@ -28,10 +28,13 @@ def network_test(type=GC.LINK_PROFILE, first=None):
     if stop_server or first:
         get_localhosts()
     #重新开始代理线程
-    if stop_server and not first:
-        start_proxyserver()
     if stop_server:
-        logging.warning('网络已经可以使用，%s', '初始化继续……' if first else '重新开始代理……')
+        if first:
+            note = '初始化继续'
+        else:
+            note = '重新开始代理'
+            start_proxyserver()
+        logging.warning('网络已经可以使用，%s……', note)
 
 def start_proxyserver():
     reset_dns()

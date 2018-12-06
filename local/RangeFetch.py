@@ -84,12 +84,12 @@ class RangeFetch:
         logging.info('%s >>>>>>>>>>>>>>> RangeFetch 开始 %r %d-%d', self.address_string(response), self.url, start, range_end)
 
         #开始多线程时先测试一遍 IP
-        if isRangeFetchBig:
-            sleeptime = self.sleeptime
-            if needtest and time() - RangeFetch.lastactive > 30:
-                testallgaeip(True)
-        else:
-            sleeptime = self.sleeptime if needtest and time() - RangeFetch.lastactive > 30 and testallgaeip(True) else 0
+#        if isRangeFetchBig:
+#            sleeptime = self.sleeptime
+#            if needtest and time() - RangeFetch.lastactive > 30:
+#                testallgaeip(True)
+#        else:
+#            sleeptime = self.sleeptime if needtest and time() - RangeFetch.lastactive > 30 and testallgaeip(True) else 0
 
         data_queue = Queue.PriorityQueue()
         range_queue = Queue.PriorityQueue()
@@ -110,9 +110,9 @@ class RangeFetch:
 
         for i in range(self.threads):
             if isRangeFetchBig:
-                spawn_later(sleeptime * i if i else 0, self.__fetchlet, range_queue, data_queue, i + 1)
+                spawn_later(self.sleeptime * i if i else 0, self.__fetchlet, range_queue, data_queue, i + 1)
             else:
-                spawn_later(sleeptime if i else 0, self.__fetchlet, range_queue, data_queue, i + 1)
+                spawn_later(self.sleeptime if i else 0, self.__fetchlet, range_queue, data_queue, i + 1)
         has_peek = hasattr(data_queue, 'peek')
         peek_timeout = 30
         self.expect_begin = start
