@@ -87,7 +87,7 @@ class LimitConnection:
         self._sock = sock
         self._ip = ip
 
-    def __del__(self):
+    def close(self):
         if self._sock:
             self._sock.close()
             self._sock = None
@@ -103,8 +103,41 @@ class LimitConnection:
     def __getattr__(self, attr):
         return getattr(self._sock, attr)
 
+    def __del__(self):
+        self.close()
+
+class LimitRequest:
+    'A request limiter for host cache key.'
+
+    limiters = LRUCache(1024)
+    _key = None
+    max_per_key = 3
+    timeout = 8
+
+    def __init__(self, key, max_per_key=None, timeout=None):
+        max_per_key = max_per_key or self.max_per_key
+        timeout = timeout or self.timeout
+        try:
+            limiter = self.limiters[key]
+        except KeyError:
+            self.limiters[key] = limiter = Limiter(max_per_key)
+        limiter.push(timeout=timeout)
+        self._key = key
+
     def close(self):
-        self.__del__()
+        if self._key:
+            key, self._key = self._key, None
+            try:
+                limiter = self.limiters[key]
+            except KeyError:
+                pass
+            else:
+                limiter.pop(block=False)
+                if limiter.empty():
+                    del self.limiters[key]
+
+    def __del__(self):
+        self.close()
 
 class BaseHTTPUtil:
     '''Basic HTTP Request Class'''
@@ -285,7 +318,7 @@ class BaseHTTPUtil:
             sock.close()
             return
         try:
-            rd, _, ed = select([sock], [], [sock], 0.0)
+            rd, _, ed = select([sock], [], [sock], 0)
             if rd or ed:
                 sock.close()
                 return
@@ -782,6 +815,7 @@ class HTTPUtil(BaseHTTPUtil):
             ssl_sock = None
             ip = ''
             try:
+                limiter = LimitRequest(connection_cache_key)
                 if ssl:
                     ssl_sock = self.create_ssl_connection(address, hostname, connection_cache_key, getfast=bool(getfast))
                 else:
@@ -814,6 +848,8 @@ class HTTPUtil(BaseHTTPUtil):
                 #确保不重复上传数据
                 if has_content and (sock or ssl_sock):
                     return
+            finally:
+                limiter.close()
 
 # Google video ip can act as Google FrontEnd if cipher suits not include
 # RC4-SHA
