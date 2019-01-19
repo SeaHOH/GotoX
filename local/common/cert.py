@@ -12,9 +12,9 @@ import OpenSSL
 from OpenSSL import crypto
 from time import time
 from datetime import datetime, timedelta
+from local.GlobalConfig import GC
 from .path import cert_dir
-from .common import LRUCache
-from .GlobalConfig import GC
+from .util import LRUCache
 
 ca_vendor = 'GotoX'
 ca_certfile = os.path.join(cert_dir, 'CA.crt')
@@ -262,9 +262,6 @@ def check_ca():
             os.mkdir(dir)
     #检查 CA 证书
     if not os.path.exists(ca_keyfile):
-        if not OpenSSL:
-            logging.critical('CAkey.pem is not exist and OpenSSL is disabled, ABORT!')
-            sys.exit(-1)
         logging.error('CAkey.pem 不存在，清空 certs 文件夹。')
         any(os.remove(x) for x in glob.glob(os.path.join(sub_certdir, '*.crt')))
         if GC.LISTEN_CHECKSYSCA and sys.platform.startswith('win'):

@@ -3,11 +3,11 @@
 import logging
 from .GlobalConfig import GC
 from .ProxyHandler import AutoProxyHandler, GAEProxyHandler
-from .common import LRUCache
+from .common.util import LRUCache
 
 if GC.LISTEN_AUTH == 2:
     import string
-    from .compat import urlparse
+    from urllib.parse import quote, unquote
 
     login_page = '''
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
@@ -113,7 +113,7 @@ div, input {font-size: 12pt; font-family: arial,sans-serif}
                         self.send_login_page(msg='登录成功！', disabled='disabled="disabled" ')
                     else:
                         #返回先前请求的网址
-                        target = urlparse.unquote(redirect) 
+                        target = unquote(redirect) 
                         self.write('HTTP/1.1 303 See Other\r\n'
                                    'Location: %s\r\n\r\n' % target)
                 else:
@@ -166,7 +166,7 @@ div, input {font-size: 12pt; font-family: arial,sans-serif}
                         #纠正登录地址为加密链接
                         target = 'https://' + url[7:]
                     else:
-                        target = 'https://%s?redirect=%s' % (login_url, urlparse.quote(url))
+                        target = 'https://%s?redirect=%s' % (login_url, quote(url))
                     self.write('HTTP/1.1 302 Found\r\n'
                                'Cache-Control: no-cache\r\n'
                                'Location: %s\r\n\r\n' %  target)
@@ -209,7 +209,7 @@ div, input {font-size: 12pt; font-family: arial,sans-serif}
             else:
                 form_data = self.rfile.read()
             if form_data:
-                return urlparse.unquote(form_data.decode(charset))
+                return unquote(form_data.decode(charset))
             else:
                 return ''
 

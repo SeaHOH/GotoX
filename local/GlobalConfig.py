@@ -4,12 +4,13 @@
 
 import os
 import sys
-#import collections
 import re
-from .compat import ConfigParser
-from .path import config_dir, data_dir
-#from .common.proxy import get_system_proxy, parse_proxy
 import logging
+from configparser import ConfigParser
+from .common.decompress import _brotli
+from .common.path import config_dir, data_dir
+from .common.util import wait_exit
+#from .common.proxy import get_system_proxy, parse_proxy
 
 _LOGLv = {
     0 : logging.WARNING,
@@ -19,12 +20,13 @@ _LOGLv = {
     }
 
 _SSLv = {
-    'SSLv3'   : 1,
-    'SSLv23'  : 2,
-    'TLS'     : 2,
-    'TLSv1'   : 3,
-    'TLSv1.1' : 4,
-    'TLSv1.2' : 5
+    'SSLv2'   : 1,
+    'SSLv3'   : 2,
+    'SSLv23'  : 3,
+    'TLS'     : 3,
+    'TLSv1'   : 4,
+    'TLSv1.1' : 5,
+    'TLSv1.2' : 6
     }
 
 #load config from proxy.ini
@@ -65,6 +67,7 @@ class GC:
     GAE_DEBUG = CONFIG.getint('gae', 'debug')
     GAE_PASSWORD = CONFIG.get('gae', 'password').strip()
     GAE_PATH = CONFIG.get('gae', 'path')
+    GAE_MAXPERIP = max(min(CONFIG.getint('gae', 'maxperip'), 8), 2)
     GAE_TIMEOUT = max(CONFIG.getint('gae', 'timeout'), 3)
     GAE_KEEPALIVE = CONFIG.getboolean('gae', 'keepalive')
     GAE_KEEPTIME = CONFIG.getint('gae', 'keeptime')
@@ -93,13 +96,12 @@ class GC:
     LINK_WINDOW = max(min(CONFIG.getint('link', 'window'), 12), 2)
     LINK_MAXPERIP = max(min(CONFIG.getint('link', 'maxperip'), 32), 3)
     LINK_RECVBUFFER = max(min(CONFIG.getint('link', 'recvbuffer'), 4194304), 32768)
-    #LINK_OPENSSL = CONFIG.getboolean('link', 'openssl')
-    LINK_OPENSSL = 1
     LINK_VERIFYG2PK = CONFIG.getboolean('link', 'verifyg2pk')
     LINK_LOCALSSLTXT = CONFIG.get('link', 'localssl') or 'TLS'
     LINK_REMOTESSLTXT = CONFIG.get('link', 'remotessl') or 'TLSv1.2'
-    LINK_LOCALSSL = _SSLv[LINK_LOCALSSLTXT] + (1 if LINK_OPENSSL else 0)
-    LINK_REMOTESSL = max(_SSLv[LINK_REMOTESSLTXT], _SSLv['TLS']) + (1 if LINK_OPENSSL else 0)
+    LINK_LOCALSSL = _SSLv[LINK_LOCALSSLTXT]
+    LINK_REMOTESSL = max(_SSLv[LINK_REMOTESSLTXT], _SSLv['TLS'])
+    LINK_REQUESTCOMPRESS = _brotli and CONFIG.getboolean('link', 'requestcompress')
     LINK_TIMEOUT = max(CONFIG.getint('link', 'timeout'), 3)
     LINK_FWDTIMEOUT = max(CONFIG.getint('link', 'fwdtimeout'), 3)
     LINK_KEEPTIME = CONFIG.getint('link', 'keeptime')
@@ -115,19 +117,15 @@ class GC:
 
     IPLIST_MAP = dict((k.lower(), [x for x in v.split('|') if x]) for k, v in CONFIG.items('iplist'))
 
+    if 'google_gae' not in IPLIST_MAP:
+        IPLIST_MAP['google_gae'] = []
     if 'google_gws' not in IPLIST_MAP:
         IPLIST_MAP['google_gws'] = []
-    if 'google_com' not in IPLIST_MAP:
-        IPLIST_MAP['google_com'] = []
     if GAE_IPLIST:
         GAE_TESTGWSIPLIST = False
-        if GAE_IPLIST == 'google_gws' and IPLIST_MAP['google_gws']:
-            IPLIST_MAP['google_com'] = IPLIST_MAP['google_gws'].copy()
-        elif GAE_IPLIST == 'google_com' and IPLIST_MAP['google_com']:
-            IPLIST_MAP['google_gws'] = IPLIST_MAP['google_com'].copy()
-        elif GAE_IPLIST in IPLIST_MAP and IPLIST_MAP[GAE_IPLIST]:
+        if GAE_IPLIST in IPLIST_MAP and IPLIST_MAP[GAE_IPLIST]:
+            IPLIST_MAP['google_gae'] = IPLIST_MAP[GAE_IPLIST].copy()
             IPLIST_MAP['google_gws'] = IPLIST_MAP[GAE_IPLIST].copy()
-            IPLIST_MAP['google_com'] = IPLIST_MAP[GAE_IPLIST].copy()
         else:
             GAE_TESTGWSIPLIST = True
             logging.warning('没有找到列表 [%s]，使用默认查找 IP 模式。', GAE_IPLIST)
@@ -141,22 +139,29 @@ class GC:
     FILTER_SSLACTION = CONFIG.getint('filter', 'sslaction')
     FILTER_SSLACTION = FILTER_SSLACTION if FILTER_SSLACTION in (1, 2, 3, 4) else 2
 
-    FINDER_SERVERNAME = CONFIG.get('finder', 'servername').encode()
-    FINDER_COMDOMAIN = CONFIG.get('finder', 'comdomain')
-    FINDER_MINIPCNT = int(CONFIG.get('finder', 'minipcnt') or 6)
-    FINDER_MAXTIMEOUT = int(CONFIG.get('finder', 'maxtimeout') or 1000)
-    FINDER_MAXTHREADS = int(CONFIG.get('finder', 'maxthreads') or 30)
-    FINDER_BLOCKTIME = float(CONFIG.get('finder', 'blocktime') or 12)
-    FINDER_TIMESBLOCK = int(CONFIG.get('finder', 'timesblock') or 2)
-    FINDER_TIMESDEL = int(CONFIG.get('finder', 'timesdel') or max(FINDER_TIMESBLOCK, 2) * 10)
-    FINDER_STATDAYS = int(CONFIG.get('finder', 'statdays') or 4)
-    FINDER_STATDAYS = max(min(FINDER_STATDAYS, 5), 2)
-    FINDER_BLOCK = CONFIG.get('finder', 'block')
-    FINDER_BLOCK = tuple(FINDER_BLOCK.split('|')) if FINDER_BLOCK else ()
+    PICKER_SERVERNAME = CONFIG.get('picker', 'servername').encode()
+    PICKER_COMDOMAIN = CONFIG.get('picker', 'comdomain')
+    PICKER_BLOCKTIME = float(CONFIG.get('picker', 'blocktime') or 12)
+    PICKER_TIMESBLOCK = int(CONFIG.get('picker', 'timesblock') or 2)
+    PICKER_TIMESDEL = int(CONFIG.get('picker', 'timesdel') or 10)
+    PICKER_STATDAYS = int(CONFIG.get('picker', 'statdays') or 4)
+    PICKER_STATDAYS = max(min(PICKER_STATDAYS, 5), 2)
+    PICKER_SORTSTAT = CONFIG.getboolean('picker', 'sortstat')
+    PICKER_BLOCK = CONFIG.get('picker', 'block')
+    PICKER_BLOCK = tuple(PICKER_BLOCK.split('|')) if PICKER_BLOCK else ()
+    PICKER_GAE_ENABLE = CONFIG.getboolean('picker/gae', 'enable')
+    PICKER_GAE_MINRECHECKTIME = int(CONFIG.get('picker/gae', 'minrechecktime') or 40)
+    PICKER_GAE_MINCNT = int(CONFIG.get('picker/gae', 'mincnt') or 6)
+    PICKER_GAE_MAXTIMEOUT = int(CONFIG.get('picker/gae', 'maxtimeout') or 2000)
+    PICKER_GAE_MAXTHREADS = int(CONFIG.get('picker/gae', 'maxthreads') or 10)
+    PICKER_GWS_ENABLE = CONFIG.getboolean('picker/gws', 'enable')
+    PICKER_GWS_MINRECHECKTIME = int(CONFIG.get('picker/gws', 'minrechecktime') or 20)
+    PICKER_GWS_MINCNT = int(CONFIG.get('picker/gws', 'mincnt') or 6)
+    PICKER_GWS_MAXTIMEOUT = int(CONFIG.get('picker/gws', 'maxtimeout') or 1000)
+    PICKER_GWS_MAXTHREADS = int(CONFIG.get('picker/gws', 'maxthreads') or 10)
 
-    if not FINDER_SERVERNAME:
-        logging.error('没有找到 [finder/servername]，请检查配置文件：%r，参考注释进行填写。', CONFIG_FILENAME)
-        sys.exit(-1)
+    if not PICKER_SERVERNAME:
+        wait_exit('没有找到 [picker/servername]，请检查配置文件：%r，参考注释进行填写。', CONFIG_FILENAME)
 
     #PROXY_ENABLE = CONFIG.getboolean('proxy', 'enable')
     PROXY_ENABLE = False
@@ -197,6 +202,9 @@ class GC:
 
     DNS_SERVERS = CONFIG.get('dns', 'servers')
     DNS_SERVERS = tuple(DNS_SERVERS.split('|')) if DNS_SERVERS else ('8.8.8.8',)
+    DNS_LOCAL_SERVERS = CONFIG.get('dns', 'localservers')
+    DNS_LOCAL_SERVERS = tuple(DNS_LOCAL_SERVERS.split('|')) if DNS_LOCAL_SERVERS else ('114.114.114.114',)
+    DNS_LOCAL_HOST = CONFIG.getboolean('dns', 'localhost')
     DNS_OVER_HTTPS = CONFIG.getboolean('dns', 'overhttps')
     DNS_OVER_HTTPS_LIST = CONFIG.get('dns', 'overhttpslist') or 'google_gws'
     DNS_OVER_HTTPS_ECS = CONFIG.get('dns', 'overhttpsecs')
@@ -216,7 +224,4 @@ class GC:
     DNS_CACHE_ENTRIES = int(CONFIG.get('dns/cache', 'entries') or 1024)
     DNS_CACHE_EXPIRATION = int(CONFIG.get('dns/cache', 'expiration') or 7200)
 
-from .common.decompress import _brotli
-
-GC.LINK_REQUESTCOMPRESS = _brotli and CONFIG.getboolean('link', 'requestcompress')
 del CONFIG

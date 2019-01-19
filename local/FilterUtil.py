@@ -4,10 +4,11 @@ import threading
 import logging
 from time import time, sleep
 from functools import partial
-from .path import config_dir
-from .common import LRUCache, random_hostname
+from urllib import parse
 from .common.dns import reset_dns
-from .compat import urlparse
+from .common.net import random_hostname
+from .common.path import config_dir
+from .common.util import LRUCache
 from .GlobalConfig import GC
 from .FilterConfig import (
     FAKECERT,
@@ -41,7 +42,7 @@ def check_reset():
 
 def get_fake_sni(host):
     if not isinstance(host, str):
-        return
+        return False
     key = 'https://' + host
     contains, expired, filter = ssl_filters_cache.getstate(key)
     if not contains:
@@ -55,25 +56,26 @@ def get_fake_sni(host):
         if isinstance(rule, tuple):
             rule = rule[1]
         if isinstance(rule, bytes):
-            return rule
+            return None if rule == b'@none' else rule
         elif rule == '*':
             return random_hostname().encode()
         elif '*' in rule:
             return random_hostname(rule).encode()
+    return False
 
 def get_redirect(target, url):
     '''Get the redirect target'''
-    if isinstance(target, str) and target.find('://') < 9:
-        return target, (None, None)
     rule, unquote, mhost, raction = target
-    if isinstance(rule, partial):
+    if isinstance(rule, str):
+        return rule, (mhost, None)
+    elif isinstance(rule, partial):
         url = rule(url, 1)
     elif isinstance(rule, tuple):
         url = url.replace(*rule)
     else:
         logging.error('%r 匹配重定向规则 %r，解析错误，请检查你的配置文件："%s/ActionFilter.ini"', url, target, config_dir)
         return
-    return urlparse.unquote(url) if unquote else url, (mhost, raction)
+    return parse.unquote(url) if unquote else url, (mhost, raction)
 
 def match_host_filter(filter, host):
     if isinstance(filter, str):

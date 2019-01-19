@@ -1,9 +1,9 @@
 # coding:utf-8
-'''ProxyUtil module, based on urllib2'''
+'''ProxyUtil module, based on urllib.request'''
 
 import socket
-from . import LRUCache
-from local.compat import urllib2
+from .util import LRUCache
+from urllib import request
 
 parse_proxy_cache = LRUCache(128)
 proxy_no_rdns = set()
@@ -12,11 +12,11 @@ def parse_proxy(proxy):
     try:
         return parse_proxy_cache[proxy]
     except KeyError:
-        parse_proxy_cache[proxy] = proxy_tuple = urllib2._parse_proxy(proxy)
+        parse_proxy_cache[proxy] = proxy_tuple = request._parse_proxy(proxy)
         return proxy_tuple
 
 def get_system_proxy():
-    proxies = urllib2.getproxies()
+    proxies = request.getproxies()
     return proxies.get('https') or proxies.get('http')
 
 def get_listen_ip():

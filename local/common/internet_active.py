@@ -1,8 +1,10 @@
 # coding:utf-8
+
 #此脚本通过域名解析测试网络状态，不支持 UDP 的前端代理无法使用
 #即使前置代理支持 UDP，还需要修改套接字使用代理
 
 import os
+import queue
 import socket
 import random
 import dnslib
@@ -10,9 +12,11 @@ import logging
 import collections
 from time import time, sleep
 from select import select
-from . import isipv4, isipv6, get_wan_ipv6, spawn_loop
+from threading import _start_new_thread as start_new_thread
+from .net import isipv4, isipv6, get_wan_ipv6
+from .path import get_dirname
+from .util import spawn_loop
 from local.GlobalConfig import GC
-from local.compat import Queue, thread
 
 #网络测试要求稳定、快速，所以选国内的 DNS IP
 dns_ips_v4 = (
@@ -120,12 +124,13 @@ def read_domains(file):
                     domains.add(domain)
     return list(domains)
 
-current_dir = os.path.dirname(os.path.abspath(__file__))
+current_dir = get_dirname(__file__)
 domains_file = os.path.join(current_dir, 'domains.txt')
 domains = read_domains(domains_file)
 
 class InternetActiveCheck:
     max_qdata_num = 256
+    max_check_times = 0
     only_check_ip = None
 
     def __init__(self, type, domains=domains):
@@ -156,13 +161,14 @@ class InternetActiveCheck:
     def set_dns_servers_v6(self):
         addr6 = get_wan_ipv6()
         if addr6:
-            if self.only_check_ip and self.last_stat == 0:
+            if self.only_check_ip and self.last_stat != 1:
                 logging.warning('IPv6 网络恢复连接')
-            self.last_stat = 1
+                self.last_stat = 1
         else:
             if self.only_check_ip and self.last_stat != 0:
                 logging.error('IPv6 网络现在不可用，将每 10 秒检测一次……')
             self.last_stat = 0
+            self._dns_servers = None
             return
         if addr6.teredo:
             if self.type != 'IPv6 Teredo':
@@ -220,6 +226,8 @@ class InternetActiveCheck:
                         keep_on = 10
                     logging.error('%s 网络现在不可用，将每 %d 秒检测一次……', self.type, keep_on)
                 sleep(keep_on)
+            if self._dns_servers is None:
+                continue
             if not self.dns_servers:
                 self.dns_servers = self._dns_servers.copy()
                 self.qdata = self.qdata_list.pop()
@@ -244,7 +252,7 @@ class InternetActiveCheck:
 internet_v4 = InternetActiveCheck('ipv4')
 internet_v6 = InternetActiveCheck('ipv6')
 
-qobj_cache = Queue.deque()
+qobj_cache = queue.deque()
 
 def _is_active(type, qobj, keep_on):
     if type == 4:
@@ -254,24 +262,24 @@ def _is_active(type, qobj, keep_on):
     qobj.put(stat)
 
 def is_active(type='ipv4', keep_on=None):
-    stat = 0
+    stat = 1
     n = 0
     try:
         qobj = qobj_cache.pop()
         qobj.queue.clear()
     except IndexError:
-        qobj = Queue.LifoQueue()
+        qobj = queue.LifoQueue()
     if type.lower() in ('ipv4', 'ipv46') or isipv4(type):
-        thread.start_new_thread(_is_active, (4, qobj, keep_on))
+        start_new_thread(_is_active, (4, qobj, keep_on))
         n += 1
     if type.lower() in ('ipv6', 'ipv46') or isipv6(type):
-        thread.start_new_thread(_is_active, (6, qobj, keep_on))
+        start_new_thread(_is_active, (6, qobj, keep_on))
         n += 1
     for _ in range(n):
         _stat = qobj.get()
         if _stat and keep_on:
             return _stat
-        stat |= _stat
+        stat &= _stat
     qobj_cache.append(qobj)
     if n:
         return stat

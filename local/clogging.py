@@ -3,7 +3,8 @@
 A simple colorful logging class for console or terminal output.
 '''
 
-import sys, os, threading, time, traceback
+import sys, os, time, traceback
+from .common.util import make_lock_decorator
 
 __all__ = ['CRITICAL', 'DEBUG', 'ERROR', 'FATAL', 'INFO', 'NOTSET', 'WARN',
            'WARNING', 'COLORS', 'addLevelName', 'basicConfig', 'getLogger',
@@ -85,42 +86,43 @@ class _colors(object):
 
 COLORS = _colors()
 
-_lock = threading.RLock()
+_lock_setting = make_lock_decorator(rlock=True)
+_lock_output = make_lock_decorator()
 _addedLevelNames = {}
 _handlerList = []
 
+@_lock_setting
 def addLevelName(level, levelName, color=None, force=False):
-    with _lock:
-        levelName = levelName.upper()
-        if not force and level in _levelToName or levelName in _nameToLevel:
-            return
-        _levelToName[level] = levelName
-        _nameToLevel[levelName] = level
-        if color:
-            COLORS[levelName] = color
-        g = globals()
-        g[levelName] = level
+    levelName = levelName.upper()
+    if not force and level in _levelToName or levelName in _nameToLevel:
+        return
+    _levelToName[level] = levelName
+    _nameToLevel[levelName] = level
+    if color:
+        COLORS[levelName] = color
+    g = globals()
+    g[levelName] = level
 
-        def wrapper(logger):
-            def wrap(fmt, *args, **kwargs):
-                logger.log(level, fmt, *args, **kwargs)
-            return wrap
+    def wrapper(logger):
+        def wrap(msg, *args, **kwargs):
+            logger.log(level, msg, *args, **kwargs)
+        return wrap
 
-        levelName = levelName.lower()
-        _addedLevelNames[levelName] = wrapper
-        g[levelName] = root.__getattr__(levelName)
+    levelName = levelName.lower()
+    _addedLevelNames[levelName] = wrapper
+    g[levelName] = root.__getattr__(levelName)
 
+@_lock_setting
 def _checkLevel(level):
-    with _lock:
-        if isinstance(level, (int, float)):
-            rv = level
-        elif str(level) == level:
-            if level not in _nameToLevel:
-                raise ValueError("Unknown level: %r" % level)
-            rv = _nameToLevel[level]
-        else:
-            raise TypeError("Level not an integer or a valid string: %r" % level)
-        return rv
+    if isinstance(level, (int, float)):
+        rv = level
+    elif str(level) == level:
+        if level not in _nameToLevel:
+            raise ValueError("Unknown level: %r" % level)
+        rv = _nameToLevel[level]
+    else:
+        raise TypeError("Level not an integer or a valid string: %r" % level)
+    return rv
 
 def _write(msg, file=None, color=None, reset=None):
     if file is None:
@@ -128,7 +130,7 @@ def _write(msg, file=None, color=None, reset=None):
         if file is None:
             return
     try:
-        colors = color and file in (sys.stderr, sys.stdout)
+        colors = color and hasattr(file, 'isatty') and file.isatty()
         if colors:
             _setColor(color)
         file.write(msg)
@@ -139,7 +141,7 @@ def _write(msg, file=None, color=None, reset=None):
     except OSError:
         pass
 
-if os.name == 'nt' and hasattr(sys.stderr, 'isatty') and sys.stderr.isatty():
+if os.name == 'nt':
     import ctypes
     _SetCTA = ctypes.windll.kernel32.SetConsoleTextAttribute
     _StdHandle = ctypes.windll.kernel32.GetStdHandle(-12)
@@ -152,22 +154,22 @@ else:
 class Logger(object):
 
     loggerDict = {}
-    _disable = 0
+    level = 0
+    disabled = False
     logName = True
-    stream = None
+    _name = None
+    parent = None
 
     def __new__(cls, name, level=NOTSET):
-        with _lock:
-            if name in cls.loggerDict:
-                return cls.loggerDict[name]
-            else:
-                self = super(Logger, cls).__new__(cls)
-                cls.loggerDict[name] = self
-                return self
+        return cls.root.getLogger(name)
 
     def __init__(self, name, level=NOTSET):
-        self.name = name
-        self.level = _checkLevel(level)
+        if self._name is None:
+            if self.parent not in (None, 'root'):
+                name = '.'.join((self.parent._name, name))
+            self._name = name
+        if level:
+            self.level = _checkLevel(level)
 
     def __getattr__(self, attr):
         try:
@@ -180,60 +182,110 @@ class Logger(object):
             except:
                 raise e
 
-    @staticmethod
-    def getLogger(name=None):
-        if name:
-            return Logger(name)
-        else:
-            return root
+    @classmethod
+    @_lock_setting
+    def newRootLogger(cls, name, level=NOTSET):
+        try:
+            return cls.loggerDict[name]
+        except KeyError:
+            pass
+        logger = object.__new__(cls)
+        logger.loggerDict = {'root': logger}
+        logger.root = logger
+        logger.disable = 0
+        logger.__init__(name, level)
+        return logger
+
+    def getLogger(self, name=None):
+        if name in (None, 'root'):
+            return self.root
+        names = name.split('.')
+        if len(names) > 1:
+            logger = self.newRootLogger(names.pop(0))
+            while names:
+                logger = logger.getChild(names.pop(0))
+            return logger
+        return self.getChild(name)
+
+    @_lock_setting
+    def getChild(self, name):
+        names = name.split('.')
+        if len(names) > 1:
+            logger = self
+            while names:
+                logger = logger.getChild(names.pop(0))
+            return logger
+        try:
+            return self.root.loggerDict[name]
+        except KeyError as e:
+            pass
+        logger = object.__new__(self.__class__)
+        logger.level = self.level
+        logger.root = self.root
+        logger.parent = self
+        logger._name = name
+        self.root.loggerDict[name] = logger
+        return logger
 
     def setLevel(self, level):
         self.level = _checkLevel(level)
 
     def disable(self, level):
-        self._disable = _checkLevel(level)
+        self.root.disable = _checkLevel(level)
+
+    def getEffectiveLevel(self):
+        logger = self
+        while logger:
+            if logger.level:
+                return logger.level
+            logger = logger.parent
+        return NOTSET
 
     def isEnabledFor(self, level):
-        if self.__class__._disable >= level or self._disable >= level:
+        if self.root.disable >= level:
             return False
-        return level >= self.level
+        return level >= self.getEffectiveLevel()
 
-    def log(self, level, fmt, *args, exc_info=None, **kwargs):
-        with _lock:
-            if self.isEnabledFor(level):
-                levelName = _levelToName[level]
-                head = '%s %s ' % (time.strftime('%H:%M:%S'), levelName[0])
-                if self.logName:
-                    head = '%s%s ' % (head, self.name)
-                _write(head, color='HEAD')
-                _write('%s\n' % (fmt % args), color=levelName, reset=True)
-            if exc_info:
-                if isinstance(exc_info, BaseException):
-                    exc_info = (type(exc_info), exc_info, exc_info.__traceback__)
-                elif not isinstance(exc_info, tuple):
-                    exc_info = sys.exc_info()
-                _write(''.join(traceback.format_exception(*exc_info)))
-                _write('\n')
+    @_lock_output
+    def _log(self, level, msg, args, exc_info=None, **kwargs):
+        if self.isEnabledFor(level):
+            levelName = _levelToName[level]
+            head = '%s %s ' % (time.strftime('%H:%M:%S'), levelName[0])
+            if self.logName:
+                head = '%s%s ' % (head, self._name)
+            _write(head, color='HEAD')
+            _write('%s\n' % (msg % args), color=levelName, reset=True)
+        if exc_info:
+            if isinstance(exc_info, BaseException):
+                exc_info = (type(exc_info), exc_info, exc_info.__traceback__)
+            elif not isinstance(exc_info, tuple):
+                exc_info = sys.exc_info()
+            _write(''.join(traceback.format_exception(*exc_info)),
+                    color='DEBUG', reset=True)
+            _write('\n')
 
-    def debug(self, fmt, *args, **kwargs):
-        self.log(DEBUG, fmt, *args, **kwargs)
+    def log(self, level, msg, *args, **kwargs):
+        self._log(level, msg, args, **kwargs)
 
-    def info(self, fmt, *args, **kwargs):
-        self.log(INFO, fmt, *args, **kwargs)
+    def debug(self, msg, *args, **kwargs):
+        self._log(DEBUG, msg, args, **kwargs)
 
-    def warning(self, fmt, *args, **kwargs):
-        self.log(WARNING, fmt, *args, **kwargs)
+    def info(self, msg, *args, **kwargs):
+        self._log(INFO, msg, args, **kwargs)
+
+    def warning(self, msg, *args, **kwargs):
+        self._log(WARNING, msg, args, **kwargs)
 
     warn = warning
 
-    def error(self, fmt, *args, **kwargs):
-        self.log(ERROR, fmt, *args, **kwargs)
+    def error(self, msg, *args, **kwargs):
+        self._log(ERROR, msg, args, **kwargs)
 
-    def exception(self, fmt, *args, exc_info=True, **kwargs):
-        self.error(fmt, *args, exc_info=exc_info, **kwargs)
+    def exception(self, msg, *args, exc_info=True, **kwargs):
+        self.error(msg, *args, exc_info=exc_info, **kwargs)
 
-    def critical(self, fmt, *args, **kwargs):
-        self.log(CRITICAL, fmt, *args, **kwargs)
+    def critical(self, msg, *args, **kwargs):
+        self._log(CRITICAL, msg, args, **kwargs)
 
     fatal = critical
 
@@ -243,12 +295,11 @@ def basicConfig(*args, **kwargs):
     warning('Use setLevel(level) to set output level.')
     root.level = _checkLevel(kwargs.get('level', INFO))
 
-getLogger = Logger.getLogger
-
-root = Logger('root', WARNING)
+root = Logger.newRootLogger('root', WARNING)
 root.logName = False
 Logger.root = root
 
+getLogger = root.getLogger
 setLevel = root.setLevel
 disable = root.disable
 log = root.log

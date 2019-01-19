@@ -1,10 +1,11 @@
 # coding:utf-8
-'''OpenSSL Connection Wrapper'''
 
 import socket
 import errno
-from OpenSSL import SSL
+from OpenSSL import SSL, crypto
 from select import select
+from ipaddress import ip_address
+from ssl import _dnsname_match, _ipaddress_match
 
 zero_errno = errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTSOCK
 zero_EOF_error = -1, 'Unexpected EOF'
@@ -13,7 +14,6 @@ class SSLConnection:
     '''API-compatibility wrapper for Python OpenSSL's Connection-class.'''
 
     def __init__(self, context, sock):
-        self._context = context
         self._sock = sock
         self._connection = SSL.Connection(context, sock)
         self._io_refs = 0
@@ -28,7 +28,7 @@ class SSLConnection:
 
     def __iowait(self, io_func, *args, **kwargs):
         timeout = self._sock.gettimeout()
-        fd = self._sock
+        fd = self._sock.fileno()
         while self._connection:
             try:
                 return io_func(*args, **kwargs)
@@ -141,3 +141,54 @@ class SSLConnection:
     #        return socket._fileobject(self, mode, bufsize, close=True)
     def makefile(self, *args, **kwargs):
         return socket.socket.makefile(self, *args, **kwargs)
+
+class CertificateError(SSL.Error):
+    pass
+
+CertificateErrorTab = {
+    10: lambda cert: 'time expired: %s' % cert.get_notAfter().decode(),
+    18: lambda cert: 'self signed, issuer: %s' % str(cert.get_issuer())[18:-2],
+    20: lambda cert: 'untrusted CA, issuer: %s' % str(cert.get_issuer())[18:-2]
+}
+
+def match_hostname(cert, hostname):
+    try:
+        host_ip = ip_address(hostname)
+    except ValueError:
+        # Not an IP address (common case)
+        host_ip = None
+    dnsnames = []
+    san = cert.get_subject_alt_name() or ()
+    for key, value in san:
+        if key == 'DNS':
+            if host_ip is None and _dnsname_match(value, hostname):
+                return
+            dnsnames.append(value)
+        elif key == 'IP Address':
+            if host_ip is not None and _ipaddress_match(value, host_ip):
+                return
+            dnsnames.append(value)
+    if not dnsnames:
+    # The subject is only checked when there is no dNSName entry in subjectAltName
+    # XXX according to RFC 2818, the most specific Common Name must be used.
+        value = cert.get_subject().commonName
+        if _dnsname_match(value, hostname):
+            return
+        dnsnames.append(value)
+    if len(dnsnames) > 1:
+        raise CertificateError(-1, "hostname %r doesn't match either of %s"
+                % (hostname, ', '.join(map(repr, dnsnames))))
+    elif len(dnsnames) == 1:
+        raise CertificateError(-1, "hostname %r doesn't match %r"
+                % (hostname, dnsnames[0]))
+    else:
+        raise CertificateError(-1, "no appropriate commonName or "
+                "subjectAltName fields were found")
+
+def get_subject_alt_name(self):
+    for i in range(self.get_extension_count()):
+        ext = self.get_extension(i)
+        if ext._nid == SSL._lib.NID_subject_alt_name:
+            return tuple(s.split(':') for s in ext._subjectAltNameString().split(', '))
+
+crypto.X509.get_subject_alt_name = get_subject_alt_name

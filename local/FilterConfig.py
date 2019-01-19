@@ -2,13 +2,13 @@
 
 import os
 import re
-import threading
 import logging
 from functools import partial
 from time import sleep
-from .path import config_dir
-from .compat import thread, ConfigParser
-from .common import isip, isipv4, isipv6, classlist
+from configparser import ConfigParser
+from threading import _start_new_thread as start_new_thread
+from .common.net import isip, isipv4, isipv6
+from .common.path import config_dir
 from .GlobalConfig import GC
 
 BLOCK     = 1
@@ -72,7 +72,7 @@ class actionfilterlist(list):
         self.readconfig()
         self.FILE_MTIME = os.path.getmtime(self.CONFIG_FILENAME)
         self.RESET = False
-        thread.start_new_thread(self.check_modify, ())
+        start_new_thread(self.check_modify, ())
 
     def readconfig(self):
         CONFIG = ConfigParser(inline_comment_prefixes=('#', ';'))
@@ -147,6 +147,8 @@ class actionfilterlist(list):
                         else:
                             rule = patterns, replaces, 1
                         v = rule, unquote, mhost, raction
+                    else:
+                        v = v, None, mhost, None
                 filters.append((scheme.lower(), host, path, v))
             self.append(filters)
 

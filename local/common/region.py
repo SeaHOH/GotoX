@@ -4,15 +4,18 @@ import os
 import re
 import socket
 import logging
-import _thread as thread
 from time import sleep
-from . import LRUCache, isip, isipv4, isipv6
-from local.path import data_dir, launcher_dir
+from threading import _start_new_thread as start_new_thread
+from .net import isip, isipv4, isipv6
+from .path import data_dir, launcher_dir
+from .util import LRUCache
 from local.GlobalConfig import GC
 
 direct_ipdb = os.path.join(data_dir, 'directip.db')
 direct_domains = os.path.join(data_dir, 'directdomains.txt')
+direct_domains_temp = tuple(domain for domain in GC.LINK_TEMPWHITELIST if domain[0] != '@')
 direct_cache = LRUCache(GC.DNS_CACHE_ENTRIES//2)
+local_cache = LRUCache(GC.DNS_CACHE_ENTRIES)
 direct_tlds = (
     # https://icannwiki.org
     # https://en.wikipedia.org/wiki/List_of_Internet_top-level_domains
@@ -93,16 +96,6 @@ direct_tlds = (
     'onion',
     'test',
     )
-
-if '4' in GC.LINK_PROFILE:
-    from .dns import dns_resolve
-else:
-    from .dns import _dns_resolve
-
-    def dns_resolve(host):
-        if isip(host):
-            return host,
-        return _dns_resolve(host)
 
 class IPv4Database:
     #载入 IPv4 保留地址和 CN 地址数据库，数据来源：
@@ -234,22 +227,41 @@ class DomainsDict:
         return host in self.dict['ip']
 
 def isdirect(host):
+    if islocal(host):
+        return True
     if ipdb is None:
         return False
     try:
         return direct_cache[host]
     except KeyError:
         pass
-    if host in direct_domains_dict:
-        direct_cache[host] = True
-        return True
-    direct = False
-    for ip in dns_resolve(host):
-        if isipv4(ip) and ip in ipdb:
-            direct = True
-            break
+    direct = host.endswith(direct_domains_temp)
+    if not direct:
+        for ip in dns_resolve(host):
+            if isipv4(ip) and ip in ipdb:
+                direct = True
+                break
     direct_cache[host] = direct
     return direct
+
+def islocal(host):
+    try:
+        return local_cache[host]
+    except KeyError:
+        pass
+    if host in direct_domains_dict:
+        local_cache[host] = True
+        return True
+
+if '4' in GC.LINK_PROFILE:
+    from .dns import dns_resolve
+else:
+    from .dns import _dns_resolve, A
+
+    def dns_resolve(host, qtypes=[A]):
+        if isip(host):
+            return host,
+        return _dns_resolve(host, qtypes=qtypes, local=False)
 
 def load_ipdb():
     global ipdb, IPDBVer
@@ -269,7 +281,8 @@ def load_domains():
     for domain in direct_tlds:
         domains_dict.add(domain)
     for domain in GC.LINK_TEMPWHITELIST:
-        domains_dict.add(domain)
+        if domain[0] == '@':
+            domains_dict.add(domain[1:])
     if os.path.exists(direct_domains):
         domains_dict.add_file(direct_domains)
         DDDVer = '%s, domains count: %d, IPs count: %d' % (
@@ -323,4 +336,4 @@ def check_modify():
 
 load_ipdb()
 load_domains()
-thread.start_new_thread(check_modify, ())
+start_new_thread(check_modify, ())

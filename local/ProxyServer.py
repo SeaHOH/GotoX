@@ -3,11 +3,13 @@
 import sys
 import socket
 import logging
-from .compat import thread, SocketServer
-from .common import NetWorkIOError, pass_errno
+import socketserver
+from threading import _start_new_thread as start_new_thread
 from .common.dns import reset_dns, update_dns_params
-from .common.proxy import get_listen_ip
 from .common.internet_active import is_active, internet_v4, internet_v6
+from .common.net import NetWorkIOError, bypass_errno
+from .common.proxy import get_listen_ip
+from .common.util import wait_exit
 from .GlobalConfig import GC
 
 localhosts = ['127.0.0.1', '::1', 'localhost', 'gotox.go']
@@ -17,14 +19,19 @@ def network_test(type=GC.LINK_PROFILE, first=None):
     #通过域名解析测试网络状态
     if not is_active(type):
         #对应网络全部发生故障时才停止代理线程
-        if type != 'ipv46' or not internet_v4.last_stat and not internet_v6.last_stat:
+        fail_type = 'ipv'
+        if '4' in type and not internet_v4.last_stat:
+            fail_type += '4'
+        if '6' in type and not internet_v6.last_stat:
+            fail_type += '6'
+        if type == fail_type:
             stop_server = True
         if stop_server:
             if not first:
                 stop_proxyserver()
-            is_active(type, 10)
+            is_active(fail_type, 10)
         else:
-            thread.start_new_thread(is_active, (type, 10))
+            start_new_thread(is_active, (fail_type, 10))
     if stop_server or first:
         get_localhosts()
     #重新开始代理线程
@@ -41,12 +48,11 @@ def start_proxyserver():
     try:
         AutoProxy.bind_and_activate()
         GAEProxy.bind_and_activate()
-        thread.start_new_thread(AutoProxy.serve_forever, ())
-        thread.start_new_thread(GAEProxy.serve_forever, ())
+        start_new_thread(AutoProxy.serve_forever, ())
+        start_new_thread(GAEProxy.serve_forever, ())
     except SystemError as e:
         if '(libev) select: Unknown error' in repr(e):
-            logging.error('如果出现此错误请告诉作者，谢谢！\nhttps://github.com/SeaHOH/GotoX/issues')
-            sys.exit(-1)
+            wait_exit('如果出现此错误请告诉作者，谢谢！\nhttps://github.com/SeaHOH/GotoX/issues', exc_info=True)
     AutoProxyHandler.bufsize = AutoProxy.socket.getsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF)
     update_dns_params()
 
@@ -64,13 +70,13 @@ def get_localhosts():
 
 IPPROTO_IPV6 = getattr(socket, 'IPPROTO_IPV6', 41)
 
-class LocalProxyServer(SocketServer.ThreadingTCPServer):
+class LocalProxyServer(socketserver.ThreadingTCPServer):
     '''Local Proxy Server'''
     request_queue_size = 96
     is_offline = True
 
     def __init__(self, server_address, RequestHandlerClass):
-        SocketServer.BaseServer.__init__(self, server_address, RequestHandlerClass)
+        socketserver.BaseServer.__init__(self, server_address, RequestHandlerClass)
         #保存原始地址配置以重复使用
         self.orig_server_address = server_address
 
@@ -109,7 +115,7 @@ class LocalProxyServer(SocketServer.ThreadingTCPServer):
         try:
             self.RequestHandlerClass(request, client_address, self)
         except NetWorkIOError as e:
-            if e.args[0] not in pass_errno:
+            if e.args[0] not in bypass_errno:
                 raise
 
     def handle_error(self, *args):
@@ -121,7 +127,7 @@ class LocalProxyServer(SocketServer.ThreadingTCPServer):
             exc_info = error = None
         else:
             del exc_info, error
-            SocketServer.ThreadingTCPServer.handle_error(self, *args)
+            socketserver.ThreadingTCPServer.handle_error(self, *args)
 
 from .ProxyHandler import AutoProxyHandler, GAEProxyHandler
 

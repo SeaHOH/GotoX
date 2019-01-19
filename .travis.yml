@@ -21,6 +21,7 @@ before_deploy:
   - curl -kL -o cert/cacerts/mozilla.pem https://curl.haxx.se/ca/cacert.pem
   - curl -kL -o cert/cacerts/google.pem https://pki.google.com/roots.pem
   - python launcher/buildipdb.py -u -d --17mon
+  - python launcher/builddomains.py -u -d --felix
 
   - git clone --depth=1 --branch=win_py_portable https://github.com/SeaHOH/GotoX.git ../win_py_portable
 

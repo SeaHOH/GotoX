@@ -2,11 +2,14 @@
 
 import os
 
-__file__ = os.path.abspath(__file__)
-if os.path.islink(__file__):
-    __file__ = getattr(os, 'readlink', lambda x: x)(__file__)
 
-app_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+def get_dirname(path):
+    path = os.path.abspath(path)
+    if os.path.islink(path):
+        path = getattr(os, 'readlink', lambda x: x)(path)
+    return os.path.dirname(path)
+
+app_root = os.path.dirname(os.path.dirname(get_dirname(__file__)))
 cert_dir = os.path.join(app_root, 'cert')
 config_dir = os.path.join(app_root, 'config')
 data_dir = os.path.join(app_root, 'data')

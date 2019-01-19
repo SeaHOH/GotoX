@@ -15,17 +15,20 @@ import OpenSSL
 import logging
 from select import select
 from time import time, sleep
+from queue import Queue
+from threading import _start_new_thread as start_new_thread
+from http.client import HTTPResponse
 from .GlobalConfig import GC
-from .path import cert_dir
-from .compat import Queue, thread, httplib, hasattr
-from .compat.openssl import zero_EOF_error, SSLConnection
-from .common import (
-    NetWorkIOError, closed_errno, LRUCache, LimiterFull, Limiter,
-    isip, random_hostname
+from .compat.openssl import (
+    zero_EOF_error, SSLConnection,
+    CertificateError, CertificateErrorTab, match_hostname
     )
 from .common.dns import dns, dns_resolve
-from .common.proxy import parse_proxy, proxy_no_rdns
 from .common.internet_active import internet_v4, internet_v6
+from .common.net import NetWorkIOError, random_hostname, bypass_errno, isip
+from .common.path import cert_dir
+from .common.proxy import parse_proxy, proxy_no_rdns
+from .common.util import make_lock_decorator, LRUCache, LimiterFull, Limiter, wait_exit
 from .FilterUtil import reset_method_list, get_fake_sni
 
 GoogleG23PKP = {
@@ -65,6 +68,7 @@ hj5J/kicXpbBQclS4uyuQ5iSOGKcuCRt8ralqREJXuRsnLZo0sIT680+VQ==
 gws_servername = GC.GAE_SERVERNAME
 gae_testgwsiplist = GC.GAE_TESTGWSIPLIST
 autorange_threads = GC.AUTORANGE_FAST_THREADS
+_lock_context = make_lock_decorator()
 
 class LimitConnection:
     'A connection limiter wrapper for remote IP.'
@@ -111,7 +115,7 @@ class LimitRequest:
 
     limiters = LRUCache(1024)
     _key = None
-    max_per_key = 3
+    max_per_key = 2
     timeout = 8
 
     def __init__(self, key, max_per_key=None, timeout=None):
@@ -142,92 +146,107 @@ class LimitRequest:
 class BaseHTTPUtil:
     '''Basic HTTP Request Class'''
 
-    use_openssl = 0
     ssl_ciphers = ssl._RESTRICTED_SERVER_CIPHERS
     new_sock4_cache = collections.deque()
     new_sock6_cache = collections.deque()
 
-    def __init__(self, use_openssl=None, cacert=None, ssl_ciphers=None):
-        if use_openssl:
-            self.use_openssl = use_openssl
-            self.set_ssl_option = self.set_openssl_option
-            self.get_ssl_socket = self.get_openssl_socket
-            self.get_peercert = self.get_openssl_peercert
-            if GC.LINK_VERIFYG2PK:
-                self.google_verify = self.google_verify_g23
-        self.cacert = cacert
+    def __init__(self, cacert=None, ssl_ciphers=None):
+        if GC.LINK_VERIFYG2PK:
+            self.google_verify = self.google_verify_g23
+        #建立公用 CA 证书库
+        self._context = OpenSSL.SSL.Context(OpenSSL.SSL.SSLv23_METHOD)
+        self.load_cacert(cacert)
+        self._cert_store = OpenSSL._util.lib.SSL_CTX_get_cert_store(self._context._context)
         if ssl_ciphers:
             self.ssl_ciphers = ssl_ciphers
         self.gws = gws = self.ssl_ciphers is gws_ciphers
         if gws:
             self.keeptime = GC.GAE_KEEPTIME
+            self.max_per_ip = GC.GAE_MAXPERIP
         else:
             self.keeptime = GC.LINK_KEEPTIME
-            self.google_verify = lambda x: None
-        self.set_ssl_option()
+            self.max_per_ip = GC.LINK_MAXPERIP
+        self.context_cache = LRUCache(min(GC.DNS_CACHE_ENTRIES, 256))
         self.tcp_connection_cache = collections.defaultdict(collections.deque)
         self.ssl_connection_cache = collections.defaultdict(collections.deque)
-        thread.start_new_thread(self.check_connection_cache, ('tcp',))
-        thread.start_new_thread(self.check_connection_cache, ('ssl',))
+        start_new_thread(self.check_connection_cache, ('tcp',))
+        start_new_thread(self.check_connection_cache, ('ssl',))
 
-    def set_ssl_option(self):
-        #强制 GWS 使用 TLSv1.2
-        self.context = context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2 if self.gws else GC.LINK_REMOTESSL)
-        #validate
-        context.verify_mode = ssl.CERT_REQUIRED
-        self.load_cacert()
-        context.check_hostname = not self.gws
-        context.set_ciphers(self.ssl_ciphers)
+    def load_cacert(self, cacert):
+        if os.path.isdir(cacert):
+            import glob
+            cacerts = glob.glob(os.path.join(cacert, '*.pem'))
+            if cacerts:
+                for cacert in cacerts:
+                    self._context.load_verify_locations(cacert)
+        elif os.path.isfile(cacert):
+            self._context.load_verify_locations(cacert)
+        else:
+            wait_exit('未找到可信任 CA 证书集，GotoX 即将退出！请检查：%r', cacert)
 
-    def set_openssl_option(self):
+    @_lock_context
+    def get_context(self, server_hostname):
+        if self.gws:
+            server_hostname = None
+        try:
+            return self.context_cache[server_hostname]
+        except KeyError:
+            pass
         #强制 GWS 使用 TLSv1.2
-        self.context = context = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_2_METHOD if self.gws else GC.LINK_REMOTESSL)
+        context = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_2_METHOD if self.gws else GC.LINK_REMOTESSL)
         #cache
         import binascii
         context.set_session_id(binascii.b2a_hex(os.urandom(10)))
         context.set_session_cache_mode(OpenSSL.SSL.SESS_CACHE_BOTH)
         #validate
-        self.load_cacert()
-        context.set_verify(OpenSSL.SSL.VERIFY_PEER, lambda c, x, e, d, ok: ok)
+        OpenSSL._util.lib.SSL_CTX_set_cert_store(context._context, self._cert_store)
+        context.set_verify(OpenSSL.SSL.VERIFY_PEER, self._verify_callback)
         context.set_cipher_list(self.ssl_ciphers)
+        self.context_cache[server_hostname] = context
+        return context
 
-    def load_cacert(self):
-        if os.path.isdir(self.cacert):
-            import glob
-            cacerts = glob.glob(os.path.join(self.cacert, '*.pem'))
-            if cacerts:
-                for cacert in cacerts:
-                    self.context.load_verify_locations(cacert)
-                return
-        elif os.path.isfile(self.cacert):
-            self.context.load_verify_locations(self.cacert)
+    def _verify_callback(self, sock, cert, error_number, depth, ok):
+        if ok and depth == 0 and not self.gws:
+            self.match_hostname(sock, cert)
+        elif error_number:
+            if error_number in CertificateErrorTab:
+                raise CertificateError(-1, (CertificateErrorTab[error_number](cert), depth))
+            else:
+                logging.test('%s：%d-%d，%s', sock.get_servername(), depth, error_number, cert.get_subject())
+        elif depth and ok:
+            #添加可信的中间证书，一定程度上有助于验证配置缺失的服务器
+            #下一步计划使用直接下载
+            OpenSSL._util.lib.X509_STORE_add_cert(self._cert_store, cert._x509)
+        return ok
+
+    @staticmethod
+    def match_hostname(sock, cert=None, hostname=None):
+        cert = cert or sock.get_peer_certificate()
+        if cert is None:
+            raise CertificateError(-1, 'No cert has found.')
+        hostname = hostname or sock.orig_hostname
+        if hostname is None:
             return
-        logging.error('未找到可信任 CA 证书集，GotoX 即将退出！请检查：%r', self.cacert)
-        sys.exit(-1)
+        if isinstance(hostname, bytes):
+            hostname = hostname.decode()
+        match_hostname(cert, hostname)
 
-    def get_server_hostname(self, cache_key, host):
+    def get_server_hostname(self, host, cache_key):
         servername = get_fake_sni(host)
-        if servername:
-            return servername
+        if servername is not False:
+            #同时返回原主机名用于验证，伪造名称只用于 SNI 设置
+            return servername, host
         if self.gws:
-            if cache_key == 'google_fe:443' or host and host.endswith('.appspot.com'):
+            if cache_key == 'google_gae|:443' or host and host.endswith('.appspot.com'):
                 if gws_servername is None:
-                    if host is None:
-                        if GC.GAE_APPIDS:
-                            return random.choice(GC.GAE_APPIDS).encode() + b'.appspot.com'
-                        else:
-                            return b'www.appspot.com'
-                    else:
-                        return host.encode()
-                elif gws_servername[0] == b'random':
-                    fakehost = random_hostname()
+                    fakehost = random_hostname('*com')
                     return fakehost.encode()
                 else:
                     return random.choice(gws_servername)
             else:
-                return GC.FINDER_SERVERNAME
+                return GC.PICKER_SERVERNAME
         else:
-            return None if isip(host) else host.encode()
+            return host.encode()
 
     @staticmethod
     def set_tcp_socket(sock, timeout=None, set_buffer=True):
@@ -266,7 +285,7 @@ class BaseHTTPUtil:
             self.set_tcp_socket(sock, timeout)
         try:
             # wrap for connect limit
-            sock = LimitConnection(sock, ip)
+            sock = LimitConnection(sock, ip, self.max_per_ip)
         except LimiterFull as e:
             sock = new_sock_cache.append(sock)
             raise e
@@ -279,22 +298,19 @@ class BaseHTTPUtil:
         return self._get_tcp_socket(socks.socksocket, proxyip, timeout)
 
     def get_ssl_socket(self, sock, server_hostname=None):
-        return self.context.wrap_socket(sock, do_handshake_on_connect=False, server_hostname=server_hostname)
-
-    def get_openssl_socket(self, sock, server_hostname=None):
-        ssl_sock = SSLConnection(self.context, sock)
+        if isinstance(server_hostname, tuple):
+            server_hostname, sock.orig_hostname = server_hostname
+        else:
+            sock.orig_hostname = server_hostname
+        context = self.get_context(sock.orig_hostname)
+        ssl_sock = SSLConnection(context, sock)
         if server_hostname:
             ssl_sock.set_tlsext_host_name(server_hostname)
         return ssl_sock
 
-    def get_peercert(self, sock):
-        return OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1, sock.getpeercert(True))
-
-    def get_openssl_peercert(self, sock):
-        return sock.get_peer_certificate()
-
-    def google_verify(self, sock):
-        cert = self.get_peercert(sock)
+    @staticmethod
+    def google_verify(sock):
+        cert = sock.get_peer_certificate()
         if not cert:
             raise ssl.SSLError('没有获取到证书')
         subject = cert.get_subject()
@@ -302,7 +318,8 @@ class BaseHTTPUtil:
             raise ssl.SSLError('%s 证书的公司名称（%s）不是 "Google Inc"' % (sock.getpeername[0], subject.O))
         return cert
 
-    def google_verify_g23(self, sock):
+    @staticmethod
+    def google_verify_g23(sock):
         certs = sock.get_peer_cert_chain()
         if len(certs) < 2:
             raise ssl.SSLError('谷歌域名没有获取到正确的证书链：缺少 CA。')
@@ -312,13 +329,12 @@ class BaseHTTPUtil:
 
     @staticmethod
     def check_connection_alive(sock, keeptime, ctime):
-        if hasattr(sock, '_sock'):
-            sock = sock._sock
         if time() - ctime > keeptime:
             sock.close()
             return
         try:
-            rd, _, ed = select([sock], [], [sock], 0)
+            fd = sock.fileno()
+            rd, _, ed = select([fd], [], [fd], 0)
             if rd or ed:
                 sock.close()
                 return
@@ -361,14 +377,14 @@ class HTTPUtil(BaseHTTPUtil):
 
     protocol_version = 'HTTP/1.1'
 
-    def __init__(self, max_window=4, timeout=8, proxy='', ssl_ciphers=None, max_retry=2):
+    def __init__(self, cacert, ssl_ciphers=None, max_window=4, timeout=8, proxy='', max_retry=2):
         # http://docs.python.org/dev/library/ssl.html
         # http://blog.ivanristic.com/2009/07/examples-of-the-information-collected-from-ssl-handshakes.html
         # http://src.chromium.org/svn/trunk/src/net/third_party/nss/ssl/sslenum.c
         # http://www.openssl.org/docs/apps/ciphers.html
         # openssl s_server -accept 443 -key CA.crt -cert CA.crt
         # set_ciphers as Modern Browsers
-        BaseHTTPUtil.__init__(self, GC.LINK_OPENSSL, os.path.join(cert_dir, 'cacerts'), ssl_ciphers)
+        BaseHTTPUtil.__init__(self, cacert, ssl_ciphers)
         self.max_window = max_window
         self.max_retry = max_retry
         self.timeout = timeout
@@ -387,7 +403,7 @@ class HTTPUtil(BaseHTTPUtil):
         #    self.create_ssl_connection = self.__create_ssl_connection_withproxy
 
     def get_tcp_ssl_connection_time(self, addr):
-        return self.tcp_connection_time.get(addr, False) or self.ssl_connection_time.get(addr, self.timeout)
+        return self.tcp_connection_time.get(addr) or self.ssl_connection_time.get(addr, self.timeout)
 
     def get_tcp_connection_time(self, addr):
         return self.tcp_connection_time.get(addr, self.timeout)
@@ -472,9 +488,9 @@ class HTTPUtil(BaseHTTPUtil):
                 addrs = addresses[:window] + random.sample(addresses[window:], self.max_window-window)
             else:
                 addrs = addresses
-            queobj = Queue.Queue()
+            queobj = Queue()
             for addr in addrs:
-                thread.start_new_thread(self._create_connection, (addr, forward, queobj, get_cache_sock))
+                start_new_thread(self._create_connection, (addr, forward, queobj, get_cache_sock))
             addrslen = len(addrs)
             for n in range(addrslen):
                 result = queobj.get()
@@ -492,12 +508,12 @@ class HTTPUtil(BaseHTTPUtil):
                         logging.warning('%s _create_connection %r 返回 %r，重试', addr[0], host, result)
                 else:
                     if addrslen - n > 1:
-                        thread.start_new_thread(self._close_connection, (cache, addrslen-n-1, queobj, result.tcp_time))
+                        start_new_thread(self._close_connection, (cache, addrslen-n-1, queobj, result.tcp_time))
                     return result
         if result:
             raise result
 
-    def _create_ssl_connection(self, ipaddr, cache_key, host, queobj, test=None, get_cache_sock=None):
+    def _create_ssl_connection(self, ipaddr, cache_key, host, queobj, callback=None, get_cache_sock=None):
         retry = None
         while True:
             if get_cache_sock:
@@ -508,41 +524,45 @@ class HTTPUtil(BaseHTTPUtil):
 
             ip = ipaddr[0]
             try:
-                sock = self.get_tcp_socket(ip, test)
-                ssl_sock = self.get_ssl_socket(sock, self.get_server_hostname(cache_key, host))
+                sock = self.get_tcp_socket(ip)
+                s = self.get_server_hostname(host, cache_key)
+                ssl_sock = self.get_ssl_socket(sock, self.get_server_hostname(host, cache_key))
                 # start connection time record
                 start_time = time()
                 # TCP connect
                 ssl_sock.connect(ipaddr)
                 #connected_time = time()
                 # set a short timeout to trigger timeout retry more quickly.
-                ssl_sock.settimeout(test if test else 1.5)
+                ssl_sock.settimeout(3 if self.gws else 1.5)
                 # SSL handshake
                 ssl_sock.do_handshake()
                 handshaked_time = time()
-                # record TCP connection time
-                #self.tcp_connection_time[ipaddr] = ssl_sock.tcp_time = connected_time - start_time
                 # record SSL connection time
-                self.ssl_connection_time[ipaddr] = ssl_sock.ssl_time = handshaked_time - start_time
-                if test:
-                    if ssl_sock.ssl_time > test:
-                        raise socket.timeout('%d 超时' % int(ssl_sock.ssl_time*1000))
+                ssl_sock.ssl_time = handshaked_time - start_time
                 # verify Google SSL certificate.
-                self.google_verify(ssl_sock)
+                if self.gws:
+                    self.google_verify(ssl_sock)
                 ssl_sock.xip = ipaddr
-                if test:
+                if callback:
+                    cache_key = callback(ssl_sock) or cache_key
+                    self.ssl_connection_time[ipaddr] = ssl_sock.ssl_time
                     self.ssl_connection_cache[cache_key].append((time(), ssl_sock))
-                    return queobj.put((ip, ssl_sock.ssl_time))
+                    return True
+                self.ssl_connection_time[ipaddr] = ssl_sock.ssl_time
                 # put ssl socket object to output queobj
                 queobj.put(ssl_sock)
             except NetWorkIOError as e:
-                # reset a large and random timeout to the ipaddr
-                self.ssl_connection_time[ipaddr] = self.timeout + 1
                 # any socket.error, put Excpetions to output queobj.
                 e.xip = ipaddr
-                if test and not retry and e.args == zero_EOF_error:
-                    retry = True
-                    continue
+                if callback:
+                    if not retry and e.args == zero_EOF_error:
+                        retry = True
+                        continue
+                    else:
+                        callback(e)
+                        return
+                # reset a large and random timeout to the ipaddr
+                self.ssl_connection_time[ipaddr] = self.timeout + 1
                 queobj.put(e)
             break
 
@@ -588,9 +608,9 @@ class HTTPUtil(BaseHTTPUtil):
                     addrs = addresses[:window] + random.sample(addresses[window:], self.max_window-window)
                 else:
                     addrs = addresses
-            queobj = Queue.Queue()
+            queobj = Queue()
             for addr in addrs:
-                thread.start_new_thread(self._create_ssl_connection, (addr, cache_key, host, queobj, None, get_cache_sock))
+                start_new_thread(self._create_ssl_connection, (addr, cache_key, host, queobj, None, get_cache_sock))
             addrslen = len(addrs)
             for n in range(addrslen):
                 result = queobj.get()
@@ -608,7 +628,7 @@ class HTTPUtil(BaseHTTPUtil):
                         logging.warning('%s _create_ssl_connection %r 返回 %r，重试', addr[0], host, result)
                 else:
                     if addrslen - n > 1:
-                        thread.start_new_thread(self._close_ssl_connection, (cache, addrslen-n-1, queobj, result.ssl_time))
+                        start_new_thread(self._close_ssl_connection, (cache, addrslen-n-1, queobj, result.ssl_time))
                     return result
         if result:
             raise result
@@ -635,7 +655,7 @@ class HTTPUtil(BaseHTTPUtil):
 #                request_data += 'Proxy-authorization: Basic %s\r\n' % base64.b64encode(('%s:%s' % (proxyuser, proxypass)).encode()).decode().strip()
 #            request_data += '\r\n'
 #            sock.sendall(request_data)
-#            response = httplib.HTTPResponse(sock)
+#            response = HTTPResponse(sock)
 #            response.begin()
 #            if response.status >= 400:
 #                logging.error('__create_connection_withproxy return http error code %s', response.status)
@@ -778,8 +798,19 @@ class HTTPUtil(BaseHTTPUtil):
             request_data = '\r\n'.join(request_data).encode() + payload
             sock.sendall(request_data)
 
-        response = httplib.HTTPResponse(sock, method=method)
+#        try:
+#            response = HTTPResponse(sock, method=method)
+#            response.begin()
+#        except Exception as e:
+            #这里有时会捕捉到奇怪的异常，找不到来源路径
+            # py2 的 raise 不带参数会导致捕捉到错误的异常，但使用 exc_clear 或换用 py3 还是会出现
+#            if hasattr(e, 'xip'):
+                #logging.warning('4444 %r | %r | %r', sock.getpeername(), sock.xip, e.xip)
+#                del e.xip
+#            raise e
+        response = HTTPResponse(sock, method=method)
         response.begin()
+
         response.xip =  sock.xip
         response.sock = sock
         return response
@@ -811,6 +842,7 @@ class HTTPUtil(BaseHTTPUtil):
                 headers['Content-Length'] = str(len(payload))
 
         for i in range(self.max_retry):
+            limiter = None
             sock = None
             ssl_sock = None
             ip = ''
@@ -840,16 +872,17 @@ class HTTPUtil(BaseHTTPUtil):
                     ip = e.xip
                     logging.warning('%s create_%sconnection %r 失败：%r', ip[0], 'ssl_' if ssl else '', realurl or url, e)
                 else:
-                    logging.warning('%s _request "%s %s" 失败：%r', ip[0], realmethod, realurl or url, e)
-                    if realurl:
+                    logging.warning('%s _request "%s %s" 失败：%r', ip and ip[0], realmethod, realurl or url, e)
+                    if ip and realurl:
                         self.ssl_connection_time[ip] = self.timeout + 1
-                if not realurl and e.args[0] in closed_errno:
+                if not realurl and e.args[0] in bypass_errno:
                     raise e
                 #确保不重复上传数据
                 if has_content and (sock or ssl_sock):
                     return
             finally:
-                limiter.close()
+                if limiter:
+                    limiter.close()
 
 # Google video ip can act as Google FrontEnd if cipher suits not include
 # RC4-SHA
@@ -886,7 +919,7 @@ def_ciphers = ssl._DEFAULT_CIPHERS
 res_ciphers = ssl._RESTRICTED_SERVER_CIPHERS
 
 # max_window=4, timeout=8, proxy='', ssl_ciphers=None, max_retry=2
-http_gws = HTTPUtil(GC.LINK_WINDOW, GC.GAE_TIMEOUT, GC.proxy, gws_ciphers)
-http_nor = HTTPUtil(GC.LINK_WINDOW, GC.LINK_TIMEOUT, GC.proxy, res_ciphers)
+http_gws = HTTPUtil(os.path.join(cert_dir, 'cacerts', 'gws.pem'), gws_ciphers, GC.LINK_WINDOW, GC.GAE_TIMEOUT, GC.proxy)
+http_nor = HTTPUtil(os.path.join(cert_dir, 'cacerts'), res_ciphers, GC.LINK_WINDOW, GC.LINK_TIMEOUT, GC.proxy)
 reset_method_list.append(http_gws.clear_all_connection_cache)
 reset_method_list.append(http_nor.clear_all_connection_cache)

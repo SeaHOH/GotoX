@@ -2,18 +2,18 @@
 
 import ssl
 import zlib
+import queue
 import struct
-import threading
 import logging
+import urllib.request
 from io import BytesIO
 from time import time, timezone, localtime, strftime, strptime, mktime
-from urllib.request import ProxyHandler, HTTPSHandler, build_opener
-from .compat import Queue, httplib
+from http.client import HTTPResponse, parse_headers
 from .GlobalConfig import GC
-from .GAEUpdate import testipuseable
+from .GIPManager import test_ip_gae
 from .HTTPUtil import http_gws
-from .common import LRUCache
 from .common.decompress import GzipSock
+from .common.util import make_lock_decorator, LRUCache
 
 timezone_PST = timezone - 3600 * 8 # UTC-8
 timezone_PDT = timezone - 3600 * 7 # UTC-7
@@ -26,41 +26,41 @@ def get_refreshtime():
     return refreshtime - now
 
 nappid = 0
-nLock = threading.Lock()
+_lock_nappid = make_lock_decorator()
 badappids = LRUCache(len(GC.GAE_APPIDS))
-qGAE = Queue.LifoQueue()
+qGAE = queue.LifoQueue()
 for _ in range(GC.GAE_MAXREQUESTS * len(GC.GAE_APPIDS)):
     qGAE.put(True)
 
 proxy_server = 'http://127.0.0.1:%d' % GC.LISTEN_AUTO_PORT
-proxy_handler = ProxyHandler({
+proxy_handler = urllib.request.ProxyHandler({
     'http': proxy_server,
     'https': proxy_server
 })
 context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
 context.verify_mode = ssl.CERT_NONE
-https_handler = HTTPSHandler(context=context)
-proxy_opener = build_opener(proxy_handler, https_handler)
+https_handler = urllib.request.HTTPSHandler(context=context)
+proxy_opener = urllib.request.build_opener(proxy_handler, https_handler)
 
 def check_appid_exists(appid):
     response = proxy_opener.open('https://%s.appspot.com/' % appid)
     return response.status in (200, 503)
 
+@_lock_nappid
 def get_appid():
     global nappid
-    with nLock:
-        while True:
-            nappid += 1
-            if nappid >= len(GC.GAE_APPIDS):
-                nappid = 0
-            appid = GC.GAE_APPIDS[nappid]
-            contains, expired, _ = badappids.getstate(appid)
-            if contains and expired:
-                for _ in range(GC.GAE_MAXREQUESTS):
-                    qGAE.put(True)
-            if not contains or expired:
-                break
-        return appid
+    while True:
+        nappid += 1
+        if nappid >= len(GC.GAE_APPIDS):
+            nappid = 0
+        appid = GC.GAE_APPIDS[nappid]
+        contains, expired, _ = badappids.getstate(appid)
+        if contains and expired:
+            for _ in range(GC.GAE_MAXREQUESTS):
+                qGAE.put(True)
+        if not contains or expired:
+            break
+    return appid
 
 def mark_badappid(appid, time=None):
     if appid not in badappids:
@@ -99,7 +99,7 @@ def make_errinfo(response, htmltxt):
 class gae_params:
     port = 443
     ssl = True
-    hostname = 'google_gws'
+    hostname = 'google_gae'
     path = GC.GAE_PATH
     command = 'POST'
     fetchhost = '%s.appspot.com'
@@ -140,7 +140,7 @@ def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
     realurl = 'GAE-' + url
     qGAE.get() # get start from Queue
     while True:
-        response = http_gws.request(request_params, payload, request_headers, connection_cache_key='google_fe:443', getfast=getfast, realmethod=method, realurl=realurl)
+        response = http_gws.request(request_params, payload, request_headers, connection_cache_key='google_gae|:443', getfast=getfast, realmethod=method, realurl=realurl)
         if response is None:
             return
         app_server = response.headers.get('Server')
@@ -149,7 +149,7 @@ def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
         if GC.GAE_ENABLEPROXY:
             logging.warning('GAE 前置代理 [%s:%d] 无法正常工作', *response.xip)
             continue
-        if testipuseable(response.xip[0]):
+        if test_ip_gae(response.xip[0]) == 'gae':
             break
         logging.warning('发现并移除非 GAE IP：%s，Server：%s', response.xip[0], app_server)
     response.app_status = response.status
@@ -157,7 +157,7 @@ def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
         return response
     #解压并解析 chunked & gziped 响应
     if 'Transfer-Encoding' in response.headers:
-        responseg = httplib.HTTPResponse(GzipSock(response), method=method)
+        responseg = HTTPResponse(GzipSock(response), method=method)
         responseg.begin()
         responseg.app_status = 200
         responseg.xip =  response.xip
@@ -193,5 +193,5 @@ def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
         response.app_status = response.status
         response.reason = 'debug error'
         response.app_msg = app_msg
-    response.headers = response.msg = httplib.parse_headers(BytesIO(headers_data))
+    response.headers = response.msg = parse_headers(BytesIO(headers_data))
     return response
