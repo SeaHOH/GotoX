@@ -23,7 +23,7 @@ from .GlobalConfig import GC
 #连接超时设置，单位：秒
 g_timeout = 5
 g_conntimeout = 1.5
-g_handshaketimeout = 2.5
+g_handshaketimeout = 3
 
 def get_index_1(o):
     return o[1]
@@ -69,7 +69,7 @@ elif GC.LINK_PROFILE == 'ipv46':
 _lock_file_source = make_lock_decorator()
 _lock_file_stat = make_lock_decorator()
 _lock_log_stat = make_lock_decorator(rlock=True)
-_lock_get_ip = make_lock_decorator()
+_lock_get_ip = make_lock_decorator(rlock=True)
 _lock_save_use = make_lock_decorator()
 _lock_remove_slow = make_lock_decorator()
 _lock_pick_worker = make_lock_decorator()
@@ -273,9 +273,9 @@ class IPSource:
     @_lock_file_stat
     def load_stat_bad(self):
         ip_stat_bad = {}
-        restore_file(self.ip_file_del)
-        if exists(self.ip_file_del):
-            with open(self.ip_file_del, 'r') as f:
+        restore_file(self.ip_file_bad)
+        if exists(self.ip_file_bad):
+            with open(self.ip_file_bad, 'r') as f:
                 for line in f:
                     try:
                         (block_times, del_times, log_time,
@@ -310,6 +310,9 @@ class IPSource:
                 continue
             else:
                 ip_stat[ip] = _ip_stat = [0] * 5
+
+            if index in (1, 3):
+                _ip_stat[4] = 0
             _ip_stat[index] += 1
 
         if index in (1, 3):
@@ -415,13 +418,17 @@ class IPSource:
         now = time()
         if update_source:
             self.load_source()
-        elif now - self.update_time < 10:
+        elif now - self.update_time < 60:
             return
 
         self.update_time = now
         self.ip_set_bad = set(ip for ip, (_, _, t) in self.ip_stat_bad.items() if now - t > self.block_time) \
                           - self.ip_set_del
-        self.ip_set_good = set(ip for ip, (_, _, _, _, unstat) in self.ip_stat.items() if not unstat)
+        self.ip_set_good = set(ip for ip, (co, _, ro, _, unstat) in self.ip_stat.items() if co and not unstat) \
+                           - self.ip_set_ex \
+                           - self.ip_set_bad \
+                           - self.ip_set_del \
+                           - self.ip_set_used
         self.ip_set_weak = set(self.ip_stat_bad.keys()) \
                            - self.ip_set_ex \
                            - self.ip_set_good \
@@ -486,20 +493,27 @@ class IPPoolSource:
         return m
 
     def __init__(self, ip_source, type):
+        now = time()
+        self.update_time = now
+        self.last_save_time = now
+        self.save_cmd_times = 0
+        self.check_cnt = 0
         self._ip_source = ip_source
         self.type = type
         self.ip_file = os.path.join(data_dir, 'ip_' + type)
         self.ip_set, self.ip_set_block, _ = self._load_source(self.ip_file)
         ip_source.ip_set_assoeted |= self.ip_set
-        self.save_cmd_times = 0
-        self.last_save_time = time()
-        self.check_cnt = 0
         self.ip_list_ed = collections.deque()
 
     def __getattr__(self, attr):
         return getattr(self._ip_source, attr)
 
-    def update_list_good(self):
+    def update_list_good(self, force=False):
+        now = time()
+        if not force and now - self.update_time < 60:
+            return
+
+        self.update_time = now
         self.get_cnt = 0
         self.get_cnt_good = 0
         self.get_cnt_other = 0
@@ -509,7 +523,8 @@ class IPPoolSource:
                  - self.ip_set_weak \
                  - self.ip_set_bad \
                  - self.ip_set_del \
-                 - self.ip_set_used
+                 - self.ip_set_used \
+                 - set(self.ip_list_ed)
         self.ip_list_good = [ip for ip in ip_list_good if ip in ip_set]
         self.ip_list_other = get_littery_list(ip_set - set(self.ip_list_good))
         self.cnt_to_update_good = max((len(self.ip_list_good) + 1) // 2, 50)
@@ -517,9 +532,9 @@ class IPPoolSource:
     def check_update(self, force=False):
         if self._ip_source.check_update(force=force):
             for m in (self.gae, self.gws):
-                m.update_list_good()
+                m.update_list_good(force=force)
         elif not self.ip_list_good or self.get_cnt_good > self.cnt_to_update_good:
-            self.update_list_good()
+            self.update_list_good(force=force)
 
     def _get_ip(self):
         self.get_cnt += 1
