@@ -155,7 +155,7 @@ class GC:
     PICKER_GAE_MAXTIMEOUT = int(CONFIG.get('picker/gae', 'maxtimeout') or 2000)
     PICKER_GAE_MAXTHREADS = int(CONFIG.get('picker/gae', 'maxthreads') or 10)
     PICKER_GWS_ENABLE = CONFIG.getboolean('picker/gws', 'enable')
-    PICKER_GWS_MINRECHECKTIME = int(CONFIG.get('picker/gws', 'minrechecktime') or 20)
+    PICKER_GWS_MINRECHECKTIME = int(CONFIG.get('picker/gws', 'minrechecktime') or 30)
     PICKER_GWS_MINCNT = int(CONFIG.get('picker/gws', 'mincnt') or 6)
     PICKER_GWS_MAXTIMEOUT = int(CONFIG.get('picker/gws', 'maxtimeout') or 1000)
     PICKER_GWS_MAXTHREADS = int(CONFIG.get('picker/gws', 'maxthreads') or 10)

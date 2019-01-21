@@ -69,7 +69,7 @@ elif GC.LINK_PROFILE == 'ipv46':
 _lock_file_source = make_lock_decorator()
 _lock_file_stat = make_lock_decorator()
 _lock_log_stat = make_lock_decorator(rlock=True)
-_lock_get_ip = make_lock_decorator(rlock=True)
+_lock_get_ip = make_lock_decorator()
 _lock_save_use = make_lock_decorator()
 _lock_remove_slow = make_lock_decorator()
 _lock_pick_worker = make_lock_decorator()
@@ -86,11 +86,14 @@ class IPSource:
     time_to_reload = 60 * 60 * 8
     save_stat_interval = 60 * 15
     save_per_log_stat = 200
+    save_stat_bad_interval = 60 * 15
+    save_per_log_stat_bad = 20
 
     def __init__(self):
         now = time()
         self.logger = logging.getLogger('[ip source]')
         self.log_stat_times = 0
+        self.log_stat_bad_times = 0
         self.ip_mtime = 0
         self.ip_mtime_ex = 0
         self.ip_stat_block = {}
@@ -98,6 +101,7 @@ class IPSource:
         self.ip_set_bad = set()
         self.ip_set_assoeted = set()
         self.save_stat_time = now
+        self.save_stat_bad_time = now
         self.update_time = now
         self.load_config()
         self.load_stat_bad()
@@ -119,7 +123,7 @@ class IPSource:
     @staticmethod
     def sort_ip_stat_good(p):
         ip, ip_stat = p
-        return s[2] * 2 / s[0] / max(self.ip_stat_bad[ip][0], 1) - s[3] - s[1] * 10
+        return s[2] * 2 / s[0] / max(self.ip_stat_bad.get(ip, [1])[0], 1) - s[3] - s[1] * 10
 
     @_lock_file_source
     def _load_source(self, file):
@@ -353,7 +357,7 @@ class IPSource:
         self._log_stat(ip, 3)
 
     @_lock_log_stat
-    def _log_stat_bad(self, ip, index, save=True):
+    def _log_stat_bad(self, ip, index, save=False):
         # 0: block_times
         # 1: del_times
         # 2: log_time
@@ -376,10 +380,15 @@ class IPSource:
             if bt - _ip_stat_block[1] > self.block_times_to_del:
                 _ip_stat_block[1] = bt
                 self.del_ip(ip)
-                save = False
 
+        if not save:
+            self.log_stat_bad_times += 1
+            save = self.log_stat_bad_times >= self.save_per_log_stat_bad or \
+                    time() - self.save_stat_bad_time > self.save_stat_bad_interval 
         if save:
+            self.log_stat_bad_times = 0
             self.save_stat_bad()
+            self.save_stat_bad_time = time()
 
     def block_ip(self, ip):
         self._log_stat_bad(ip, 0)
@@ -389,7 +398,7 @@ class IPSource:
         self.ip_set_bad.discard(ip)
 
     def del_ip(self, ip):
-        self._log_stat_bad(ip, 1)
+        self._log_stat_bad(ip, 1, save=True)
         self.ip_set_del.add(ip)
         self.save_source(self.ip_file_del)
 
@@ -422,7 +431,7 @@ class IPSource:
             return
 
         self.update_time = now
-        self.ip_set_bad = set(ip for ip, (_, _, t) in self.ip_stat_bad.items() if now - t > self.block_time) \
+        self.ip_set_bad = set(ip for ip, (_, _, t) in self.ip_stat_bad.items() if now - t < self.block_time) \
                           - self.ip_set_del
         self.ip_set_good = set(ip for ip, (co, _, ro, _, unstat) in self.ip_stat.items() if co and not unstat) \
                            - self.ip_set_ex \
@@ -578,7 +587,7 @@ class IPPoolSource:
             return ip, type
         else:
             self.check_update(force=True)
-            return self.get_ip()
+            return None, None
 
     def push_ip(self, ip, type=None):
         m = getattr(self, type or self.type, self)
@@ -625,6 +634,7 @@ class IPManager:
         return m
 
     def __init__(self, ip_source):
+        self.running = False
         self.pick_worker_cnt = 0
         self.kill_pick_worker_cnt = 0
         type = ip_source.type
@@ -649,15 +659,18 @@ class IPManager:
 
     def load_config(self):
         if self.type == 'gae':
+            enable = GC.PICKER_GAE_ENABLE
             min_recheck_time = GC.PICKER_GAE_MINRECHECKTIME
             min_cnt = GC.PICKER_GAE_MINCNT
             max_timeout = GC.PICKER_GAE_MAXTIMEOUT
             max_threads = GC.PICKER_GAE_MAXTHREADS
         elif self.type == 'gws':
+            enable = GC.PICKER_GWS_ENABLE
             min_recheck_time = GC.PICKER_GWS_MINRECHECKTIME
             min_cnt = GC.PICKER_GWS_MINCNT
             max_timeout = GC.PICKER_GWS_MAXTIMEOUT
             max_threads = GC.PICKER_GWS_MAXTHREADS
+        self.enable = enable
         self.min_recheck_time = min_recheck_time
         self.min_cnt = min_cnt
         self.max_cnt = int(min_cnt * 1.6)
@@ -742,6 +755,7 @@ class IPManager:
         if isinstance(result, Exception):
             if is_recheck:
                 if self.pick_worker_cnt >= self.max_threads:
+                    http_gws.ssl_connection_time[result.xip] = http_gws.timeout + 1
                     self.ip_list.append(self.ip_list.popleft())
                     self.logger.warning('%s 测试失败（超时：%d ms）%s：%s',
                             self.pick_worker_cnt, timeout, ip, result)
@@ -779,9 +793,10 @@ class IPManager:
             ssl_sock.settimeout(handshaketimeout)
             ssl_sock.do_handshake()
             ssl_sock.settimeout(timeout)
-            ssl_time = time() - start_time
-            if ssl_time > handshaketimeout:
-                raise socket.error('handshake 超时：%dms' % int(ssl_time * 1000))
+            handshaked_time = time() - start_time
+            ssl_time = int(handshaked_time * 1000)
+            if handshaked_time > handshaketimeout:
+                raise socket.error('handshake 超时：%dms' % ssl_time)
             cert = http_gws.google_verify(ssl_sock)
             domain = cert.get_subject().CN
             if not domain:
@@ -815,6 +830,9 @@ class IPManager:
                 if self.kill_pick_ip_worker():
                     break
                 ip, type = self.ip_source.get_ip()
+                if ip is None:
+                    sleep(10)
+                    continue
                 if type is None:
                     domain, ssl_time, type = self.get_ip_info(ip)
                     if domain == self.com_domain:
@@ -862,7 +880,7 @@ class IPManager:
             self.kill_pick_worker_cnt = - new_worker_cnt
     
     def recheck_ip_worker(self):
-        while True:
+        while self.running:
             try:
                 sleep(1)
                 if not internet_v4.last_stat and not internet_v6.last_stat:
@@ -889,6 +907,21 @@ class IPManager:
                     self.ip_source.report_recheck_fail(ip)
             except Exception as e:
                 self.logger.exception('recheck_ip_worker 发生错误：%s', e)
+        else:
+            self.kill_pick_worker_cnt = self.pick_worker_cnt
+    
+    @_lock_pick_worker
+    def start(self):
+        if self.running:
+            return
+        if self.enable:
+            if not hasattr(self.ip_source, 'get_cnt'):
+                self.ip_source.check_update(force=True)
+            self.running = True
+            start_new_thread(self.recheck_ip_worker, ())
+
+    def stop(self):
+        self.running = False
 
 ip_source = IPSource()
 ip_source_gae = IPPoolSource(ip_source, 'gae')
@@ -905,7 +938,7 @@ def test_ip_type(ip):
 def test_ip_gae(ip):
     if test_ip_type(ip) is 'gae':
         return True
-    if GC.PICKER_GAE_ENABLE:
+    if ip_manager_gae.enable:
         ip_manager_gae.remove_ip(ip)
     else:
         try:
@@ -914,11 +947,12 @@ def test_ip_gae(ip):
             pass
 
 def start_ip_check():
-    ip_source_gae.check_update(force=True)
-    if GC.PICKER_GAE_ENABLE:
-        start_new_thread(ip_manager_gae.recheck_ip_worker, ())
-    if GC.PICKER_GWS_ENABLE:
-        start_new_thread(ip_manager_gws.recheck_ip_worker, ())
+    ip_manager_gae.start()
+    ip_manager_gws.start()
+
+def stop_ip_check():
+    ip_manager_gae.stop()
+    ip_manager_gws.stop()
 
 def fixed_iplist():
     while True:
@@ -937,7 +971,7 @@ def fixed_iplist():
             else:
                 list_gws.append(ip)
         ip_manager_gae.logger.test('更新固定 IP 列表（共 %d 个 IP），'
-                                   '包含 GAE %d 个，包含 GAE %d 个。',
-                len(ip_source.ip_set_used), len(list_gae), len(list_gws))
+                                   '包含 GAE %d 个。',
+                len(ip_source.ip_set_used), len(list_gae))
         GC.IPLIST_MAP['google_gae'][:] = list_gae
         GC.IPLIST_MAP['google_gws'][:] = list_gws
