@@ -757,18 +757,18 @@ class IPManager:
                 if self.pick_worker_cnt >= self.max_threads:
                     http_gws.ssl_connection_time[result.xip] = http_gws.timeout + 1
                     self.ip_list.append(self.ip_list.popleft())
-                    self.logger.warning('%s 测试失败（超时：%d ms）%s：%s',
+                    self.logger.warning('%s 测试失败（超时：%d ms）%s，%s',
                             self.pick_worker_cnt, timeout, ip, result)
                 else:
                     self.remove_ip(ip)
-                    self.logger.warning('%s 测试失败（超时：%d ms）%s：%s，'
+                    self.logger.warning('%s 测试失败（超时：%d ms）%s，%s，'
                                         'Bad IP 已删除',
                             self.pick_worker_cnt, timeout, ip, result)
             return
         ssl_time = int(result.ssl_time * 1000)
         if ssl_time > timeout:
             raise socket.timeout('%d ms' % ssl_time)
-        self.logger.test('%d 测试连接（超时：%d ms）%s: %d ms',
+        self.logger.test('%d 测试连接（超时：%d ms）%s，%d ms',
                 self.pick_worker_cnt, timeout, ip, ssl_time)
         if is_recheck:
             self.ip_list.append(self.ip_list.popleft())
@@ -796,7 +796,7 @@ class IPManager:
             handshaked_time = time() - start_time
             ssl_time = int(handshaked_time * 1000)
             if handshaked_time > handshaketimeout:
-                raise socket.error('handshake 超时：%dms' % ssl_time)
+                raise socket.error('handshake 超时：%d ms' % ssl_time)
             cert = http_gws.google_verify(ssl_sock)
             domain = cert.get_subject().CN
             if not domain:
@@ -870,7 +870,7 @@ class IPManager:
     @_lock_pick_worker
     def check_pick_ip_worker(self):
         new_worker_cnt = min((self.min_cnt - len(self.ip_list)) * 2,
-                             self.max_threads) - self.pick_worker_cnt
+                             self.max_threads or 1) - self.pick_worker_cnt
         if new_worker_cnt > 0:
             self.pick_worker_cnt += new_worker_cnt
             for _ in range(new_worker_cnt):

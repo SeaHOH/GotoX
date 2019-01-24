@@ -109,6 +109,10 @@ class actionfilterlist(list):
                 if filters.action == FAKECERT and v and '*' not in v:
                     v = v.encode()
                 if filters.action in (FORWARD, DIRECT):
+                    if v and v[0] == '@':
+                        p, _, v = v.partition(' ')
+                    else:
+                        p = None
                     if isempty(v):
                         v = None
                     elif '|' in v:
@@ -117,6 +121,7 @@ class actionfilterlist(list):
                         v = [v]
                     elif isip(v) or not (v in GC.IPLIST_MAP or v.find('.') > 0):
                         v = None
+                    v = v, p
                 elif filters.action in (REDIRECT, IREDIRECT):
                     if v and v[0] == '!':
                         v = v[1:].lstrip(' \t')

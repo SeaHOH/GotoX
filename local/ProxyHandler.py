@@ -19,14 +19,14 @@ from http.server import BaseHTTPRequestHandler, SimpleHTTPRequestHandler
 from .compat.openssl import SSL, SSLConnection, CertificateError
 from .common import cert
 from .common.decompress import decompress_readers
-from .common.dns import reset_dns, set_dns, dns_resolve
+from .common.dns import reset_dns, set_dns, dns_resolve, dns
 from .common.net import (
     NetWorkIOError, reset_errno, closed_errno, bypass_errno,
-    isip, isipv6)
+    isip, isipv4, isipv6)
 from .common.path import web_dir
 from .common.proxy import parse_proxy, proxy_no_rdns
 from .common.region import isdirect
-from .common.util import make_lock_decorator, LRUCache, message_html
+from .common.util import make_lock_decorator, LRUCache, LimiterFull, message_html
 from .GlobalConfig import GC
 from .HTTPUtil import LimitRequest, http_gws, http_nor
 from .RangeFetch import RangeFetchs
@@ -205,10 +205,11 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         self.close_connection = True
         if self.headers.get('Upgrade') == 'websocket' and self.action in ('do_DIRECT', 'do_GAE'):
             self.action = 'do_FORWARD'
-            self.target = None
+            self.target = None, None
             logging.warn('%s %s 不支持 websocket %r，转用 FORWARD。', self.address_string(), self.action[3:], self.url)
         if self.action in ('do_DIRECT', 'do_FORWARD'):
-            self.hostname = hostname = set_dns(self.host, self.target)
+            iporname, profile = self.target
+            self.hostname = hostname = set_dns(self.host, iporname)
             if hostname is None:
                 if self.ssl and not self.fakecert:
                     self.do_FAKECERT()
@@ -218,6 +219,10 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                     self.write(b'HTTP/1.1 504 Resolve Failed\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
                     self.write(c)
                 return
+            if profile == '@v4':
+                dns[self.hostname] = [ip for ip in dns[self.hostname] if isipv4(ip)]
+            elif profile == '@v6':
+                dns[self.hostname] = [ip for ip in dns[self.hostname] if isipv6(ip)]
         getattr(self, self.action)()
 
     def parse_host(self, host, chost, mhost=True):
@@ -637,7 +642,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         if self.command not in self.gae_fetcmds:
             logging.warn('%s GAE 不支持 "%s %s"，转用 DIRECT。', self.address_string(), self.command, self.url)
             self.action = 'do_DIRECT'
-            self.target = None
+            self.target = None, None
             return self.do_action()
         url_parts = self.url_parts
         request_headers, payload = self.handle_request_headers()
@@ -907,6 +912,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         connection_cache_key = '%s:%d' % (hostname, port)
         for _ in range(2):
             limiter = None
+            limited = None
             try:
                 limiter = LimitRequest(connection_cache_key)
                 if not GC.PROXY_ENABLE:
@@ -915,13 +921,15 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                     hostip = random.choice(dns_resolve(host))
                     remote = http_util.create_connection((hostip, port), self.ssl, self.fwd_timeout)
                 break
+            except LimiterFull:
+                limited = True
             except NetWorkIOError as e:
                 logging.warning('%s 转发到 %r 失败：%r', self.address_string(e), self.url or host, e)
             finally:
                 if limiter:
                     limiter.close()
         if remote is None:
-            if limiter and not isdirect(host):
+            if not limited and not isdirect(host):
                 if self.command == 'CONNECT':
                     logging.warning('%s%s do_FORWARD 连接远程主机 (%r, %r) 失败，尝试使用 "FAKECERT & GAE" 规则。', self.address_string(), hostip or '', host, port)
                     self.go_FAKECERT_GAE()
@@ -1398,11 +1406,14 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             elif client_ip == '::1':
                 client_ip = 'L6'
             self.address_str = '%s:%s->' % (client_ip, self.client_address[1])
+        xip0, xip1 = getattr(response, 'xip', ('', None))
+        if isipv6(xip0):
+            xip0 = '[%s]' % xip0
         if hasattr(self, 'port') and self.port in (80, 443):
-            if gethasattr(response, 'xip'):
-                return '%s%s' % (self.address_str, response.xip[0])
-        elif gethasattr(response, 'xip'):
-            return '%s%s:%s' % (self.address_str, *response.xip)
+            if xip0:
+                return '%s%s' % (self.address_str, xip0)
+        elif xip0:
+            return '%s%s:%s' % (self.address_str, xip0, xip1)
         elif hasattr(self, 'port'):
             return '%s:%s' % (self.address_str, self.port)
         return self.address_str
