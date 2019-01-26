@@ -205,10 +205,13 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         self.close_connection = True
         if self.headers.get('Upgrade') == 'websocket' and self.action in ('do_DIRECT', 'do_GAE'):
             self.action = 'do_FORWARD'
-            self.target = None, None
+            self.target = None
             logging.warn('%s %s 不支持 websocket %r，转用 FORWARD。', self.address_string(), self.action[3:], self.url)
         if self.action in ('do_DIRECT', 'do_FORWARD'):
-            iporname, profile = self.target
+            if self.target:
+                iporname, profile = self.target
+            else:
+                iporname, profile = None, None
             self.hostname = hostname = set_dns(self.host, iporname)
             if hostname is None:
                 if self.ssl and not self.fakecert:
@@ -642,7 +645,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         if self.command not in self.gae_fetcmds:
             logging.warn('%s GAE 不支持 "%s %s"，转用 DIRECT。', self.address_string(), self.command, self.url)
             self.action = 'do_DIRECT'
-            self.target = None, None
+            self.target = None
             return self.do_action()
         url_parts = self.url_parts
         request_headers, payload = self.handle_request_headers()

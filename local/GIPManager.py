@@ -775,43 +775,49 @@ class IPManager:
         else:
             self.add_ip(ip)
 
-    def get_ip_info(self, ip, conntimeout=g_conntimeout,
+    def get_ip_info(self, ip, server_name=None, callback=None,
+                    conntimeout=g_conntimeout,
                     handshaketimeout=g_handshaketimeout,
-                    timeout=g_timeout, retry=None):
-        start_time = time()
-        ssl_time = 1e5
-        type = None
-        domain = None
-        sock = None
-        ssl_sock = None
-        try:
-            sock = http_gws.get_tcp_socket(ip)
-            http_gws.set_tcp_socket(sock, set_buffer=False)
-            ssl_sock = http_gws.get_ssl_socket(sock, self.server_name)
-            ssl_sock.settimeout(conntimeout)
-            ssl_sock.connect((ip, 443))
-            ssl_sock.settimeout(handshaketimeout)
-            ssl_sock.do_handshake()
-            ssl_sock.settimeout(timeout)
-            handshaked_time = time() - start_time
-            ssl_time = int(handshaked_time * 1000)
-            if handshaked_time > handshaketimeout:
-                raise socket.error('handshake 超时：%d ms' % ssl_time)
-            cert = http_gws.google_verify(ssl_sock)
-            domain = cert.get_subject().CN
-            if not domain:
-                raise ssl.SSLError('%s 无法获取 commonName：%s' % (ip, cert))
-            type = self.check_type_status(ssl_sock, ip)
-        except NetWorkIOError as e:
-            self.logger.debug('get_ip_info 发生错误：%s', e)
-            if not retry and e.args == zero_EOF_error:
-                return self.get_ip_info(ip, retry=True)
-        finally:
-            if ssl_sock:
-                ssl_sock.close()
-            else:
-                sock.close()
-        return domain, ssl_time, type
+                    timeout=g_timeout):
+        retry = None
+        server_name = server_name or self.server_name
+        callback = callback or self.check_type_status
+        while True:
+            start_time = time()
+            ssl_time = 1e5
+            type = None
+            domain = None
+            sock = None
+            ssl_sock = None
+            try:
+                sock = http_gws.get_tcp_socket(ip)
+                http_gws.set_tcp_socket(sock, set_buffer=False)
+                ssl_sock = http_gws.get_ssl_socket(sock, server_name)
+                ssl_sock.settimeout(conntimeout)
+                ssl_sock.connect((ip, 443))
+                ssl_sock.settimeout(handshaketimeout)
+                ssl_sock.do_handshake()
+                ssl_sock.settimeout(timeout)
+                handshaked_time = time() - start_time
+                ssl_time = int(handshaked_time * 1000)
+                if handshaked_time > handshaketimeout:
+                    raise socket.error('handshake 超时：%d ms' % ssl_time)
+                cert = http_gws.google_verify(ssl_sock)
+                domain = cert.get_subject().CN
+                if not domain:
+                    raise ssl.SSLError('%s 无法获取 commonName：%s' % (ip, cert))
+                type = callback(ssl_sock, ip)
+            except NetWorkIOError as e:
+                self.logger.debug('get_ip_info 发生错误：%s', e)
+                if not retry and e.args == zero_EOF_error:
+                    retry = True
+                    continue
+            finally:
+                if ssl_sock:
+                    ssl_sock.close()
+                else:
+                    sock.close()
+            return domain, ssl_time, type
 
     def check_type_status(self, conn, ip):
         try:
@@ -931,12 +937,31 @@ ip_manager_gws = IPManager(ip_source_gws)
 
 def test_ip_type(ip):
     domain, _, type = ip_manager_gae.get_ip_info(ip)
-    if type is 'gae' and domain != ip_manager_gae.com_domain:
-        type = None
+    if type is 'gae':
+        if domain != ip_manager_gae.com_domain:
+            type = None
+        elif not test_ip_gae(ip):
+            type = 'gws'
     return type
 
+def check_gae_status(conn, ip):
+    pick_gae_req = (
+        b'HEAD / HTTP/1.1\r\n'
+        b'Host: gweb-cloudblog-publish.appspot.com\r\n'
+        b'Connection: Close\r\n\r\n'
+    )
+    try:
+        conn.send(pick_gae_req)
+        conn.read(9)
+        return conn.read(3) == b'302'
+    except:
+        pass
+
 def test_ip_gae(ip):
-    if test_ip_type(ip) is 'gae':
+    domain, _, type = ip_manager_gae.get_ip_info(ip,
+            server_name=b'gweb-cloudblog-publish.appspot.com',
+            callback=check_gae_status)
+    if domain == '*.appspot.com' and type:
         return True
     if ip_manager_gae.enable:
         ip_manager_gae.remove_ip(ip)
@@ -945,6 +970,8 @@ def test_ip_gae(ip):
             ip_manager_gae.ip_list.remove_ip(ip)
         except:
             pass
+    ip_source_gae.remove_ip(ip)
+    ip_source_gws.add_ip(ip)
 
 def start_ip_check():
     ip_manager_gae.start()

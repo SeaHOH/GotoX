@@ -149,7 +149,7 @@ def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
         if GC.GAE_ENABLEPROXY:
             logging.warning('GAE 前置代理 [%s:%d] 无法正常工作', *response.xip)
             continue
-        if test_ip_gae(response.xip[0]) == 'gae':
+        if test_ip_gae(response.xip[0]):
             break
         logging.warning('发现并移除非 GAE IP：%s，Server：%s', response.xip[0], app_server)
     response.app_status = response.status
