@@ -21,9 +21,8 @@
 - 申请 AppID 或部署服务端时，可尝试直接以默认配置运行本代理使用；如果无法顺利进行，请使用 VPN、Shadowsocks 等其它代理重新开始。
     - **警告**：不建议使用未知来源的 AppID，它们**可能会记录你的各种信息，甚至更改你的流量**以达到更危险的目的。
 - **相关链接**
-    - 简易教程 https://github.com/SeaHOH/goproxy/blob/wiki/SimpleGuide.md
-    - 常见问题 https://github.com/SeaHOH/goproxy/blob/wiki/FAQ.md
-    - 新版谷歌云部署问题 https://github.com/XX-net/XX-Net/issues/4720
+    - 简易教程 https://github.com/SeaHOH/GotoX/wiki/简易部署教程
+    - 常见问题 https://github.com/SeaHOH/GotoX/wiki/常见问题
 
 # 使用
 - **主要配置：**
