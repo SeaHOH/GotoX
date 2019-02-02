@@ -120,10 +120,9 @@ class IPSource:
             self.sort_ip_stat = None
             self.sort_ip_stat_bad = None
 
-    @staticmethod
-    def sort_ip_stat_good(p):
-        ip, ip_stat = p
-        return s[2] * 2 / s[0] / max(self.ip_stat_bad.get(ip, [1])[0], 1) - s[3] - s[1] * 10
+    def sort_ip_stat_good(self, p):
+        ip, s = p
+        return s[2] * 2 / max(s[0] * self.ip_stat_bad.get(ip, [1])[0], 1) - s[3] - s[1] * 10
 
     @_lock_file_source
     def _load_source(self, file):
@@ -158,9 +157,9 @@ class IPSource:
             ip_set_del, self.ip_set_del_block, _ = self._load_source(self.ip_file_del)
         self.load_time = time()
 
-        self.ip_set_del = ip_set_del - ip_set_ex
-        self.ip_set = ip_set - self.ip_set_del - ip_set_ex
+        self.ip_set = ip_set - ip_set_ex
         self.ip_set_ex = ip_set_ex
+        self.ip_set_del = ip_set_del - ip_set - ip_set_ex
 
         if not self.ip_stat_files:
             self.load_stat()
@@ -400,10 +399,17 @@ class IPSource:
     def del_ip(self, ip):
         self._log_stat_bad(ip, 1, save=True)
         self.ip_set_del.add(ip)
+        self.ip_set.discard(ip)
+        if ip in self.ip_set_ex:
+            self.ip_set_ex.remove(ip)
+            self.save_source(self.ip_file_ex)
+        self.save_source(self.ip_file)
         self.save_source(self.ip_file_del)
 
     def undel_ip(self, ip):
         self.ip_set_del.discard(ip)
+        self.ip_set.add(ip)
+        self.save_source(self.ip_file)
         self.save_source(self.ip_file_del)
 
     def reset_ip_stat(self, ip, save=True):
@@ -420,7 +426,7 @@ class IPSource:
             self.save_stat()
             self.load_stat()
             self.save_stat_bad()
-        ip_list = sorted(self.ip_stat.items(), key=self.sort_ip_stat)
+        ip_list = sorted(self.ip_stat.items(), key=self.sort_ip_stat_good)
         return [ip for ip, _ in ip_list if ip in self.ip_set_good]
 
     def update_list(self, update_source=False):
@@ -815,7 +821,7 @@ class IPManager:
             finally:
                 if ssl_sock:
                     ssl_sock.close()
-                else:
+                elif sock:
                     sock.close()
             return domain, ssl_time, type
 

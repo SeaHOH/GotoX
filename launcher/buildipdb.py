@@ -144,7 +144,7 @@ def parse_apnic_iplist(fd, ds):
                 continue
             if linesp[2] == 'ipv4' and (linesp[1] == 'CN' or ds.check_ext(linesp[1])):
                 ds.itemlist.append((ip2int(linesp[3]), mask_dict[linesp[4]]))
-            elif ds.update is None and linesp[0] == '2':
+            elif linesp[0] is '2' and ds.update.endswith('-None'):
                 ds.update = '%s/%s' % (linesp[2], linesp[5])
             elif linesp[2] == 'ipv6':
                 #不需要 IPv6 数据，提前结束

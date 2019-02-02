@@ -162,7 +162,8 @@ class InternetActiveCheck:
         addr6 = get_wan_ipv6()
         if addr6:
             if self.only_check_ip and self.last_stat != 1:
-                logging.warning('IPv6 网络恢复连接')
+                if self.last_stat is not None:
+                    logging.warning('IPv6 网络恢复连接')
                 self.last_stat = 1
         else:
             if self.only_check_ip and self.last_stat != 0:
