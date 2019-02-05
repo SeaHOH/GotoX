@@ -331,6 +331,7 @@ def check_modify():
                                 '请重新下载：%r', e)
             else:
                 domains_mtime = domains_file_mtime
+                local_cache.clear()
                 direct_cache.clear()
                 logging.warning('检测到直连域名列表更新，已重新加载：%s。', DDDVer)
 

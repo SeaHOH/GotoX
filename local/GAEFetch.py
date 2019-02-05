@@ -5,7 +5,6 @@ import zlib
 import queue
 import struct
 import logging
-import urllib.request
 from io import BytesIO
 from time import time, timezone, localtime, strftime, strptime, mktime
 from http.client import HTTPResponse, parse_headers
@@ -32,19 +31,28 @@ qGAE = queue.LifoQueue()
 for _ in range(GC.GAE_MAXREQUESTS * len(GC.GAE_APPIDS)):
     qGAE.put(True)
 
-proxy_server = 'http://127.0.0.1:%d' % GC.LISTEN_AUTO_PORT
-proxy_handler = urllib.request.ProxyHandler({
-    'http': proxy_server,
-    'https': proxy_server
-})
-context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
-context.verify_mode = ssl.CERT_NONE
-https_handler = urllib.request.HTTPSHandler(context=context)
-proxy_opener = urllib.request.build_opener(proxy_handler, https_handler)
-
 def check_appid_exists(appid):
-    response = proxy_opener.open('https://%s.appspot.com/' % appid)
-    return response.status in (200, 503)
+    host = '%s.appspot.com/' % appid
+    for _ in range(3):
+        err = None
+        response = None
+        try:
+            sock = http_gws.create_ssl_connection((host, 443), 'google_gae', 'google_gae|:443')
+            sock.sendall(b'HEAD / HTTP/1.1\r\n'
+                         b'Host: %s\r\n'
+                         b'Connection: Close\r\n\r\n' % host.encode())
+            response = HTTPResponse(sock, method='HEAD')
+            response.begin()
+        except:
+            err = True
+        finally:
+            if response:
+                response.close()
+                if err is None:
+                    exists = response.status in (200, 503)
+                    if exists:
+                        http_gws.ssl_connection_cache['google_gae|:443'].append((time(), sock))
+                    return exists
 
 @_lock_nappid
 def get_appid():
@@ -90,11 +98,10 @@ if gae_options:
 def make_errinfo(response, htmltxt):
     del response.headers['Content-Type']
     del response.headers['Connection']
-    response.headers['Content-Type'] = 'text/plain; charset=UTF-8'
+    response.headers['Content-Type'] = 'text/html; charset=utf-8'
     response.headers['Content-Length'] = len(htmltxt)
     response.fp = BytesIO(htmltxt)
-    response.read = response.fp.read
-    return response
+    response.length = len(htmltxt)
 
 class gae_params:
     port = 443
@@ -143,6 +150,8 @@ def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
         response = http_gws.request(request_params, payload, request_headers, connection_cache_key='google_gae|:443', getfast=getfast, realmethod=method, realurl=realurl)
         if response is None:
             return
+        if response.status != 200:
+            break
         app_server = response.headers.get('Server')
         if app_server == 'Google Frontend':
             break
@@ -167,12 +176,14 @@ def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
     data = response.read(2)
     if len(data) < 2:
         response.status = 502
-        return make_errinfo(response, b'connection aborted. too short leadtype data=' + data)
+        make_errinfo(response, b'connection aborted. too short leadtype data=' + data)
+        return response
     headers_length, = struct.unpack('!h', data)
     data = response.read(headers_length)
     if len(data) < headers_length:
         response.status = 502
-        return make_errinfo(response, b'connection aborted. too short headers data=' + data)
+        make_errinfo(response, b'connection aborted. too short headers data=' + data)
+        return response
     #解压缩并解析头部
     raw_response_line, headers_data = zlib.decompress(data, -zlib.MAX_WBITS).split(b'\r\n', 1)
     raw_response_line = str(raw_response_line, 'iso-8859-1')
@@ -194,4 +205,13 @@ def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
         response.reason = 'debug error'
         response.app_msg = app_msg
     response.headers = response.msg = parse_headers(BytesIO(headers_data))
+    if response.app_status == 200:
+        response._method = method
+        if response.status in (204, 205, 304) or 100 <= response.status < 200:
+            response.length = 0
+        else:
+            try:
+                response.length = int(response.headers.get('Content-Length'))
+            except:
+                response.length = None
     return response

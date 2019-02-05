@@ -270,8 +270,8 @@ class RangeFetchFast(RangeFetch):
     maxsize = GC.AUTORANGE_FAST_MAXSIZE or 1024 * 1024 * 4
     threads = GC.AUTORANGE_FAST_THREADS or 2
     minip = max(threads-2, 3)
-    lowspeed = GC.AUTORANGE_FAST_LOWSPEED or 1024 * 32
-    timeout = max(GC.PICKER_GAE_MAXTIMEOUT / 1000, 0.8)
+    lowspeed = GC.AUTORANGE_FAST_LOWSPEED or 1024
+    timeout = max(GC.PICKER_GAE_MAXTIMEOUT / 500, 4)
     sleeptime = GC.PICKER_GAE_MAXTIMEOUT / 500.0
     delaysize = max(min(maxsize, 1024 * 1024), 1024 * 128)
 

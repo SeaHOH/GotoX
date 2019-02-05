@@ -12,7 +12,7 @@ from copy import deepcopy
 from time import time, sleep, localtime, strftime
 from threading import _start_new_thread as start_new_thread
 from .common.internet_active import internet_v4, internet_v6
-from .common.net import NetWorkIOError, isip, isipv4, isipv6
+from .common.net import NetWorkIOError, random_hostname, isip, isipv4, isipv6
 from .common.path import data_dir
 from .common.util import make_lock_decorator
 from .compat.openssl import zero_EOF_error, CertificateError
@@ -957,6 +957,7 @@ def check_gae_status(conn, ip):
         b'Connection: Close\r\n\r\n'
     )
     try:
+        http_gws.match_hostname(conn, hostname='www.appspot.com')
         conn.send(pick_gae_req)
         conn.read(9)
         return conn.read(3) == b'302'
@@ -964,10 +965,11 @@ def check_gae_status(conn, ip):
         pass
 
 def test_ip_gae(ip):
-    domain, _, type = ip_manager_gae.get_ip_info(ip,
-            server_name=b'gweb-cloudblog-publish.appspot.com',
+    server_name = random_hostname('*com')
+    _, _, type = ip_manager_gae.get_ip_info(ip,
+            server_name=server_name,
             callback=check_gae_status)
-    if domain == '*.appspot.com' and type:
+    if type:
         return True
     if ip_manager_gae.enable:
         ip_manager_gae.remove_ip(ip)
