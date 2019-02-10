@@ -32,7 +32,7 @@ for _ in range(GC.GAE_MAXREQUESTS * len(GC.GAE_APPIDS)):
     qGAE.put(True)
 
 def check_appid_exists(appid):
-    host = '%s.appspot.com/' % appid
+    host = '%s.appspot.com' % appid
     for _ in range(3):
         err = None
         response = None

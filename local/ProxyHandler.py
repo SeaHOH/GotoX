@@ -666,10 +666,10 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             if need_autorange is 1:
                 logging.info('发现[autorange/fast]匹配：%r', self.url)
                 range_end = range_start + GC.AUTORANGE_FAST_FIRSTSIZE - 1
-                request_headers['Range'] = 'bytes=%d-%d' % (range_start, range_end)
             elif need_autorange is 2:
                 logging.info('发现[autorange/big]匹配：%r', self.url)
                 range_end = range_start + GC.AUTORANGE_BIG_MAXSIZE - 1
+            if need_autorange > 0:
                 request_headers['Range'] = 'bytes=%d-%d' % (range_start, range_end)
         else:
             need_autorange = -1

@@ -89,7 +89,6 @@ def dns_resolve(host, qtypes=qtypes):
 
 dnshostalias = 'dns.over.https'
 https_resolve_cache_key = GC.DNS_OVER_HTTPS_LIST + ':443'
-https_resolve_threads = max(min((GC.LINK_WINDOW - 1), 3), 1)
 jsondecoder = JSONDecoder()
 dns = LRUCache(GC.DNS_CACHE_ENTRIES, GC.DNS_CACHE_EXPIRATION)
 reset_dns()
@@ -136,52 +135,51 @@ def _https_resolve(qname, qtype, queobj):
 
     timeout = 1.5
     params = dns_params(qname, qtype)
-    response = None
-    noerror = True
     iplist = list()
-    try:
-        response = http_gws.request(params, headers=params.headers, connection_cache_key=https_resolve_cache_key, getfast=timeout)
-        if response and response.status == 200:
-            reply = jsondecoder.decode(response.read().decode())
-            # NOERROR = 0
-            if reply and reply['Status'] == 0 and 'Answer' in reply:
-                for answer in reply['Answer']:
-                    if answer['type'] == qtype:
-                        iplist.append((answer['data'], response.xip))
-    except Exception as e:
-        noerror = False
-        logging.warning('%s dns_over_https_resolve %r 失败：%r', address_string(response), qname, e)
-    finally:
-        if response:
-            response.close()
-            if noerror:
-                if GC.GAE_KEEPALIVE:
-                    http_gws.ssl_connection_cache[https_resolve_cache_key].append((time(), response.sock))
-                else:
-                    response.sock.close()
-    queobj.put(iplist)
-
-def https_resolve(qname, qtype, queobj):
-    queobjt = queue.Queue()
-    for _ in range(https_resolve_threads):
-        start_new_thread(_https_resolve, (qname, qtype, queobjt))
-    for _ in range(https_resolve_threads):
-        iplist = queobjt.get()
-        if iplist: break
-    queobj.put(iplist)
+    for _ in range(2):
+        response = None
+        noerror = True
+        xip = None
+        try:
+            response = http_gws.request(params, headers=params.headers, connection_cache_key=https_resolve_cache_key, getfast=timeout)
+            if response and response.status == 200:
+                reply = jsondecoder.decode(response.read().decode())
+                # NOERROR = 0
+                if reply and reply['Status'] == 0 and 'Answer' in reply:
+                    for answer in reply['Answer']:
+                        if answer['type'] == qtype:
+                            iplist.append(answer['data'])
+        except Exception as e:
+            noerror = False
+            logging.warning('%s _https_resolve %r 失败：%r', address_string(response), qname, e)
+        finally:
+            if response:
+                response.close()
+                xip = response.xip[0]
+                if noerror:
+                    if GC.GAE_KEEPALIVE:
+                        http_gws.ssl_connection_cache[https_resolve_cache_key].append((time(), response.sock))
+                    else:
+                        response.sock.close()
+                    break
+    queobj.put((iplist, xip))
 
 def _dns_over_https_resolve(qname, qtypes=qtypes):
     iplist = classlist()
+    xips = []
     queobj = queue.Queue()
     for qtype in qtypes:
-        start_new_thread(https_resolve, (qname, qtype, queobj))
+        start_new_thread(_https_resolve, (qname, qtype, queobj))
     for qtype in qtypes:
-        result = queobj.get()
-        iplist += result
-    if iplist:
-        iplist.xip = '｜'.join([xip for _, xip in iplist]),
-        iplist[:] = [ip for ip, _ in iplist]
+        _iplist, xip = queobj.get()
+        iplist += _iplist
+        if xip and xip not in xips:
+            xips.append(xip)
+    if xips:
+        iplist.xip = '｜'.join(xips),
     return iplist
+
+remote_query_opt = dnslib.EDNS0(flags='do', udp_len=1024)
 
 def _dns_remote_resolve(qname, dnsservers, blacklist=[], timeout=2, qtypes=qtypes):
     '''
@@ -192,6 +190,7 @@ def _dns_remote_resolve(qname, dnsservers, blacklist=[], timeout=2, qtypes=qtype
     query_datas = []
     for qtype in qtypes:
         query = dnslib.DNSRecord(q=dnslib.DNSQuestion(qname, qtype))
+        query.add_ar(remote_query_opt)
         query_datas.append(query.pack())
     dns_v4_servers = [x for x in dnsservers if isipv4(x)]
     dns_v6_servers = [x for x in dnsservers if isipv6(x)]
@@ -224,7 +223,7 @@ def _dns_remote_resolve(qname, dnsservers, blacklist=[], timeout=2, qtypes=qtype
         try:
             ins, _, _ = select(socks, [], [], 0.1)
             for sock in ins:
-                reply_data, xip = sock.recvfrom(512)
+                reply_data, xip = sock.recvfrom(remote_query_opt.edns_len)
                 query_times -= 1
                 reply = dnslib.DNSRecord.parse(reply_data)
                 #只处理 qtypes 包含 A、AAAA 的情况

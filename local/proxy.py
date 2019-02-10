@@ -238,24 +238,24 @@ def main():
 
     from .common.region import IPDBVer, DDDVer
 
-    info = ['==================================================================================\n',]
-    info.append(' GotoX  版 本 : %s (python/%s gevent/%s pyOpenSSL/%s)\n' % (__version__, sys.version.split(' ')[0], geventver, opensslver))
+    info = ['=' * 80]
+    info.append(' GotoX  版 本 : %s (python/%s gevent/%s pyOpenSSL/%s)' % (__version__, sys.version.split(' ')[0], geventver, opensslver))
     #info.append(' Uvent Version    : %s (pyuv/%s libuv/%s)\n' % (__import__('uvent').__version__, __import__('pyuv').__version__, __import__('pyuv').LIBUV_VERSION) if all(x in sys.modules for x in ('pyuv', 'uvent')) else '')
-    info.append('\n GAE    AppID : %s\n' % ('|'.join(GC.GAE_APPIDS) or '请填入 AppID'))
-    info.append('\n GAE 远程验证 : %s启用\n' % '已' if GC.GAE_SSLVERIFY else '未')
-    info.append('\n  监 听 地 址 : 自动代理 - %s:%d\n' % (GC.LISTEN_IP, GC.LISTEN_AUTO_PORT))
-    info.append('                GAE 代理 - %s:%d\n' % (GC.LISTEN_IP, GC.LISTEN_GAE_PORT))
-    info.append('\n Local Proxy  : %s:%s\n' % (GC.PROXY_HOST, GC.PROXY_PORT) if GC.PROXY_ENABLE else '')
-    info.append('\n  代 理 认 证 : %s认证\n' % (GC.LISTEN_AUTH == 0 and '无需' or (GC.LISTEN_AUTH == 2 and 'IP ') or 'Basic '))
-    info.append('\n  调 试 信 息 : %s\n' % logging._levelToName[GC.LISTEN_DEBUGINFO])
-    info.append('\n  连 接 模 式 : 远程 - %s\n' % GC.LINK_REMOTESSLTXT)
-    info.append('                本地 - %s\n' % GC.LINK_LOCALSSLTXT)
-    info.append('\n  网 络 配 置 : %s\n' % GC.LINK_PROFILE)
-    info.append('\n  IP 数 据 库 : %s\n' % IPDBVer)
-    info.append('\n  直 连 域 名 : %s\n' % DDDVer)
-    info.append('\n  安 装 证 书 : 设置代理后访问 http://gotox.go/\n')
-    info.append('==================================================================================\n')
-    sys.stdout.write(''.join(info))
+    info.append('\n GAE    AppID : %s' % ('|'.join(GC.GAE_APPIDS) or '请填入 AppID'))
+    info.append('\n GAE 远程验证 : %s启用' % '已' if GC.GAE_SSLVERIFY else '未')
+    info.append('\n  监 听 地 址 : 自动代理 - %s:%d' % (GC.LISTEN_IP, GC.LISTEN_AUTO_PORT))
+    info.append('                GAE 代理 - %s:%d' % (GC.LISTEN_IP, GC.LISTEN_GAE_PORT))
+    info.append('\n Local Proxy  : %s:%s' % (GC.PROXY_HOST, GC.PROXY_PORT) if GC.PROXY_ENABLE else '')
+    info.append('\n  代 理 认 证 : %s认证' % (GC.LISTEN_AUTH == 0 and '无需' or (GC.LISTEN_AUTH == 2 and 'IP ') or 'Basic '))
+    info.append('\n  调 试 信 息 : %s' % logging._levelToName[GC.LISTEN_DEBUGINFO])
+    info.append('\n  连 接 模 式 : 远程 - %s' % GC.LINK_REMOTESSLTXT)
+    info.append('                本地 - %s' % GC.LINK_LOCALSSLTXT)
+    info.append('\n  网 络 配 置 : %s' % GC.LINK_PROFILE)
+    info.append('\n  IP 数 据 库 : %s' % IPDBVer)
+    info.append('\n  直 连 域 名 : %s' % DDDVer)
+    info.append('\n  安 装 证 书 : 设置代理后访问 http://gotox.go/')
+    info.append('=' * 80)
+    print('\n'.join(info))
 
     pre_start()
     del pre_start, info
@@ -279,7 +279,7 @@ def main():
 
     from time import sleep
     while True:
-        sleep(10)
+        sleep(30)
         network_test()
 
 if __name__ == '__main__':
