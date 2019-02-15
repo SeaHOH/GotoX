@@ -14,6 +14,7 @@ from local.GlobalConfig import GC
 
 A = dnslib.QTYPE.A
 AAAA = dnslib.QTYPE.AAAA
+OPT = dnslib.QTYPE.OPT
 qtypes = []
 if '4' in GC.LINK_PROFILE:
     qtypes.append(A)
@@ -183,15 +184,17 @@ remote_query_opt = dnslib.EDNS0(flags='do', udp_len=1024)
 
 def _dns_remote_resolve(qname, dnsservers, blacklist=[], timeout=2, qtypes=qtypes):
     '''
-    http://gfwrev.blogspot.com/2009/11/gfwdns.html
-    http://zh.wikipedia.org/wiki/域名服务器缓存污染
-    http://support.microsoft.com/kb/241352
+    https://gfwrev.blogspot.com/2009/11/gfwdns.html
+    https://zh.wikipedia.org/wiki/域名服务器缓存污染
+    http://support.microsoft.com/kb/241352 (已删除)
     '''
     query_datas = []
+    #ids = []
     for qtype in qtypes:
         query = dnslib.DNSRecord(q=dnslib.DNSQuestion(qname, qtype))
         query.add_ar(remote_query_opt)
         query_datas.append(query.pack())
+        #ids.append(query.header.id)
     dns_v4_servers = [x for x in dnsservers if isipv4(x)]
     dns_v6_servers = [x for x in dnsservers if isipv6(x)]
     socks = []
@@ -226,6 +229,13 @@ def _dns_remote_resolve(qname, dnsservers, blacklist=[], timeout=2, qtypes=qtype
                 reply_data, xip = sock.recvfrom(remote_query_opt.edns_len)
                 query_times -= 1
                 reply = dnslib.DNSRecord.parse(reply_data)
+                qtype = reply.q.qtype
+                #id = reply.header.id
+                #edns_len = 0
+                #for ar in reply.ar:
+                #    if ar.rtype == OPT:
+                #        edns_len = ar.edns_len
+                #        break
                 #只处理 qtypes 包含 A、AAAA 的情况
                 _v4_resolved = v4_resolved
                 _v6_resolved = v6_resolved
@@ -240,7 +250,14 @@ def _dns_remote_resolve(qname, dnsservers, blacklist=[], timeout=2, qtypes=qtype
                             _v6_resolved = True
                             ip = str(r.rdata)
                         if ip:
-                            if ip in blacklist:
+                            #简单处理污染，还是 DoH 简单好用，不想写得更复杂
+                            if (r.rtype != qtype or  # type 不符
+                                    #id not in ids or # id 不符 （现在也不用查 id）
+                                    #not reply.ar or  # 缺少 OPT PSEUDOSECTION （阿里垃圾）
+                                    #接收大小不等 （114 垃圾）
+                                    #edns_len != remote_query_opt.edns_len or
+                                    ip in blacklist): # 旧列表 + 检测后添加
+                                GC.DNS_BLACKLIST.add(ip)
                                 query_times += 1
                                 _iplist.clear()
                                 logging.warning('query qname=%r reply bad ip=%r', qname, ip)

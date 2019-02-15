@@ -150,7 +150,7 @@ def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
         response = http_gws.request(request_params, payload, request_headers, connection_cache_key='google_gae|:443', getfast=getfast, realmethod=method, realurl=realurl)
         if response is None:
             return
-        if response.status != 200:
+        if response.status not in (200, 404):
             break
         app_server = response.headers.get('Server')
         if app_server == 'Google Frontend':

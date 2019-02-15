@@ -627,6 +627,11 @@ class IPManager:
         b'Host: www.appspot.com\r\n'
         b'Connection: Close\r\n\r\n'
     )
+    pick_gae_req = (
+        b'HEAD / HTTP/1.1\r\n'
+        b'Host: gweb-cloudblog-publish.appspot.com\r\n'
+        b'Connection: Close\r\n\r\n'
+    )
     pick_gae_code = b'404', b'405'
     pick_gws_res = (
         b' Found\r\n'
@@ -823,6 +828,10 @@ class IPManager:
                     ssl_sock.close()
                 elif sock:
                     sock.close()
+            if server_name is self.server_name and domain == self.com_domain:
+                domain = '*.google.com'
+            if type is 'gae' and not self.test_ip_gae(ip):
+                type = None
             return domain, ssl_time, type
 
     def check_type_status(self, conn, ip):
@@ -836,6 +845,37 @@ class IPManager:
         except NetWorkIOError as e:
             self.logger.debug('从 %s 获取服务器信息时发生错误：%r', ip, e)
 
+    def check_gae_status(self, conn, ip):
+        try:
+            http_gws.match_hostname(conn, hostname='www.appspot.com')
+            conn.send(self.pick_gae_req)
+            conn.read(9)
+            return conn.read(3) == b'302'
+        except:
+            return False
+
+    def test_ip_gae(self, ip):
+        server_name = random_hostname('*com').encode()
+        _, _, type = self.get_ip_info(ip,
+                server_name=server_name,
+                callback=self.check_gae_status)
+        if type:
+            return True
+        gae = self.gae
+        if gae.enable:
+            gae.remove_ip(ip)
+        else:
+            try:
+                gae.ip_list.remove_ip(ip)
+            except:
+                pass
+        if type is False:
+            #无法使用的 IP
+            gae.ip_source.del_ip(ip)
+        else:
+            #无法肯定判断，但是可先加入
+            gae.ip_source.add_ip(ip)
+
     def pick_ip_worker(self):
         while True:
             try:
@@ -847,16 +887,13 @@ class IPManager:
                     continue
                 if type is None:
                     domain, ssl_time, type = self.get_ip_info(ip)
-                    if domain == self.com_domain:
-                        domain = '*.google.com'
-                    elif type is 'gae':
-                        #无法使用的 IP
-                        #type = domain
-                        domain = type = None
-                        self.ip_source.del_ip(ip)
                     if type:
                         self.ip_source.add_ip(ip, type)
-                    checked = domain and ssl_time <= self.get_timeout(type)
+                        checked = domain and ssl_time <= self.get_timeout(type)
+                    else:
+                        checked = False
+                elif type is 'gae':
+                    checked = self.test_ip_gae(ip)
                 else:
                     checked = True
                 if type is not self.type and checked:
@@ -899,10 +936,12 @@ class IPManager:
                     self.kill_pick_worker_cnt = self.pick_worker_cnt
                     continue
                 self.check_pick_ip_worker()
-                if not self.ip_list:
-                    self.logger.warning('当前 %s IP 数量为 0', self.type)
-                    continue
                 pass_time = time() - self.last_check
+                if not self.ip_list:
+                    if pass_time > self.min_recheck_time:
+                        self.logger.warning('当前 %s IP 数量为 0', self.type)
+                        self.last_check = time()
+                    continue
                 if pass_time < self.min_recheck_time or \
                         pass_time < self.recheck_loop_time / len(self.ip_list):
                     continue
@@ -941,45 +980,13 @@ ip_source_gws = IPPoolSource(ip_source, 'gws')
 ip_manager_gae = IPManager(ip_source_gae)
 ip_manager_gws = IPManager(ip_source_gws)
 
+test_ip_gae = ip_manager_gae.test_ip_gae
+
 def test_ip_type(ip):
-    domain, _, type = ip_manager_gae.get_ip_info(ip)
-    if type is 'gae':
-        if domain != ip_manager_gae.com_domain:
-            type = None
-        elif not test_ip_gae(ip):
-            type = 'gws'
+    _, _, type = ip_manager_gae.get_ip_info(ip)
+    if type is 'gae' and not test_ip_gae(ip):
+        type = None
     return type
-
-def check_gae_status(conn, ip):
-    pick_gae_req = (
-        b'HEAD / HTTP/1.1\r\n'
-        b'Host: gweb-cloudblog-publish.appspot.com\r\n'
-        b'Connection: Close\r\n\r\n'
-    )
-    try:
-        http_gws.match_hostname(conn, hostname='www.appspot.com')
-        conn.send(pick_gae_req)
-        conn.read(9)
-        return conn.read(3) == b'302'
-    except:
-        pass
-
-def test_ip_gae(ip):
-    server_name = random_hostname('*com')
-    _, _, type = ip_manager_gae.get_ip_info(ip,
-            server_name=server_name,
-            callback=check_gae_status)
-    if type:
-        return True
-    if ip_manager_gae.enable:
-        ip_manager_gae.remove_ip(ip)
-    else:
-        try:
-            ip_manager_gae.ip_list.remove_ip(ip)
-        except:
-            pass
-    ip_source_gae.remove_ip(ip)
-    ip_source_gws.add_ip(ip)
 
 def start_ip_check():
     ip_manager_gae.start()

@@ -693,9 +693,10 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             try:
                 response = gae_urlfetch(self.command, self.url, request_headers, payload, appid)
                 last_response = response or last_response
-                if response is None and retry < GC.GAE_FETCHMAX - 1:
-                    logging.warning('%s do_GAE 失败，url=%r，重试', self.address_string(), self.url)
-                    sleep(0.5)
+                if response is None:
+                    if retry < GC.GAE_FETCHMAX - 1:
+                        logging.warning('%s do_GAE 失败，url=%r，重试', self.address_string(), self.url)
+                        sleep(0.5)
                     continue
                 #处理 GoProxy 错误信息
                 if response.reason == 'debug error':

@@ -558,6 +558,8 @@ class HTTPUtil(BaseHTTPUtil):
                     if not retry and e.args == zero_EOF_error:
                         retry = True
                         continue
+                    elif isinstance(e, LimiterFull):
+                        return True
                     else:
                         callback(e)
                         return
@@ -884,12 +886,13 @@ class HTTPUtil(BaseHTTPUtil):
                 if limiter:
                     limiter.close()
 
-# Google video ip can act as Google FrontEnd if cipher suits not include
+# Google video ip can act as Google Web Server if cipher suits not include
 # RC4-SHA
 # AES128-GCM-SHA256
 # ECDHE-RSA-RC4-SHA
 # ECDHE-RSA-AES128-GCM-SHA256
 #不安全 cipher
+# CBC
 # AES128-SHA
 # ECDHE-RSA-AES128-SHA
 # http://docs.python.org/dev/library/ssl.html
@@ -903,8 +906,8 @@ gws_ciphers = (
     #'RSA+SHA384+TLSv1.2:'
     #'ECDHE+SHA256+TLSv1.2:'
     #'RSA+SHA256+TLSv1.2:'
-    #'TLSv1.2:'
-    'ALL:'
+    'TLSv1.2:'
+    #'ALL:'
     '!RC4-SHA:'
     '!AES128-GCM-SHA256:'
     '!ECDHE-RSA-RC4-SHA:'
@@ -912,7 +915,7 @@ gws_ciphers = (
     '!AES128-SHA:'
     '!ECDHE-RSA-AES128-SHA:'
     #'!aNULL:!eNULL:!MD5:!DSS:!RC4:!3DES'
-    '!aNULL:!eNULL:!EXPORT:!EXPORT40:!EXPORT56:!LOW:!RC4'
+    '!aNULL:!eNULL:!EXPORT:!EXPORT40:!EXPORT56:!LOW:!RC4:!CBC'
     )
 
 def_ciphers = ssl._DEFAULT_CIPHERS
