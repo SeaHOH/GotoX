@@ -1,12 +1,12 @@
 # GotoX
 - GotoX 修改自 goagent，其主要目的在于，当访问的网络服务出现问题，用户可以通过方便快速地添加更改规则来自行解决。
-- 其特色，一是自动代理，可支持标准 HTTP/1.1 请求；二是可根据需要修改来自客户端的请求以及服务器返回的响应。
+- 其特色，一是自动代理，可支持标准 HTTP/1.1 请求；二是可通过修改 TLS 的 SNI 扩展直连大部分网站。
 - 主要使用 GAE 服务作为后端代理，也支持 HTTP/SOCKS4/SOCKS5 代理，两者处于同等地位。SOCKS 代理支持认证。
-- 运行时会一直维护一个较小但快速的 GAE IP 列表。
+- 运行时可一直维护一个较小但快速的 GAE IP 列表。
 
 # 可用性（2018/12/20）
-- 由于谷歌服务器变化，可使用的 GAE 服务器急剧减少，IPv4 连接不太稳定，建议使用 IPv6 连接 GAE。
-- 使用 SNIProxy 链接 GAE 时，请注意 **[gae/servername]** 参数的选择，详见配置注释。
+- 由于谷歌服务器变化，可使用的 GAE 服务器急剧减少，可根据当地 ISP 情况选择使用 IPv4、原生 IPv6 或 IPv6 隧道连接 GAE。
+- 使用 SNIProxy 链接 GAE 时（不应作为常规方法，仅为后备），请注意 **[gae/servername]** 参数的选择，详见配置注释。
 
 # 安全
 - 由于平台限制，对于通过 GAE 的 https 流量，GotoX 使用自动生成的证书作为凭证，采取中间人方法进行代理；对于需要修改（某些自动代理规则需要）的 https 流量也是如此，不论其是否通过 GAE。
@@ -17,7 +17,7 @@
 - 支持通过 https 代理协议连接 GotoX，然而非加密后端规则（非 GAEProxy、HTTPS）的 http 连接从代理连出去仍然是普通 http 连接，这只是作为一个方法验证来实现。
 
 # 部署服务端
-- 推荐使用[本项目 fork 的 GoProxy GAE 服务端分支](https://github.com/SeaHOH/GotoX/tree/gaeserver.goproxy)，包含一些小改动，可完全兼容 GoProxy 客户端。同时本项目不再兼容 GoProxy GAE 以外的服务端。
+- 推荐使用[本项目 fork 的 GoProxy GAE 服务端分支](https://github.com/SeaHOH/GotoX/tree/gaeserver.goproxy)，包含一些小改动，可完全兼容 GoProxy/[zebra](https://github.com/MeABc/zebra) 客户端。同时本项目不再兼容其它服务端，如 XX-Net GAE 服务端。
 - 申请 AppID 或部署服务端时，可尝试直接以默认配置运行本代理使用；如果无法顺利进行，请使用 VPN、Shadowsocks 等其它代理重新开始。
     - **警告**：不建议使用未知来源的 AppID，它们**可能会记录你的各种信息，甚至更改你的流量**以达到更危险的目的。
 - **相关链接**
@@ -62,6 +62,8 @@
     - 通过改变 TSL 的 SNI 扩展，可以直接连接大部分服务器；此时应配合正确的 DNS 服务，或者使用内置的谷歌 DNS-over-HTTPS 服务。
     - 同时也支持使用原主机名验证服务器证书；
     - 使用此功能需要导入自签证书，手机应用可能无法正常使用。
+    - **相关链接**
+        - 如何使用伪造 SNI 的功能 https://github.com/SeaHOH/GotoX/wiki/如何使用伪造-SNI-的功能
 - **用户认证：** 支持以下方法，可设置免验证 IP 白名单。
     - **Basic 方法**认证。
         - 优点是支持广泛，基本不会因出错而无法使用；

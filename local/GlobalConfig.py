@@ -73,9 +73,9 @@ class GC:
     GAE_KEEPTIME = CONFIG.getint('gae', 'keeptime')
     GAE_MAXREQUESTS = min(CONFIG.getint('gae', 'maxrequsts'), 5)
     GAE_SSLVERIFY = CONFIG.getboolean('gae', 'sslverify')
-    GAE_FETCHMAX = int(CONFIG.get('gae', 'fetchmax') or 2)
+    GAE_FETCHMAX = CONFIG.getint('gae', 'fetchmax', fallback=2)
     #在服务端，这个数值代表的范围大小会增加 1
-    GAE_MAXSIZE = min(int(CONFIG.get('gae', 'maxsize') or 1024 * 1024 * 4), 1024 * 1024 * 32 - 1)
+    GAE_MAXSIZE = min(CONFIG.getint('gae', 'maxsize', fallback=1024 * 1024 * 4), 1024 * 1024 * 32 - 1)
     GAE_IPLIST = CONFIG.get('gae', 'iplist')
     GAE_IPLIST2P = CONFIG.get('gae', 'iplist2p') or 'google_2p'
     GAE_SERVERNAME = CONFIG.get('gae', 'servername').encode()
@@ -141,24 +141,25 @@ class GC:
 
     PICKER_SERVERNAME = CONFIG.get('picker', 'servername').encode()
     PICKER_COMDOMAIN = CONFIG.get('picker', 'comdomain')
-    PICKER_BLOCKTIME = float(CONFIG.get('picker', 'blocktime') or 12)
-    PICKER_TIMESBLOCK = int(CONFIG.get('picker', 'timesblock') or 2)
-    PICKER_TIMESDEL = int(CONFIG.get('picker', 'timesdel') or 10)
-    PICKER_STATDAYS = int(CONFIG.get('picker', 'statdays') or 4)
+    PICKER_BLOCKTIME = CONFIG.getfloat('picker', 'blocktime', fallback=12)
+    PICKER_TIMESBLOCK = CONFIG.getint('picker', 'timesblock', fallback=2)
+    PICKER_TIMESDEL = CONFIG.getint('picker', 'timesdel', fallback=10)
+    PICKER_DELASSOETED = CONFIG.getboolean('picker', 'delassoeted')
+    PICKER_STATDAYS = CONFIG.getint('picker', 'statdays', fallback=4)
     PICKER_STATDAYS = max(min(PICKER_STATDAYS, 5), 2)
     PICKER_SORTSTAT = CONFIG.getboolean('picker', 'sortstat')
     PICKER_BLOCK = CONFIG.get('picker', 'block')
     PICKER_BLOCK = tuple(PICKER_BLOCK.split('|')) if PICKER_BLOCK else ()
     PICKER_GAE_ENABLE = CONFIG.getboolean('picker/gae', 'enable')
-    PICKER_GAE_MINRECHECKTIME = int(CONFIG.get('picker/gae', 'minrechecktime') or 40)
-    PICKER_GAE_MINCNT = int(CONFIG.get('picker/gae', 'mincnt') or 6)
-    PICKER_GAE_MAXTIMEOUT = int(CONFIG.get('picker/gae', 'maxtimeout') or 2000)
-    PICKER_GAE_MAXTHREADS = int(CONFIG.get('picker/gae', 'maxthreads') or 10)
+    PICKER_GAE_MINRECHECKTIME = CONFIG.getint('picker/gae', 'minrechecktime', fallback=40)
+    PICKER_GAE_MINCNT = CONFIG.getint('picker/gae', 'mincnt', fallback=6)
+    PICKER_GAE_MAXTIMEOUT = CONFIG.getint('picker/gae', 'maxtimeout', fallback=2000)
+    PICKER_GAE_MAXTHREADS = CONFIG.getint('picker/gae', 'maxthreads', fallback=10)
     PICKER_GWS_ENABLE = CONFIG.getboolean('picker/gws', 'enable')
-    PICKER_GWS_MINRECHECKTIME = int(CONFIG.get('picker/gws', 'minrechecktime') or 30)
-    PICKER_GWS_MINCNT = int(CONFIG.get('picker/gws', 'mincnt') or 6)
-    PICKER_GWS_MAXTIMEOUT = int(CONFIG.get('picker/gws', 'maxtimeout') or 1000)
-    PICKER_GWS_MAXTHREADS = int(CONFIG.get('picker/gws', 'maxthreads') or 10)
+    PICKER_GWS_MINRECHECKTIME = CONFIG.getint('picker/gws', 'minrechecktime', fallback=30)
+    PICKER_GWS_MINCNT = CONFIG.getint('picker/gws', 'mincnt', fallback=6)
+    PICKER_GWS_MAXTIMEOUT = CONFIG.getint('picker/gws', 'maxtimeout', fallback=1000)
+    PICKER_GWS_MAXTHREADS = CONFIG.getint('picker/gws', 'maxthreads', fallback=10)
 
     if not PICKER_SERVERNAME:
         wait_exit('没有找到 [picker/servername]，请检查配置文件：%r，参考注释进行填写。', CONFIG_FILENAME)
@@ -194,7 +195,7 @@ class GC:
     AUTORANGE_FAST_THREADS = CONFIG.getint('autorange/fast', 'threads')
     AUTORANGE_FAST_LOWSPEED = CONFIG.getint('autorange/fast', 'lowspeed')
 
-    AUTORANGE_BIG_ONSIZE = int(CONFIG.get('autorange/big', 'onsize') or 1024 * 1024 * 32)
+    AUTORANGE_BIG_ONSIZE = CONFIG.getint('autorange/big', 'onsize', fallback=1024 * 1024 * 32)
     AUTORANGE_BIG_MAXSIZE = CONFIG.getint('autorange/big', 'maxsize')
     AUTORANGE_BIG_SLEEPTIME = CONFIG.getint('autorange/big', 'sleeptime')
     AUTORANGE_BIG_THREADS = CONFIG.getint('autorange/big', 'threads')
@@ -221,7 +222,7 @@ class GC:
             DNS_PRIORITY.remove(dnstype)
     DNS_PRIORITY.extend(DNS_DEF_PRIORITY)
 
-    DNS_CACHE_ENTRIES = int(CONFIG.get('dns/cache', 'entries') or 1024)
-    DNS_CACHE_EXPIRATION = int(CONFIG.get('dns/cache', 'expiration') or 7200)
+    DNS_CACHE_ENTRIES = CONFIG.getint('dns/cache', 'entries', fallback=1024)
+    DNS_CACHE_EXPIRATION = CONFIG.getint('dns/cache', 'expiration', fallback=7200)
 
 del CONFIG

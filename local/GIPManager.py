@@ -113,6 +113,7 @@ class IPSource:
         self.block_time = GC.PICKER_BLOCKTIME * 60 * 60
         self.fail_times_to_block = GC.PICKER_TIMESBLOCK
         self.block_times_to_del = GC.PICKER_TIMESDEL
+        self.del_assoeted_ip = GC.PICKER_DELASSOETED
         if GC.PICKER_SORTSTAT:
             self.sort_ip_stat = lambda s: self.sort_ip_stat_good((s[-1][:-1], s[:-1]))
             self.sort_ip_stat_bad = get_index_1
@@ -397,6 +398,8 @@ class IPSource:
         self.ip_set_bad.discard(ip)
 
     def del_ip(self, ip):
+        if not self.del_assoeted_ip and ip in self.ip_set_assoeted:
+            return
         self._log_stat_bad(ip, 1, save=True)
         self.ip_set_del.add(ip)
         self.ip_set.discard(ip)
@@ -440,11 +443,13 @@ class IPSource:
         self.ip_set_bad = set(ip for ip, (_, _, t) in self.ip_stat_bad.items() if now - t < self.block_time) \
                           - self.ip_set_del
         self.ip_set_good = set(ip for ip, (co, _, ro, _, unstat) in self.ip_stat.items() if co and not unstat) \
+                           & self.ip_set \
                            - self.ip_set_ex \
                            - self.ip_set_bad \
                            - self.ip_set_del \
                            - self.ip_set_used
         self.ip_set_weak = set(self.ip_stat_bad.keys()) \
+                           & self.ip_set \
                            - self.ip_set_ex \
                            - self.ip_set_good \
                            - self.ip_set_bad \
@@ -770,6 +775,8 @@ class IPManager:
                     self.ip_list.append(self.ip_list.popleft())
                     self.logger.warning('%s 测试失败（超时：%d ms）%s，%s',
                             self.pick_worker_cnt, timeout, ip, result)
+                    #不移除会持续记录，此处抵消
+                    self.ip_source.report_recheck_ok(ip)
                 else:
                     self.remove_ip(ip)
                     self.logger.warning('%s 测试失败（超时：%d ms）%s，%s，'
@@ -851,8 +858,10 @@ class IPManager:
             conn.send(self.pick_gae_req)
             conn.read(9)
             return conn.read(3) == b'302'
-        except:
+        except CertificateError:
             return False
+        except:
+            pass
 
     def test_ip_gae(self, ip):
         server_name = random_hostname('*com').encode()
@@ -871,6 +880,7 @@ class IPManager:
                 pass
         if type is False:
             #无法使用的 IP
+            gae.ip_source.remove_ip(ip)
             gae.ip_source.del_ip(ip)
         else:
             #无法肯定判断，但是可先加入
