@@ -53,10 +53,23 @@ except ImportError:
 
 
 import builtins
-from configparser import RawConfigParser, ConfigParser
+from configparser import _UNSET, RawConfigParser, ConfigParser
 
 #去掉 lower 以支持选项名称大小写共存
 RawConfigParser.optionxform = lambda s, opt: opt
+
+#支持空值指定 getint fallback 
+_getint_o = RawConfigParser.getint
+
+def _getint(*args, fallback=_UNSET, **kwargs):
+    try:
+        return _getint_o(*args, fallback=fallback, **kwargs)
+    except ValueError:
+        if fallback is _UNSET:
+            raise
+        return fallback
+
+RawConfigParser.getint = _getint
 
 #默认编码
 _read = ConfigParser.read
