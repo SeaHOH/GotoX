@@ -210,7 +210,8 @@ def import_ca(certfile=None):
                     title = 'GotoX 提示'
                     ctypes.windll.user32.MessageBoxW(None, msg, title, 48)
             except Exception as e:
-                logging.warning('导入证书时发生错误：%r', e)
+                logging.warning('检查和导入证书时发生错误：%r\n'
+                                '如果没有导入过证书，请手动操作，否则请忽视这条警告。', e)
                 if isinstance(e, OSError):
                     store_handle = None
             finally:

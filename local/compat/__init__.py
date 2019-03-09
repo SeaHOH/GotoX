@@ -53,23 +53,26 @@ except ImportError:
 
 
 import builtins
-from configparser import _UNSET, RawConfigParser, ConfigParser
+from configparser import (
+    _UNSET, NoSectionError, NoOptionError, RawConfigParser, ConfigParser)
 
 #去掉 lower 以支持选项名称大小写共存
 RawConfigParser.optionxform = lambda s, opt: opt
 
-#支持空值指定 getint fallback 
-_getint_o = RawConfigParser.getint
-
-def _getint(*args, fallback=_UNSET, **kwargs):
+#支持指定 getint、getfloat、getboolean 非法值的 fallback
+def _get_conv(self, section, option, conv, *, raw=False, vars=None,
+              fallback=_UNSET, **kwargs):
     try:
-        return _getint_o(*args, fallback=fallback, **kwargs)
-    except ValueError:
+        return self._get(section, conv, option, raw=raw, vars=vars, **kwargs)
+    except (NoSectionError, NoOptionError, ValueError):
         if fallback is _UNSET:
             raise
-        return fallback
+        if isinstance(conv, type):
+            return conv(fallback)
+        else:
+            return bool(fallback)
 
-RawConfigParser.getint = _getint
+RawConfigParser._get_conv = _get_conv
 
 #默认编码
 _read = ConfigParser.read

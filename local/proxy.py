@@ -57,21 +57,24 @@ logging.setLevel(GC.LISTEN_DEBUGINFO)
 import os
 import queue
 import struct
-from threading import _start_new_thread as start_new_thread
 import socket
 import ssl
 import re
+from time import sleep
+from threading import _start_new_thread as start_new_thread
 from gevent import __version__ as geventver
 from OpenSSL import __version__ as opensslver
+from .common.cert import check_ca
+from .common.dns import _dns_resolve as dns_resolve
+from .common.net import isip, isipv4, isipv6
 from .common.path import icon_gotox
+from .common.region import IPDBVer, DDDVer
 from .ProxyServer import network_test, start_proxyserver
 from .ProxyHandler import AutoProxyHandler
+from . import GIPManager
 
 def main():
     def pre_start():
-        from .common.net import isip, isipv4, isipv6
-        from .common.dns import _dns_remote_resolve as dns_remote_resolve, dns_system_resolve
-
         def get_process_list():
             process_list = []
             if os.name != 'nt':
@@ -105,42 +108,40 @@ def main():
             return process_list
 
         def resolve_iplist():
-            def do_resolve(host, dnsservers, queobj):
+            def do_resolve(host, queobj):
                 try:
-                    iplist = dns_remote_resolve(host, dnsservers, GC.DNS_BLACKLIST, timeout=2)
-                    queobj.put((host, dnsservers, iplist or []))
+                    iplist = dns_resolve(host)
+                    queobj.put((host, iplist))
                 except (socket.error, OSError) as e:
-                    logging.error('远程解析失败：host=%r，%r', host, e)
-                    queobj.put((host, dnsservers, []))
+                    logging.error('自定义 IP 列表解析失败：host=%r，%r', host, e)
+                    queobj.put((host, None))
             # https://support.google.com/websearch/answer/186669?hl=zh-Hans
-            google_blacklist = ['216.239.32.20', '74.125.127.102', '74.125.155.102', '74.125.39.102', '74.125.39.113', '209.85.229.138']
+            # forcesafesearch.google.com
+            google_blacklist = ['216.239.38.120', '2001:4860:4802:32::78']
             for name, need_resolve_hosts in list(GC.IPLIST_MAP.items()):
-                if name in ('google_gae', 'google_gws') or all(isip(x) for x in need_resolve_hosts):
+                if name in ('google_gae', 'google_gws'):
                     continue
-                need_resolve_remote = [x for x in need_resolve_hosts if ':' not in x and not isipv4(x)]
-                resolved_iplist = [x for x in need_resolve_hosts if x not in need_resolve_remote]
-                result_queue = queue.Queue()
-                for host in need_resolve_remote:
-                    for dnsserver in GC.DNS_SERVERS:
-                        logging.debug('远程解析开始：host=%r，dns=%r', host, dnsserver)
-                        start_new_thread(do_resolve, (host, [dnsserver], result_queue))
-                for _ in range(len(GC.DNS_SERVERS) * len(need_resolve_remote)):
-                    try:
-                        host, dnsservers, iplist = result_queue.get(timeout=2)
-                        resolved_iplist += iplist or []
-                        logging.debug('远程解析成功：host=%r，dns=%s，iplist=%s', host, dnsservers, iplist)
-                    except queue.Empty:
-                        logging.warn('远程解析超时，尝试本地解析')
-                        resolved_iplist += sum([dns_system_resolve(x) or [] for x in need_resolve_remote], [])
-                        break
-                if name.startswith('google_'):
-                    resolved_iplist = list(set(resolved_iplist) - set(google_blacklist))
-                else:
-                    resolved_iplist = list(set(resolved_iplist))
+                resolved_iplist = [x for x in need_resolve_hosts if isip(x)]
+                need_resolve_hosts = [x for x in need_resolve_hosts if '.' in x and x not in resolved_iplist]
+                if not need_resolve_hosts:
+                    continue
                 if GC.LINK_PROFILE == 'ipv4':
                     resolved_iplist = [ip for ip in resolved_iplist if isipv4(ip)]
                 elif GC.LINK_PROFILE == 'ipv6':
                     resolved_iplist = [ip for ip in resolved_iplist if isipv6(ip)]
+                result_queue = queue.Queue()
+                for host in need_resolve_hosts:
+                    logging.debug('自定义 IP 列表解析开始：host=%r', host)
+                    start_new_thread(do_resolve, (host, result_queue))
+                for _ in need_resolve_hosts:
+                    host, iplist = result_queue.get()
+                    if iplist:
+                        resolved_iplist += iplist
+                        logging.debug('自定义 IP 列表解析成功：host=%r，iplist=%s', host, iplist)
+                if name.startswith('google_'):
+                    resolved_iplist = list(set(resolved_iplist) - set(google_blacklist))
+                else:
+                    resolved_iplist = list(set(resolved_iplist))
                 if len(resolved_iplist) == 0:
                     logging.warning('自定义 IP 列表 %r 解析结果为空，请检查你的配置 %r。', name, GC.CONFIG_FILENAME)
                 else:
@@ -236,8 +237,6 @@ def main():
         #    logging.info('Uvent enabled, patch forward_socket')
         #    AutoProxyHandler.forward_socket = AutoProxyHandler.green_forward_socket
 
-    from .common.region import IPDBVer, DDDVer
-
     info = ['=' * 80]
     info.append(' GotoX  版 本 : %s (python/%s gevent/%s pyOpenSSL/%s)' % (__version__, sys.version.split(' ')[0], geventver, opensslver))
     #info.append(' Uvent Version    : %s (pyuv/%s libuv/%s)\n' % (__import__('uvent').__version__, __import__('pyuv').__version__, __import__('pyuv').LIBUV_VERSION) if all(x in sys.modules for x in ('pyuv', 'uvent')) else '')
@@ -260,13 +259,10 @@ def main():
     pre_start()
     del pre_start, info
 
-    from .common.cert import check_ca
     check_ca()
-
     start_proxyserver()
 
     if GC.GAE_TESTGWSIPLIST:
-        from . import GIPManager
         GIPManager.start_ip_check()
     else:
         if GC.GAE_IPLIST:
@@ -274,10 +270,8 @@ def main():
         if GC.GAE_ENABLEPROXY:
             logging.warning('正在通过前置代理使用 GAE：%s。', GC.GAE_PROXYLIST)
         else:
-            from . import GIPManager
             start_new_thread(GIPManager.fixed_iplist, ())
 
-    from time import sleep
     while True:
         sleep(30)
         network_test()

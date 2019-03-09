@@ -157,16 +157,16 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                     self.request.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 0)
         BaseHTTPRequestHandler.setup(self)
 
-    def write(self, d, raiseerror=None):
-        if raiseerror is None and not isinstance(d, bytes):
+    def write(self, d, logerror=None):
+        if not isinstance(d, bytes):
             d = d.encode()
         try:
             self.wfile.write(d)
         except Exception as e:
             self.conaborted = True
-            if raiseerror:
+            if logerror:
                 logging.debug('%s 客户端连接断开：%r, %r', self.address_string(), self.url, e)
-                raise e
+            raise e
 
     def handle_one_request(self):
         try:

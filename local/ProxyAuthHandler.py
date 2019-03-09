@@ -144,7 +144,7 @@ div, input {font-size: 12pt; font-family: arial,sans-serif}
                 self.do_FAKECERT()
             else:
                 self._do_METHOD()
-                if self.ssl_request or self.ssl and self.url[8:].lower().startswith(self.login_url):
+                if (self.ssl_request or self.ssl) and self.url[8:].lower().startswith(self.login_url):
                     #只有登录地址为加密链接时才发送登录页面
                     redirect = ''
                     if self.command == 'POST':

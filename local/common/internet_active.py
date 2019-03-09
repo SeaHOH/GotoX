@@ -191,16 +191,17 @@ class InternetActiveCheck:
             while keep_on and not self.last_stat:
                 sleep(5)
             return self.last_stat
-        if self.in_check:
-            time_pass = 0
-            while self.in_check:
-                if time_pass < 10:
-                    sleep(0.01)
-                    time_pass += 0.01
-                elif self.in_check or not keep_on:
-                    return self.last_stat
-                else:
-                    time_pass = 0
+
+        time_pass = 0
+        while self.in_check:
+            sleep(0.01)
+            time_pass += 0.01
+            if time_pass > 10:
+                if not keep_on:
+                    break
+                time_pass = 0.01
+        if time_pass:
+            return self.last_stat
         
         self.in_check = True
         ok = None
@@ -220,6 +221,7 @@ class InternetActiveCheck:
                     if not keep_on:
                         ok = False
                         break
+                    self.last_stat = 0
                     haserr = True
                     try:
                         keep_on = abs(int(keep_on))
@@ -228,6 +230,7 @@ class InternetActiveCheck:
                     logging.error('%s 网络现在不可用，将每 %d 秒检测一次……', self.type, keep_on)
                 sleep(keep_on)
             if self._dns_servers is None:
+                check_times = self.max_check_times
                 continue
             if not self.dns_servers:
                 self.dns_servers = self._dns_servers.copy()

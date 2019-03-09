@@ -9,6 +9,7 @@ import socket
 import ssl
 import struct
 import random
+import binascii
 import socks
 import collections
 import OpenSSL
@@ -195,7 +196,6 @@ class BaseHTTPUtil:
         #强制 GWS 使用 TLSv1.2
         context = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_2_METHOD if self.gws else GC.LINK_REMOTESSL)
         #cache
-        import binascii
         context.set_session_id(binascii.b2a_hex(os.urandom(10)))
         context.set_session_cache_mode(OpenSSL.SSL.SESS_CACHE_BOTH)
         #validate
