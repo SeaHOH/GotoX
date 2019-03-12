@@ -67,7 +67,7 @@ class GC:
     GAE_DEBUG = CONFIG.getint('gae', 'debug')
     GAE_PASSWORD = CONFIG.get('gae', 'password').strip()
     GAE_PATH = CONFIG.get('gae', 'path')
-    GAE_MAXPERIP = max(min(CONFIG.getint('gae', 'maxperip'), 8), 2)
+    GAE_MAXPERIP = min(CONFIG.getint('gae', 'maxperip'), 8)
     GAE_TIMEOUT = max(CONFIG.getint('gae', 'timeout'), 3)
     GAE_KEEPALIVE = CONFIG.getboolean('gae', 'keepalive')
     GAE_KEEPTIME = CONFIG.getint('gae', 'keeptime')

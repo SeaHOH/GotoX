@@ -224,6 +224,8 @@ class LimiterEmpty(OSError):
 class LimiterFull(OSError):
     pass
 
+timeout_interval = 0.1
+
 class Limiter:
     'A queue.Queue-like class use for count and limit.'
 
@@ -231,63 +233,56 @@ class Limiter:
         if maxsize < 1:
             raise ValueError('The maxsize can not be less than 1.')
         self.maxsize = maxsize
-        self.mutex = threading.Lock()
-        self.not_empty = threading.Condition(self.mutex)
-        self.not_full = threading.Condition(self.mutex)
+        self.lock = threading.Lock()
         self.__qsize = 0
 
+    @_lock_i_lock
     def qsize(self):
-        with self.mutex:
-            return self.__qsize
+        return self.__qsize
 
+    @_lock_i_lock
     def empty(self):
-        with self.mutex:
-            return not self.__qsize
+        return not self.__qsize
 
+    @_lock_i_lock
     def full(self):
-        with self.mutex:
-            return self.maxsize <= self.__qsize
+        return self.maxsize <= self.__qsize
 
     def push(self, block=True, timeout=None):
-        with self.not_full:
-            if self.maxsize > 0:
-                if not block:
-                    if self.__qsize >= self.maxsize:
-                        raise LimiterFull(-1)
-                elif timeout is None:
-                    while self.__qsize >= self.maxsize:
-                        self.not_full.wait()
-                elif timeout < 0:
-                    raise ValueError("'timeout' must be a non-negative number")
-                else:
-                    endtime = time() + timeout
-                    while self.__qsize >= self.maxsize:
-                        remaining = endtime - time()
-                        if remaining <= 0.0:
-                            raise LimiterFull(-1)
-                        self.not_full.wait(remaining)
-            self.__qsize += 1
-            self.not_empty.notify()
+        if not block:
+            pass
+        elif timeout is None:
+            endtime = None
+        elif timeout < 0:
+            raise ValueError("'timeout' must be a non-negative number")
+        else:
+            endtime = time() + timeout
+        while True:
+            with self.lock:
+                if self.__qsize < self.maxsize:
+                    self.__qsize += 1
+                    break
+            if not block or endtime and endtime - time() <= 0.0:
+                raise LimiterFull(-1)
+            sleep(timeout_interval)
 
     def pop(self, block=True, timeout=None):
-        with self.not_empty:
-            if not block:
-                if self.__qsize <= 0:
-                    raise LimiterEmpty(-1)
-            elif timeout is None:
-                while self.__qsize <= 0:
-                    self.not_empty.wait()
-            elif timeout < 0:
-                raise ValueError("'timeout' must be a non-negative number")
-            else:
-                endtime = time() + timeout
-                while self.__qsize <= 0:
-                    remaining = endtime - time()
-                    if remaining <= 0.0:
-                        raise LimiterEmpty(-1)
-                    self.not_empty.wait(remaining)
-            self.__qsize -= 1
-            self.not_full.notify()
+        if not block:
+            pass
+        elif timeout is None:
+            endtime = None
+        elif timeout < 0:
+            raise ValueError("'timeout' must be a non-negative number")
+        else:
+            endtime = time() + timeout
+        while True:
+            with self.lock:
+                if self.__qsize > 0:
+                    self.__qsize -= 1
+                    break
+            if not block or endtime and endtime - time() <= 0.0:
+                raise LimiterEmpty(-1)
+            sleep(timeout_interval)
 
 MESSAGE_TEMPLATE = '''
 <html><head>
