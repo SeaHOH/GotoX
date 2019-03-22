@@ -14,7 +14,7 @@ from threading import _start_new_thread as start_new_thread
 from .common.internet_active import internet_v4, internet_v6
 from .common.net import NetWorkIOError, random_hostname, isip, isipv4, isipv6
 from .common.path import data_dir
-from .common.util import make_lock_decorator
+from .common.util import make_lock_decorator, LimiterFull
 from .compat.openssl import zero_EOF_error, CertificateError
 from .HTTPUtil import http_gws
 from .ProxyServer import network_test
@@ -770,7 +770,9 @@ class IPManager:
         is_recheck = ip in self.ip_set
         if isinstance(result, Exception):
             if is_recheck:
-                if self.pick_worker_cnt >= self.max_threads:
+                if isinstance(result, LimiterFull):
+                    self.ip_list.append(self.ip_list.popleft())
+                elif self.pick_worker_cnt >= self.max_threads:
                     http_gws.ssl_connection_time[result.xip] = http_gws.timeout + 1
                     self.ip_list.append(self.ip_list.popleft())
                     self.logger.warning('%s 测试失败（超时：%d ms）%s，%s',
@@ -970,15 +972,15 @@ class IPManager:
                 self.logger.exception('recheck_ip_worker 发生错误：%s', e)
         else:
             self.kill_pick_worker_cnt = self.pick_worker_cnt
-    
+
     @_lock_pick_worker
     def start(self):
         if self.running:
             return
         if self.enable:
+            self.running = True
             if not hasattr(self.ip_source, 'get_cnt'):
                 self.ip_source.check_update(force=True)
-            self.running = True
             start_new_thread(self.recheck_ip_worker, ())
 
     def stop(self):

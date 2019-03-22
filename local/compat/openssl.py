@@ -16,12 +16,6 @@ class SSLConnection:
     def __init__(self, context, sock):
         self._sock = sock
         self._connection = SSL.Connection(context, sock)
-        self._io_refs = 0
-
-    def __del__(self):
-        if self._sock:
-            self._sock.close()
-            self._sock = None
 
     def __getattr__(self, attr):
         return getattr(self._connection, attr)
@@ -76,6 +70,7 @@ class SSLConnection:
             return self.__iowait(self._connection.send, data)
         else:
             return 0
+
     write = send
 
     def sendall(self, data, flags=0):
@@ -103,6 +98,7 @@ class SSLConnection:
             elif e.args[0] in zero_errno:
                 return b''
             raise e
+
     read = recv
 
     def recv_into(self, buffer, nbytes=None, flags=None):
@@ -121,24 +117,14 @@ class SSLConnection:
             elif e.args[0] in zero_errno:
                 return 0
             raise e
+
     readinto = recv_into
 
     def close(self):
-        if self._io_refs < 1:
-            self._connection = None
-            if self._sock:
-                self._sock.close()
-                self._sock = None
-        else:
-            self._io_refs -= 1
+        closed = getattr(self, '_closed', True)
+        if not closed:
+            self._sock.close()
 
-    #if PY3:
-    #    def makefile(self, *args, **kwargs):
-    #        return socket.socket.makefile(self, *args, **kwargs)
-    #else:
-    #    def makefile(self, mode='r', bufsize=-1):
-    #        self._io_refs += 1
-    #        return socket._fileobject(self, mode, bufsize, close=True)
     def makefile(self, *args, **kwargs):
         return socket.socket.makefile(self, *args, **kwargs)
 

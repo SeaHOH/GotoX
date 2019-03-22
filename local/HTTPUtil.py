@@ -69,6 +69,10 @@ hj5J/kicXpbBQclS4uyuQ5iSOGKcuCRt8ralqREJXuRsnLZo0sIT680+VQ==
 gws_servername = GC.GAE_SERVERNAME
 gae_testgwsiplist = GC.GAE_TESTGWSIPLIST
 autorange_threads = GC.AUTORANGE_FAST_THREADS
+_lock_limit_conn_c = make_lock_decorator()
+_lock_limit_conn_d = make_lock_decorator()
+_lock_limit_req_c = make_lock_decorator()
+_lock_limit_req_d = make_lock_decorator()
 _lock_context = make_lock_decorator()
 
 class LimitConnection:
@@ -76,9 +80,11 @@ class LimitConnection:
 
     limiters = LRUCache(4096)
     _sock = None
+    _ip = None
     max_per_ip = GC.LINK_MAXPERIP
     timeout = 3
 
+    @_lock_limit_conn_c
     def __init__(self, sock, ip, max_per_ip=None, timeout=None):
         max_per_ip = max_per_ip or self.max_per_ip
         timeout = timeout or self.timeout
@@ -92,24 +98,22 @@ class LimitConnection:
         self._sock = sock
         self._ip = ip
 
-    def close(self):
-        if self._sock:
-            self._sock.close()
-            self._sock = None
+    @_lock_limit_conn_d
+    def __del__(self):
+        if self._ip:
+            self._ip, ip = None, self._ip
             try:
-                limiter = self.limiters[self._ip]
+                limiter = self.limiters[ip]
             except KeyError:
                 pass
             else:
                 limiter.pop(block=False)
                 if limiter.empty():
-                    del self.limiters[self._ip]
+                    del self.limiters[ip]
+            self._sock.close()
 
     def __getattr__(self, attr):
         return getattr(self._sock, attr)
-
-    def __del__(self):
-        self.close()
 
 class LimitRequest:
     'A request limiter for host cache key.'
@@ -119,6 +123,7 @@ class LimitRequest:
     max_per_key = 2
     timeout = 8
 
+    @_lock_limit_req_c
     def __init__(self, key, max_per_key=None, timeout=None):
         max_per_key = max_per_key or self.max_per_key
         timeout = timeout or self.timeout
@@ -129,9 +134,10 @@ class LimitRequest:
         limiter.push(timeout=timeout)
         self._key = key
 
+    @_lock_limit_req_d
     def close(self):
         if self._key:
-            key, self._key = self._key, None
+            self._key, key = None, self._key
             try:
                 limiter = self.limiters[key]
             except KeyError:
@@ -558,11 +564,9 @@ class HTTPUtil(BaseHTTPUtil):
                     if not retry and e.args == zero_EOF_error:
                         retry = True
                         continue
-                    elif isinstance(e, LimiterFull):
-                        return True
                     else:
                         callback(e)
-                        return
+                        return isinstance(e, LimiterFull)
                 # reset a large and random timeout to the ipaddr
                 self.ssl_connection_time[ipaddr] = self.timeout + 1
                 queobj.put(e)
