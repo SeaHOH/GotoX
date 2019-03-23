@@ -14,6 +14,7 @@ import socks
 import collections
 import OpenSSL
 import logging
+import threading
 from select import select
 from time import time, sleep
 from queue import Queue
@@ -69,10 +70,6 @@ hj5J/kicXpbBQclS4uyuQ5iSOGKcuCRt8ralqREJXuRsnLZo0sIT680+VQ==
 gws_servername = GC.GAE_SERVERNAME
 gae_testgwsiplist = GC.GAE_TESTGWSIPLIST
 autorange_threads = GC.AUTORANGE_FAST_THREADS
-_lock_limit_conn_c = make_lock_decorator()
-_lock_limit_conn_d = make_lock_decorator()
-_lock_limit_req_c = make_lock_decorator()
-_lock_limit_req_d = make_lock_decorator()
 _lock_context = make_lock_decorator()
 
 class LimitConnection:
@@ -83,22 +80,22 @@ class LimitConnection:
     _ip = None
     max_per_ip = GC.LINK_MAXPERIP
     timeout = 3
+    lock = threading.Lock()
 
-    @_lock_limit_conn_c
     def __init__(self, sock, ip, max_per_ip=None, timeout=None):
         max_per_ip = max_per_ip or self.max_per_ip
         timeout = timeout or self.timeout
         #利用 __del__ 需及时触发回收
         gc.collect()
-        try:
-            limiter = self.limiters[ip]
-        except KeyError:
-            self.limiters[ip] = limiter = Limiter(max_per_ip)
+        with self.lock:
+            try:
+                limiter = self.limiters[ip]
+            except KeyError:
+                self.limiters[ip] = limiter = Limiter(max_per_ip)
         limiter.push(timeout=timeout)
         self._sock = sock
         self._ip = ip
 
-    @_lock_limit_conn_d
     def __del__(self):
         if self._ip:
             self._ip, ip = None, self._ip
@@ -122,19 +119,19 @@ class LimitRequest:
     _key = None
     max_per_key = 2
     timeout = 8
+    lock = threading.Lock()
 
-    @_lock_limit_req_c
     def __init__(self, key, max_per_key=None, timeout=None):
         max_per_key = max_per_key or self.max_per_key
         timeout = timeout or self.timeout
-        try:
-            limiter = self.limiters[key]
-        except KeyError:
-            self.limiters[key] = limiter = Limiter(max_per_key)
+        with self.lock:
+            try:
+                limiter = self.limiters[key]
+            except KeyError:
+                self.limiters[key] = limiter = Limiter(max_per_key)
         limiter.push(timeout=timeout)
         self._key = key
 
-    @_lock_limit_req_d
     def close(self):
         if self._key:
             self._key, key = None, self._key
