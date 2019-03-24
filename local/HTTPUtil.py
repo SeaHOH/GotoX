@@ -30,7 +30,10 @@ from .common.internet_active import internet_v4, internet_v6
 from .common.net import NetWorkIOError, random_hostname, bypass_errno, isip
 from .common.path import cert_dir
 from .common.proxy import parse_proxy, proxy_no_rdns
-from .common.util import make_lock_decorator, LRUCache, LimiterFull, Limiter, wait_exit
+from .common.util import (
+    make_lock_decorator, LRUCache,
+    LimiterFull, LimitBase, wait_exit
+    )
 from .FilterUtil import reset_method_list, get_fake_sni
 
 GoogleG23PKP = {
@@ -72,80 +75,46 @@ gae_testgwsiplist = GC.GAE_TESTGWSIPLIST
 autorange_threads = GC.AUTORANGE_FAST_THREADS
 _lock_context = make_lock_decorator()
 
-class LimitConnection:
+class LimitConnection(LimitBase):
     'A connection limiter wrapper for remote IP.'
 
-    limiters = LRUCache(4096)
-    _sock = None
-    _ip = None
-    max_per_ip = GC.LINK_MAXPERIP
+    limiters = {}
+    max_per_key = GC.LINK_MAXPERIP
     timeout = 3
     lock = threading.Lock()
 
     def __init__(self, sock, ip, max_per_ip=None, timeout=None):
-        max_per_ip = max_per_ip or self.max_per_ip
-        timeout = timeout or self.timeout
         #利用 __del__ 需及时触发回收
         gc.collect()
-        with self.lock:
-            try:
-                limiter = self.limiters[ip]
-            except KeyError:
-                self.limiters[ip] = limiter = Limiter(max_per_ip)
-        limiter.push(timeout=timeout)
+        super().__init__(ip, max_per_ip, timeout)
         self._sock = sock
-        self._ip = ip
 
     def __del__(self):
-        if self._ip:
-            self._ip, ip = None, self._ip
-            try:
-                limiter = self.limiters[ip]
-            except KeyError:
-                pass
-            else:
-                limiter.pop(block=False)
-                if limiter.empty():
-                    del self.limiters[ip]
+        if super().__del__():
             self._sock.close()
 
     def __getattr__(self, attr):
         return getattr(self._sock, attr)
 
-class LimitRequest:
+    @classmethod
+    def full(cls, ip):
+        try:
+            limiter = cls.limiters[ip]
+        except KeyError:
+            return False
+        else:
+            return limiter.full()
+
+class LimitRequest(LimitBase):
     'A request limiter for host cache key.'
 
-    limiters = LRUCache(1024)
-    _key = None
+    limiters = {}
     max_per_key = 2
     timeout = 8
     lock = threading.Lock()
 
-    def __init__(self, key, max_per_key=None, timeout=None):
-        max_per_key = max_per_key or self.max_per_key
-        timeout = timeout or self.timeout
-        with self.lock:
-            try:
-                limiter = self.limiters[key]
-            except KeyError:
-                self.limiters[key] = limiter = Limiter(max_per_key)
-        limiter.push(timeout=timeout)
-        self._key = key
-
     def close(self):
-        if self._key:
-            self._key, key = None, self._key
-            try:
-                limiter = self.limiters[key]
-            except KeyError:
-                pass
-            else:
-                limiter.pop(block=False)
-                if limiter.empty():
-                    del self.limiters[key]
-
-    def __del__(self):
-        self.close()
+        self.__del__()
 
 class BaseHTTPUtil:
     '''Basic HTTP Request Class'''
@@ -290,9 +259,10 @@ class BaseHTTPUtil:
             # wrap for connect limit
             sock = LimitConnection(sock, ip, self.max_per_ip)
         except LimiterFull as e:
-            sock = new_sock_cache.append(sock)
+            new_sock_cache.append(sock)
             raise e
-        return sock
+        else:
+            return sock
 
     def get_tcp_socket(self, ip, timeout=None):
         return self._get_tcp_socket(socket.socket, ip, timeout)
@@ -406,13 +376,22 @@ class HTTPUtil(BaseHTTPUtil):
         #    self.create_ssl_connection = self.__create_ssl_connection_withproxy
 
     def get_tcp_ssl_connection_time(self, addr):
-        return self.tcp_connection_time.get(addr) or self.ssl_connection_time.get(addr, self.timeout)
+        t = self.tcp_connection_time.get(addr) or self.ssl_connection_time.get(addr, self.timeout)
+        if LimitConnection.full(addr[0]):
+            t += self.timeout
+        return t
 
     def get_tcp_connection_time(self, addr):
-        return self.tcp_connection_time.get(addr, self.timeout)
+        t = self.tcp_connection_time.get(addr, self.timeout)
+        if LimitConnection.full(addr[0]):
+            t += self.timeout
+        return t
 
     def get_ssl_connection_time(self, addr):
-        return self.ssl_connection_time.get(addr, self.timeout)
+        t = self.ssl_connection_time.get(addr, self.timeout)
+        if LimitConnection.full(addr[0]):
+            t += self.timeout
+        return t
 
     def _create_connection(self, ipaddr, forward, queobj, get_cache_sock=None):
         if get_cache_sock:
@@ -855,6 +834,7 @@ class HTTPUtil(BaseHTTPUtil):
                     ssl_sock = self.create_ssl_connection(address, hostname, connection_cache_key, getfast=bool(getfast))
                 else:
                     sock = self.create_connection(address, hostname, connection_cache_key)
+                limiter.close()
                 result = ssl_sock or sock
                 if result:
                     result.settimeout(timeout)
@@ -878,7 +858,7 @@ class HTTPUtil(BaseHTTPUtil):
                     logging.warning('%s _request "%s %s" 失败：%r', ip and ip[0], realmethod, realurl or url, e)
                     if ip and realurl:
                         self.ssl_connection_time[ip] = self.timeout + 1
-                if not realurl and e.args[0] in bypass_errno:
+                if not realurl and e.args[0] in bypass_errno or i == self.max_retry - 1 and isinstance(e, LimiterFull):
                     raise e
                 #确保不重复上传数据
                 if has_content and (sock or ssl_sock):

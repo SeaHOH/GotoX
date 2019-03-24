@@ -248,7 +248,7 @@ class Limiter:
     def full(self):
         return self.maxsize <= self.__qsize
 
-    def push(self, block=True, timeout=None):
+    def push(self, block=True, timeout=None, maxsize=None):
         if not block:
             pass
         elif timeout is None:
@@ -257,9 +257,10 @@ class Limiter:
             raise ValueError("'timeout' must be a non-negative number")
         else:
             endtime = time() + timeout
+        maxsize = maxsize or self.maxsize
         while True:
             with self.lock:
-                if self.__qsize < self.maxsize:
+                if self.__qsize < maxsize:
                     self.__qsize += 1
                     break
             if not block or endtime and endtime - time() <= 0.0:
@@ -283,6 +284,55 @@ class Limiter:
             if not block or endtime and endtime - time() <= 0.0:
                 raise LimiterEmpty(-1)
             sleep(timeout_interval)
+
+class LimitBase:
+    '''Base limiter via dict key.
+
+    _key:        dict key which marking objects
+    limiters:    limiters in dict
+    max_per_key: allow objects max size per key
+    timeout:     push and pop method timedout
+    lock:        a threading.Lock Instance
+    '''
+
+    _key = None
+    limiters = None
+    max_per_key = None
+    timeout = None
+    lock = None
+
+    def __init__(self, key, max_per_key=None, timeout=None):
+        max_per_key = max_per_key or self.max_per_key
+        timeout = timeout or self.timeout
+        with self.lock:
+            try:
+                limiter = self.limiters[key]
+            except KeyError:
+                self.limiters[key] = limiter = Limiter(max_per_key)
+        limiter.push(timeout=timeout, maxsize=max_per_key)
+        self._key = key
+
+    def __del__(self):
+        if self._key:
+            self._key, key = None, self._key
+            try:
+                limiter = self.limiters[key]
+            except KeyError:
+                pass
+            else:
+                limiter.pop(block=False)
+                start_new_thread(self.clearup, (key,))
+            return True
+
+    @classmethod
+    def clearup(cls, key):
+        sleep(timeout_interval)
+        try:
+            with cls.lock:
+                if cls.limiters[key].empty():
+                    del cls.limiters[key]
+        except KeyError:
+            pass
 
 MESSAGE_TEMPLATE = '''
 <html><head>

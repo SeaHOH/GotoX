@@ -9,7 +9,7 @@ import logging
 import threading
 from time import time, sleep
 from urllib.parse import urljoin
-from .common.util import spawn_later
+from .common.util import LimiterFull, spawn_later
 from .GAEFetch import qGAE, get_appid, mark_badappid, gae_urlfetch
 from .GlobalConfig import GC
 from .HTTPUtil import http_gws
@@ -168,7 +168,8 @@ class RangeFetch:
                             sleep(2)
                         start, end = range_queue.get(timeout=1)
                     headers['Range'] = 'bytes=%d-%d' % (start, end)
-                    while (start - self.expect_begin) / self.delaysize > 4.0 and data_queue.qsize() * self.bufsize / self.delaysize > 8.0:
+                    while start - self.expect_begin > self.threads * self.delaysize and \
+                            data_queue.qsize() * self.bufsize > 3 * self.threads * self.delaysize:
                         if self._stopped: return
                         sleep(0.1)
                     if appid:
@@ -187,6 +188,10 @@ class RangeFetch:
                 except queue.Empty:
                     appid = None
                     return
+                except LimiterFull:
+                    range_queue.put((start, end))
+                    sleep(2)
+                    continue
                 except Exception as e:
                     logging.warning('%s Response %r in __fetchlet', self.address_string(response), e)
                     range_queue.put((start, end))
@@ -269,7 +274,7 @@ class RangeFetch:
 class RangeFetchFast(RangeFetch):
     maxsize = GC.AUTORANGE_FAST_MAXSIZE or 1024 * 1024 * 4
     threads = GC.AUTORANGE_FAST_THREADS or 2
-    minip = max(threads-2, 3)
+    minip = int(threads * 1.5)
     lowspeed = GC.AUTORANGE_FAST_LOWSPEED or 1024
     timeout = max(GC.PICKER_GAE_MAXTIMEOUT / 500, 4)
     sleeptime = GC.PICKER_GAE_MAXTIMEOUT / 500.0
