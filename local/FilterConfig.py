@@ -100,16 +100,16 @@ class actionfilterlist(list):
                 if k.find('://', 0, 9) > 0 :
                     scheme, _, k = k.partition('://')
                 host, _, path = k.partition('/')
-                if host and host[0] == '@':
+                if host[:1] == '@':
                     host = re.compile(host[1:]).search
                 else:
                     host = host.lower()
-                if path and path[0] == '@':
+                if path[:1] == '@':
                     path = re.compile(path[1:]).search
                 if filters.action == FAKECERT and v and '*' not in v:
                     v = v.encode()
                 if filters.action in (FORWARD, DIRECT):
-                    if v and v[0] == '@':
+                    if v[:1] == '@':
                         p, _, v = v.partition(' ')
                     else:
                         p = None
@@ -123,7 +123,7 @@ class actionfilterlist(list):
                         v = None
                     v = v, p
                 elif filters.action in (REDIRECT, IREDIRECT):
-                    if v and v[0] == '!':
+                    if v[:1] == '!':
                         v = v[1:].lstrip(' \t')
                         mhost = False
                     else:
@@ -143,10 +143,10 @@ class actionfilterlist(list):
                             replaces = replaces.rstrip(' \t')
                         else:
                             raction = None
-                        unquote = replaces[0] == '@'
+                        unquote = replaces[:1] == '@'
                         if unquote:
                             replaces = replaces[1:].lstrip(' \t')
-                        if patterns[0] == '@':
+                        if patterns[:1] == '@':
                             patterns = patterns[1:].lstrip(' \t')
                             rule = partial(re.compile(patterns).sub, replaces)
                         else:

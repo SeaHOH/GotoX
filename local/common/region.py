@@ -198,14 +198,14 @@ class DomainsDict:
         with open(file, 'r') as fd:
             has_update = None
             line = fd.readline()
-            if line[0] in '#;' and 'pdate:' in line:
+            if line[:1] in '#;' and 'pdate:' in line:
                 self.update = line.split('pdate:')[-1].strip()
                 has_update = True
-            elif line[0] not in '#;':
+            elif line[:1] not in '#;':
                 domain = line.strip()
                 self.add(domain)
             for line in fd:
-                if line[0] not in '#;':
+                if line[:1] not in '#;':
                     domain = line.strip()
                     self.add(domain)
             if has_update and line[:4] != '#end':

@@ -393,7 +393,7 @@ class HTTPUtil(BaseHTTPUtil):
             t += self.timeout
         return t
 
-    def _create_connection(self, ipaddr, forward, queobj, get_cache_sock=None):
+    def _create_connection(self, ipaddr, queobj, timeout=None, get_cache_sock=None):
         if get_cache_sock:
             sock = get_cache_sock()
             if sock:
@@ -401,7 +401,7 @@ class HTTPUtil(BaseHTTPUtil):
                 return
 
         try:
-            sock = self.get_tcp_socket(ipaddr[0], forward)
+            sock = self.get_tcp_socket(ipaddr[0], timeout)
             # start connection time record
             start_time = time()
             # TCP connect
@@ -439,8 +439,6 @@ class HTTPUtil(BaseHTTPUtil):
                         used_sock.append(cachedsock)
                         continue
                     if self.check_connection_alive(sock, self.keeptime, ctime):
-                        if forward:
-                            sock.settimeout(forward)
                         return sock
             except IndexError:
                 pass
@@ -472,7 +470,7 @@ class HTTPUtil(BaseHTTPUtil):
                 addrs = addresses
             queobj = Queue()
             for addr in addrs:
-                start_new_thread(self._create_connection, (addr, forward, queobj, get_cache_sock))
+                start_new_thread(self._create_connection, (addr, queobj, forward, get_cache_sock))
             addrslen = len(addrs)
             for n in range(addrslen):
                 result = queobj.get()
@@ -495,7 +493,7 @@ class HTTPUtil(BaseHTTPUtil):
         if result:
             raise result
 
-    def _create_ssl_connection(self, ipaddr, cache_key, host, queobj, callback=None, get_cache_sock=None):
+    def _create_ssl_connection(self, ipaddr, cache_key, host, queobj, timeout=None, get_cache_sock=None, callback=None):
         retry = None
         while True:
             if get_cache_sock:
@@ -506,7 +504,7 @@ class HTTPUtil(BaseHTTPUtil):
 
             ip = ipaddr[0]
             try:
-                sock = self.get_tcp_socket(ip)
+                sock = self.get_tcp_socket(ip, timeout)
                 s = self.get_server_hostname(host, cache_key)
                 ssl_sock = self.get_ssl_socket(sock, self.get_server_hostname(host, cache_key))
                 # start connection time record
@@ -515,7 +513,8 @@ class HTTPUtil(BaseHTTPUtil):
                 ssl_sock.connect(ipaddr)
                 #connected_time = time()
                 # set a short timeout to trigger timeout retry more quickly.
-                ssl_sock.settimeout(3 if self.gws else 1.5)
+                if timeout is not None:
+                    ssl_sock.settimeout(3 if self.gws else 1.5)
                 # SSL handshake
                 ssl_sock.do_handshake()
                 handshaked_time = time()
@@ -559,7 +558,7 @@ class HTTPUtil(BaseHTTPUtil):
                 else:
                     ssl_sock._sock.close()
 
-    def create_ssl_connection(self, address, hostname, cache_key, getfast=None, **kwargs):
+    def create_ssl_connection(self, address, hostname, cache_key, getfast=None, forward=None, **kwargs):
         def get_cache_sock():
             try:
                 while cache:
@@ -592,7 +591,7 @@ class HTTPUtil(BaseHTTPUtil):
                     addrs = addresses
             queobj = Queue()
             for addr in addrs:
-                start_new_thread(self._create_ssl_connection, (addr, cache_key, host, queobj, None, get_cache_sock))
+                start_new_thread(self._create_ssl_connection, (addr, cache_key, host, queobj, forward, get_cache_sock))
             addrslen = len(addrs)
             for n in range(addrslen):
                 result = queobj.get()
@@ -809,7 +808,7 @@ class HTTPUtil(BaseHTTPUtil):
 
         #有上传数据适当增加超时时间
         if has_content:
-            timeout += 4
+            timeout += 10
         #单 IP 适当增加超时时间
         elif len(dns[hostname]) == 1 and timeout < 5:
             timeout += 2
@@ -854,6 +853,8 @@ class HTTPUtil(BaseHTTPUtil):
                 if hasattr(e, 'xip'):
                     ip = e.xip
                     logging.warning('%s create_%sconnection %r 失败：%r', ip[0], 'ssl_' if ssl else '', realurl or url, e)
+                elif isinstance(e, LimiterFull):
+                    logging.warning('request "%s %s" 失败：%r', realmethod, realurl or url, e)
                 else:
                     logging.warning('%s _request "%s %s" 失败：%r', ip and ip[0], realmethod, realurl or url, e)
                     if ip and realurl:

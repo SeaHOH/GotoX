@@ -903,16 +903,20 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         hostip = None
         remote = None
         connection_cache_key = '%s:%d' % (hostname, port)
+        if self.fakecert:
+            create_connection = http_util.create_ssl_connection
+        else:
+            create_connection = http_util.create_connection
         for _ in range(2):
             limiter = None
             limited = None
             try:
                 limiter = LimitRequest(connection_cache_key)
                 if not GC.PROXY_ENABLE:
-                    remote = http_util.create_connection((host, port), hostname, connection_cache_key, self.ssl, self.fwd_timeout)
+                    remote = create_connection((host, port), hostname, connection_cache_key, ssl=self.ssl, forward=self.fwd_timeout)
                 else:
                     hostip = random.choice(dns_resolve(host))
-                    remote = http_util.create_connection((hostip, port), self.ssl, self.fwd_timeout)
+                    remote = create_connection((hostip, port), self.ssl, self.fwd_timeout)
                 break
             except LimiterFull:
                 limited = True
@@ -932,10 +936,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                     logging.warning('%s%s do_FORWARD 连接远程主机 (%r, %r) 失败，尝试使用 "GAE" 规则。', self.address_string(), hostip or '', host, port)
                     self.go_GAE()
             return
-        if self.fakecert:
-            remote = http_util.get_ssl_socket(remote, http_util.get_server_hostname(host, connection_cache_key))
-            remote.connect(remote.xip)
-            remote.do_handshake()
+        remote.settimeout(self.fwd_timeout)
         if self.command == 'CONNECT':
             logging.info('%s "FWD %s %s:%d HTTP/1.1" - -', self.address_string(remote), self.command, host, port)
         else:

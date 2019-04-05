@@ -296,10 +296,6 @@ class LimitBase:
     '''
 
     _key = None
-    limiters = None
-    max_per_key = None
-    timeout = None
-    lock = None
 
     def __init__(self, key, max_per_key=None, timeout=None):
         max_per_key = max_per_key or self.max_per_key

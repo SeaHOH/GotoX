@@ -118,7 +118,7 @@ def read_domains(file):
     domains = set()
     with open(file, 'r') as fd:
         for line in fd:
-            if line[0] not in '#;':
+            if line[:1] not in '#;':
                 domain = line.strip()
                 if domain:
                     domains.add(domain)

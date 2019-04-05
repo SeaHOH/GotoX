@@ -75,7 +75,7 @@ class RangeFetch:
         except Exception as e:
             logging.info('%s RangeFetch 本地连接断开：%r, %r', self.address_string(response), self.url, e)
             return
-        logging.info('%s >>>>>>>>>>>>>>> RangeFetch 开始 %r %d-%d', self.address_string(response), self.url, start, range_end)
+        logging.info('%s >>>> RangeFetch 开始 %r %d-%d', self.address_string(response), self.url, start, range_end)
 
         data_queue = queue.PriorityQueue()
         range_queue = queue.PriorityQueue()
@@ -220,7 +220,7 @@ class RangeFetch:
                         range_queue.put((start, end))
                         continue
                     content_length = int(response.getheader('Content-Length', 0))
-                    logging.test('%s >>>>>>>>>>>>>>> %s: 线程 %s %s %s', self.address_string(response), self.host, threadorder, content_length, content_range)
+                    logging.test('%s >>>> %s: 线程 %s %s %s', self.address_string(response), self.host, threadorder, content_length, content_range)
                     try:
                         data = response.read(self.bufsize)
                         while data:
@@ -246,7 +246,7 @@ class RangeFetch:
                         logging.warning('%s RangeFetch "%s %s" 重试 %s-%s', self.address_string(response), self.command, self.url, start, end)
                         range_queue.put((start, end))
                         continue
-                    logging.test('%s >>>>>>>>>>>>>>> %s: 线程 %s 成功接收到 %d 字节', self.address_string(response), self.host, threadorder, start)
+                    logging.test('%s >>>> %s: 线程 %s 成功接收到 %d 字节', self.address_string(response), self.host, threadorder, start)
                 else:
                     logging.error('%s RangeFetch %r 返回 %s', self.address_string(response), self.url, response.status)
                     range_queue.put((start, end))

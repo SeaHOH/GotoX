@@ -4,7 +4,12 @@ import os
 import sys
 from local.common.path import py_dir, packages
 
+def replace_logging():
+    from local.clogging import replace_logging
+    replace_logging()
+
 def wait_exit(*args, **kwargs):
+    replace_logging()
     from local.common.util import wait_exit
     wait_exit(*args, **kwargs)
 
@@ -31,13 +36,13 @@ except ImportError:
               '以上版本，或将相应 .egg 放到 %r 文件夹！', packages, exc_info=True)
 except TypeError:
     gevent.monkey.patch_all(os=False)
-    from local import clogging as logging
-    logging.warning('警告：请更新 gevent 至 1.0.0 以上版本！')
 
-from local import clogging as logging
-
-logging.replace_logging()
+replace_logging()
+import logging
 logging.addLevelName(15, 'TEST', logging.COLORS.GREEN)
+
+if gevent.__version__ < '1.0.0':
+    logging.warning('警告：请更新 gevent 至 1.0.0 以上版本！')
 
 try:
     import OpenSSL
