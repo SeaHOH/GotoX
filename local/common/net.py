@@ -169,7 +169,7 @@ def get_wan_ipv6():
         sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
         sock.connect(('2001:4860:4860::8888', 80))
         addr6 = ipaddress.IPv6Address(sock.getsockname()[0])
-        if addr6.is_global or addr6.teredo:
+        if addr6.is_global or addr6.teredo or addr6.sixtofour:
             return addr6
     except:
         pass

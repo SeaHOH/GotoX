@@ -137,11 +137,12 @@ class InternetActiveCheck:
         self.in_check = False
         self.last_stat = None
         self.qdata = None
+        self._dns_servers = None
         if type.lower() == 'ipv4':
             self.type = 'IPv4'
             self.set_dns_servers(dns_ips_v4)
         elif type.lower() == 'ipv6':
-            self.type = 'IPv6x'
+            self.type = 'IPv6'
             self.only_check_ip = GC.LINK_FASTV6CHECK
             self.set_dns_servers_v6()
             spawn_loop(10, self.set_dns_servers_v6)
@@ -161,6 +162,27 @@ class InternetActiveCheck:
     def set_dns_servers_v6(self):
         addr6 = get_wan_ipv6()
         if addr6:
+            if addr6.teredo:
+                if self.type != 'IPv6 Teredo':
+                    if self.type != 'IPv6':
+                        logging.warning('检测到 IPv6 网络变动，当前使用 Teredo 隧道，IP：%s', addr6)
+                    self.type = 'IPv6 Teredo'
+                if not (self._dns_servers or self.only_check_ip):
+                    self.set_dns_servers(dns_ips_v6w)
+            elif addr6.sixtofour:
+                if self.type != 'IPv6 6to4':
+                    if self.type != 'IPv6':
+                        logging.warning('检测到 IPv6 网络变动，当前使用 6to4 隧道，IP：%s', addr6)
+                    self.type = 'IPv6 6to4'
+                if not (self._dns_servers or self.only_check_ip):
+                    self.set_dns_servers(dns_ips_v6w)
+            else:
+                if self.type != 'IPv6 Global':
+                    if self.type != 'IPv6':
+                        logging.warning('检测到 IPv6 网络变动，当前使用原生网络，IP：%s', addr6)
+                    self.type = 'IPv6 Global'
+                if not (self._dns_servers or self.only_check_ip):
+                    self.set_dns_servers(dns_ips_v6)
             if self.only_check_ip and self.last_stat != 1:
                 if self.last_stat is not None:
                     logging.warning('IPv6 网络恢复连接')
@@ -171,20 +193,6 @@ class InternetActiveCheck:
             self.last_stat = 0
             self._dns_servers = None
             return
-        if addr6.teredo:
-            if self.type != 'IPv6 Teredo':
-                if self.type != 'IPv6x':
-                    logging.warning('检测到 IPv6 网络变动，当前使用 Teredo 隧道，IP：%s', addr6)
-                if not self.only_check_ip:
-                    self.set_dns_servers(dns_ips_v6w)
-                self.type = 'IPv6 Teredo'
-        else:
-            if self.type != 'IPv6':
-                if self.type != 'IPv6x':
-                    logging.warning('检测到 IPv6 网络变动，当前使用非 Teredo 隧道，IP：%s', addr6)
-                if not self.only_check_ip:
-                    self.set_dns_servers(dns_ips_v6)
-                self.type = 'IPv6'
 
     def is_active(self, keep_on=None):
         if self.only_check_ip:
