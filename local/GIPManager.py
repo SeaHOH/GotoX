@@ -660,7 +660,7 @@ class IPManager:
             self.check_callback = self.check_gws_callback
         self.type = type
         self.logger = logging.getLogger('[picker %s]' % type)
-        self.logger.setLevel(GC.LISTEN_DEBUGINFO)
+        self.logger.setLevel(GC.LOG_LEVEL)
         self.list_name = 'google_' + type
         self.cache_key = self.list_name + '|:443'
         self.ip_list = collections.deque(GC.IPLIST_MAP[self.list_name])

@@ -52,7 +52,11 @@ from . import compat
 import logging
 from .GlobalConfig import GC
 
-logging.setLevel(GC.LISTEN_DEBUGINFO)
+log_config = {'level': GC.LOG_LEVEL}
+if GC.LOG_SAVE:
+    logfile = logging.LogFile(GC.LOG_FILE, maxsize=GC.LOG_FILESIZE, rotation=GC.LOG_ROTATION)
+    log_config['logfile'] = logfile
+logging.basicConfig(**log_config)
 
 import os
 import queue
@@ -170,8 +174,8 @@ def main():
                     ctypes.windll.user32.SendMessageW(hwnd, 128, 1, hicon) #任务栏
             else:
                 logging.warning('图标文件“GotoX.ico”丢失。')
-            ctypes.windll.user32.ShowWindow(hwnd, 1 if GC.LISTEN_VISIBLE else 0)
-            if GC.LISTEN_CHECKPROCESS:
+            ctypes.windll.user32.ShowWindow(hwnd, int(GC.LOG_VISIBLE))
+            if GC.MISC_CHECKPROCESS:
                 blacklist = {
                     'BaiduSdSvc'   : '百毒',
                     'BaiduSdTray'  : '百毒',
@@ -246,7 +250,7 @@ def main():
     info.append('                GAE 代理 - %s:%d' % (GC.LISTEN_IP, GC.LISTEN_GAE_PORT))
     info.append('\n Local Proxy  : %s:%s' % (GC.PROXY_HOST, GC.PROXY_PORT) if GC.PROXY_ENABLE else '')
     info.append('\n  代 理 认 证 : %s认证' % (GC.LISTEN_AUTH == 0 and '无需' or (GC.LISTEN_AUTH == 2 and 'IP ') or 'Basic '))
-    info.append('\n  调 试 信 息 : %s' % logging._levelToName[GC.LISTEN_DEBUGINFO])
+    info.append('\n  调 试 信 息 : %s' % logging._levelToName[GC.LOG_LEVEL])
     info.append('\n  连 接 模 式 : 远程 - %s' % GC.LINK_REMOTESSLTXT)
     info.append('                本地 - %s' % GC.LINK_LOCALSSLTXT)
     info.append('\n  网 络 配 置 : %s' % GC.LINK_PROFILE)
@@ -254,7 +258,11 @@ def main():
     info.append('\n  直 连 域 名 : %s' % DDDVer)
     info.append('\n  安 装 证 书 : 设置代理后访问 http://gotox.go/')
     info.append('=' * 80)
-    print('\n'.join(info))
+    info.append('')
+    info = '\n'.join(info)
+    print(info, end='')
+    logfile.write(info)
+    logfile.flush()
 
     pre_start()
     del pre_start, info

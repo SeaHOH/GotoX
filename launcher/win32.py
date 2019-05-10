@@ -3,13 +3,11 @@
 
 import os
 import sys
+from common import get_dirname
+
 sys.dont_write_bytecode = True
 
-__file__ = os.path.abspath(__file__)
-if os.path.islink(__file__):
-    __file__ = getattr(os, 'readlink', lambda x: x)(__file__)
-
-app_root = os.path.dirname(os.path.dirname(__file__))
+app_root = os.path.dirname(get_dirname(__file__))
 py_dir = os.path.join(app_root, 'python')
 app_start = os.path.join(app_root, 'start.py')
 icon_gotox = os.path.join(app_root, 'gotox.ico')
@@ -20,7 +18,7 @@ direct_domains = os.path.join(app_root, 'data', 'directdomains.txt')
 refresh_proxy = os.path.join(app_root, 'launcher', 'refresh_proxy_win.py')
 
 #使用安装版 Python
-if os.path.dirname(sys.executable) != py_dir:
+if get_dirname(sys.executable) != py_dir:
     helpers = os.path.join(py_dir, 'site-packages', 'helpers_win32.egg')
     sys.path.insert(0, helpers)
 sys.path.insert(0, app_root)
@@ -54,8 +52,8 @@ def load_config():
     _LISTEN_AUTO = '%s:%d' % (LISTEN_IP, CONFIG.getint('listen', 'auto_port'))
     LISTEN_GAE = proxy_server(_LISTEN_GAE, True)
     LISTEN_AUTO = proxy_server(_LISTEN_AUTO, True)
-    LISTEN_DEBUGINFO = _LOGLv[min(CONFIG.getint('listen', 'debuginfo'), 3)]
-    logging.setLevel(LISTEN_DEBUGINFO)
+    LOG_LEVEL = _LOGLv[min(CONFIG.getint('log', 'level'), 3)]
+    logging.setLevel(LOG_LEVEL)
 
 import winreg
 

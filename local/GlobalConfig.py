@@ -8,7 +8,7 @@ import re
 import logging
 from configparser import ConfigParser
 from .common.decompress import _brotli
-from .common.path import config_dir, data_dir
+from .common.path import get_realpath, config_dir, data_dir, log_dir
 from .common.util import wait_exit
 #from .common.proxy import get_system_proxy, parse_proxy
 
@@ -30,7 +30,7 @@ _SSLv = {
     }
 
 #load config from proxy.ini
-ENV_CONFIG_PREFIX = 'GOTOX_'
+#ENV_CONFIG_PREFIX = 'GOTOX_'
 CONFIG = ConfigParser(inline_comment_prefixes=('#', ';'))
 CONFIG._optcre = re.compile(r'(?P<option>[^=\s]+)\s*(?P<vi>=?)\s*(?P<value>.*)')
 
@@ -47,47 +47,30 @@ class GC:
     #    if m:
     #        CONFIG.set(m.group(1).lower(), m.group(2).lower(), value)
 
+    MISC_CHECKPROCESS = CONFIG.getboolean('misc', 'checkprocess')
+    MISC_CHECKSYSCA = CONFIG.getboolean('misc', 'checksysca')
+
     LISTEN_IP = CONFIG.get('listen', 'ip')
     LISTEN_IPHOST = CONFIG.get('listen', 'iphost')
     if not LISTEN_IPHOST and LISTEN_IP not in ('0.0.0.0', '::'):
         LISTEN_IPHOST = LISTEN_IP
     LISTEN_GAE_PORT = CONFIG.getint('listen', 'gae_port')
     LISTEN_AUTO_PORT = CONFIG.getint('listen', 'auto_port')
-    LISTEN_VISIBLE = CONFIG.getboolean('listen', 'visible')
     LISTEN_AUTH = min(CONFIG.getint('listen', 'auth'), 2)
     LISTEN_AUTHWHITELIST = CONFIG.get('listen', 'authwhitelist')
     LISTEN_AUTHWHITELIST = tuple(LISTEN_AUTHWHITELIST.split('|')) if LISTEN_AUTHWHITELIST else ()
     LISTEN_AUTHUSER = CONFIG.get('listen', 'authuser')
     LISTEN_AUTHUSER = tuple(LISTEN_AUTHUSER.split('|')) if LISTEN_AUTHUSER else (':',)
-    LISTEN_DEBUGINFO = _LOGLv[min(CONFIG.getint('listen', 'debuginfo'), 3)]
-    LISTEN_CHECKPROCESS = CONFIG.getboolean('listen', 'checkprocess')
-    LISTEN_CHECKSYSCA = CONFIG.getboolean('listen', 'checksysca')
 
-    GAE_APPIDS = re.findall(r'[\w\-\.]+', CONFIG.get('gae', 'appid').replace('.appspot.com', ''))
-    GAE_DEBUG = CONFIG.getint('gae', 'debug')
-    GAE_PASSWORD = CONFIG.get('gae', 'password').strip()
-    GAE_PATH = CONFIG.get('gae', 'path')
-    GAE_MAXPERIP = min(CONFIG.getint('gae', 'maxperip'), 8)
-    GAE_TIMEOUT = max(CONFIG.getint('gae', 'timeout'), 3)
-    GAE_KEEPALIVE = CONFIG.getboolean('gae', 'keepalive')
-    GAE_KEEPTIME = CONFIG.getint('gae', 'keeptime')
-    GAE_MAXREQUESTS = min(CONFIG.getint('gae', 'maxrequsts'), 5)
-    GAE_SSLVERIFY = CONFIG.getboolean('gae', 'sslverify')
-    GAE_FETCHMAX = CONFIG.getint('gae', 'fetchmax', fallback=2)
-    #在服务端，这个数值代表的范围大小会增加 1
-    GAE_MAXSIZE = min(CONFIG.getint('gae', 'maxsize', fallback=1024 * 1024 * 4), 1024 * 1024 * 32 - 1)
-    GAE_IPLIST = CONFIG.get('gae', 'iplist')
-    GAE_IPLIST2P = CONFIG.get('gae', 'iplist2p') or 'google_2p'
-    GAE_SERVERNAME = CONFIG.get('gae', 'servername').encode()
-    GAE_SERVERNAME = tuple(GAE_SERVERNAME.split(b'|')) if GAE_SERVERNAME else None
-    GAE_ENABLEPROXY = CONFIG.getboolean('gae', 'enableproxy')
-    GAE_PROXYLIST = CONFIG.get('gae', 'proxylist')
-    GAE_PROXYLIST = GAE_PROXYLIST.split('|') if GAE_PROXYLIST else None
-    if not GAE_PROXYLIST:
-        GAE_ENABLEPROXY = False
-    if GAE_ENABLEPROXY:
-        GAE_IPLIST = GAE_IPLIST2P
-        GAE_TIMEOUT = max(GAE_TIMEOUT, 10)
+    LOG_VISIBLE = CONFIG.getboolean('log', 'visible')
+    LOG_LEVEL = _LOGLv[min(CONFIG.getint('log', 'level'), 3)]
+    LOG_SAVE = CONFIG.getboolean('log', 'save')
+    LOG_FILE = CONFIG.get('log', 'file', fallback='log.txt')
+    LOG_FILE = get_realpath(LOG_FILE, log_dir)
+    if os.path.isdir(LOG_FILE):
+        LOG_FILE = os.path.join(LOG_FILE, 'log.txt')
+    LOG_FILESIZE = CONFIG.getint('log', 'filesize') * 1024
+    LOG_ROTATION = max(CONFIG.getint('log', 'rotation'), 1)
 
     LINK_PROFILE = CONFIG.get('link', 'profile')
     if LINK_PROFILE not in ('ipv4', 'ipv6', 'ipv46'):
@@ -114,6 +97,32 @@ class GC:
         LINK_TEMPTIME_S = ' %d 分钟' % (LINK_TEMPTIME // 60)
     LINK_TEMPWHITELIST = CONFIG.get('link', 'tempwhitelist')
     LINK_TEMPWHITELIST = tuple(LINK_TEMPWHITELIST.split('|')) if LINK_TEMPWHITELIST else ()
+
+    GAE_APPIDS = re.findall(r'[\w\-\.]+', CONFIG.get('gae', 'appid').replace('.appspot.com', ''))
+    GAE_DEBUG = CONFIG.getint('gae', 'debug')
+    GAE_PASSWORD = CONFIG.get('gae', 'password').strip()
+    GAE_PATH = CONFIG.get('gae', 'path')
+    GAE_MAXPERIP = min(CONFIG.getint('gae', 'maxperip'), 8)
+    GAE_TIMEOUT = max(CONFIG.getint('gae', 'timeout'), 3)
+    GAE_KEEPALIVE = CONFIG.getboolean('gae', 'keepalive')
+    GAE_KEEPTIME = CONFIG.getint('gae', 'keeptime')
+    GAE_MAXREQUESTS = min(CONFIG.getint('gae', 'maxrequsts'), 5)
+    GAE_SSLVERIFY = CONFIG.getboolean('gae', 'sslverify')
+    GAE_FETCHMAX = CONFIG.getint('gae', 'fetchmax', fallback=2)
+    #在服务端，这个数值代表的范围大小会增加 1
+    GAE_MAXSIZE = min(CONFIG.getint('gae', 'maxsize', fallback=1024 * 1024 * 4), 1024 * 1024 * 32 - 1)
+    GAE_IPLIST = CONFIG.get('gae', 'iplist')
+    GAE_IPLIST2P = CONFIG.get('gae', 'iplist2p') or 'google_2p'
+    GAE_SERVERNAME = CONFIG.get('gae', 'servername').encode()
+    GAE_SERVERNAME = tuple(GAE_SERVERNAME.split(b'|')) if GAE_SERVERNAME else None
+    GAE_ENABLEPROXY = CONFIG.getboolean('gae', 'enableproxy')
+    GAE_PROXYLIST = CONFIG.get('gae', 'proxylist')
+    GAE_PROXYLIST = GAE_PROXYLIST.split('|') if GAE_PROXYLIST else None
+    if not GAE_PROXYLIST:
+        GAE_ENABLEPROXY = False
+    if GAE_ENABLEPROXY:
+        GAE_IPLIST = GAE_IPLIST2P
+        GAE_TIMEOUT = max(GAE_TIMEOUT, 10)
 
     IPLIST_MAP = dict((k.lower(), [x for x in v.split('|') if x]) for k, v in CONFIG.items('iplist'))
 

@@ -14,7 +14,8 @@ from .GlobalConfig import GC
 
 localhosts = ['127.0.0.1', '::1', 'localhost', 'gotox.go']
 
-def network_test(type=GC.LINK_PROFILE, first=None):
+def network_test(first=None):
+    type = GC.LINK_PROFILE
     stop_server = None
     #通过域名解析测试网络状态
     if not is_active(type):

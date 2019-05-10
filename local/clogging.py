@@ -7,12 +7,13 @@ Similar, but not fully compatible with official 'logging.__init__' module.
 import sys, os, time, traceback
 from .common.util import make_lock_decorator
 
-__all__ = ['CRITICAL', 'DEBUG', 'ERROR', 'FATAL', 'INFO', 'NOTSET', 'WARN',
-           'WARNING', 'COLORS', 'addLevelName', 'removeAddedLevelNames',
-           'removeAllAddedLevelNames', 'getLevelName', 'getLogger', 'setLevel',
-           'disable', 'debug', 'info', 'warn', 'warning', 'error', 'exception',
-           'fatal', 'critical', 'log', 'replace_logging', 'remove_replace',
-           'basicConfig']
+__all__ = ['CRITICAL', 'FATAL', 'ERROR', 'WARNING', 'WARN', 'INFO', 'DEBUG',
+           'NOTSET', 'NULL_STREAM', 'COLORS', 'addLevelName', 'getLevelName',
+           'removeAddedLevelNames', 'removeAllAddedLevelNames', 'LogFile',
+           'Logger', 'RootLogger', 'getLogger', 'getRootLogger', 'setLevel',
+           'setStream', 'setLogFile', 'disable', 'enable', 'debug', 'info',
+           'warn', 'warning', 'error', 'exception', 'fatal', 'critical', 'log',
+           'basicConfig', 'replace_logging', 'remove_replace']
 
 CRITICAL = 50
 FATAL = CRITICAL
@@ -22,6 +23,7 @@ WARN = WARNING
 INFO = 20
 DEBUG = 10
 NOTSET = 0
+NULL_STREAM = object()
 
 _levelToName = {
     CRITICAL: 'CRITICAL',
@@ -197,6 +199,8 @@ def _checkOrigLevel(level):
     return rv in _nameToLevel and rv not in _addedLevelNames
 
 def _write(msg, file=None, onerr=None, color=None, reset=None):
+    if file is NULL_STREAM:
+        return
     stdout_isatty = hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
     stderr_isatty = hasattr(sys.stderr, 'isatty') and sys.stderr.isatty()
     if file is None:
@@ -253,32 +257,43 @@ _logFiles = {}
 class LogFile(object):
 
     @_lock_logfile
-    def __new__(cls, filename, mode='a', encoding=None):
+    def __new__(cls, filename, mode='a', encoding=None,
+                maxsize=float('inf'), rotation=1):
         filename = os.path.abspath(filename)
         try:
             logfile = _logFiles[filename]
         except:
             logfile = object.__new__(cls)
+            logfile.stream = None
         else:
             if logfile.encoding != encoding and logfile.stream:
                 raise ValueError('File "%s" is in use, the encoding is mismatch'
                                  ', encoding in use: %s, new encoding: %s' % 
                                  (filename, logfile.encoding, encoding))
             if logfile.mode != mode or logfile.encoding != encoding:
-                logfile.flush()
                 logfile.close()
         if 'r' in mode or 'w' in mode:
             warning('Log file "%s" will be overwrote!', filename)
         logfile.filename = filename
         logfile.mode = mode
         logfile.encoding = encoding
+        logfile.maxsize = maxsize
+        logfile.rotation = rotation
         logfile.open()
+        logfile.flush()
         _logFiles[filename] = logfile
         return logfile
 
     def open(self):
         if self.stream:
             return
+        dir = os.path.dirname(self.filename)
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+        try:
+            self.size = os.path.getsize(self.filename)
+        except:
+            self.size = 0
         self.stream = open(self.filename, self.mode,
                 encoding=self.encoding, errors='backslashreplace')
 
@@ -286,7 +301,8 @@ class LogFile(object):
         if self.stream:
             self.stream, stream = None, self.stream
             try:
-                stream.flush()
+                if hasattr(stream, 'flush'):
+                    stream.flush()
             finally:
                 if hasattr(stream, 'close'):
                     stream.close()
@@ -294,118 +310,126 @@ class LogFile(object):
     def write(self, s):
         if hasattr(self.stream, 'write'):
             self.stream.write(s)
-        else:
-            warning('Unable to write to log file "%s", '
-                    'it may have been closed!', filename)
+            self.size += len(s)
 
     def flush(self):
-        if hasattr(self.stream, 'flush'):
+        if self.size > self.maxsize:
+            self.rotate()
+        elif hasattr(self.stream, 'flush'):
             self.stream.flush()
+
+    def rotate(self):
+        def rotate(i=0):
+            old = fns[i]
+            if i == self.rotation:
+                if os.path.exists(old):
+                    os.remove(old)
+                return
+            if os.path.exists(old):
+                rotate(i + 1)
+                new = fns[i + 1]
+                os.rename(old, new)
+
+        self.close()
+        fns = [self.filename]
+        fns += ['%s.%d' % (self.filename, i) for i in range(1, self.rotation + 1)]
+        rotate()
+        self.open()
+
+_rootLoggerDict = {}
 
 class Logger(object):
 
-    loggerDict = {}
-    level = 0
-    disabled = False
-    logName = True
-    _name = None
-    parent = None
+    def __new__(cls, *args, **kwargs):
+        return cls.root.getLogger(*args, **kwargs)
 
-    def __new__(cls, name, level=NOTSET, stream=None, logfile=None):
-        return cls.root.getLogger(name, level, stream, logfile)
-
-    def __init(self, name, level=NOTSET):
-        if self._name is None:
-            if self.parent and self.parent._name != 'root':
-                name = '.'.join((self.parent._name, name))
-            self._name = name
-        if level:
+    def __init__(self, name, level=NOTSET, *args, **kwargs):
+        if name not in self.root.loggerDict:
+            self.name = name
             self.level = _checkLevel(level)
-
-    @classmethod
-    @_lock_setting
-    def getRootLogger(cls, name, level=NOTSET, stream=None, logfile=None):
-        '''
-        :param stream: An opened stream.
-        :param logfile: A log filename or an opened LogFile Instance.
-        '''
-        if name.find('.') >= 0:
-            warning('Root logger\'s name can not contains ".", '
-                    'but the giving name is "%s".', name)
-            name = name.replace('.', '-')
-            warning('The root logger\'s name has been replaced with "%s".', name)
-        try:
-            return cls.loggerDict[name]
-        except KeyError:
-            pass
-        if stream:
-            assert stream.writable(), 'Param stream %r is not writable.' % stream
-        if isinstance(logfile, str):
-            logfile = LogFile(logfile)
-        elif logfile and not isinstance(logfile, LogFile):
-            warning('Param logfile %r is not a LogFile instance!', logfile)
-            logfile = None
-        logger = object.__new__(cls)
-        logger.loggerDict = {'root': logger}
-        logger.root = logger
-        logger._disable = 0
-        logger.stream = stream
-        logger.logfile = logfile
-        logger.__init(name, level)
-        cls.loggerDict[name] = logger
-        return logger
+            self.root.loggerDict[name] = self
+            self.disabled = False
+            self.logName = True
 
     def getLogger(self, name=None, level=NOTSET, stream=None, logfile=None):
         if name in (None, 'root'):
             return self.root
         names = name.split('.')
         if len(names) > 1:
-            logger = self.getRootLogger(names.pop(0), level, stream, logfile)
+            logger = RootLogger(names.pop(0), level or WARNING, stream, logfile)
             while names:
                 logger = logger.getChild(names.pop(0))
             return logger
-        return self.getChild(name)
+        return self.getChild(name, level)
 
     @_lock_setting
-    def getChild(self, name):
+    def getChild(self, name, level=NOTSET):
         names = name.split('.')
         if len(names) > 1:
             logger = self
             while names:
                 logger = logger.getChild(names.pop(0))
             return logger
+        if self.name != 'root':
+            name = '.'.join((self.name, name))
         try:
             return self.root.loggerDict[name]
         except KeyError as e:
             pass
-        logger = object.__new__(self.__class__)
-        logger.level = self.level
+        logger = object.__new__(Logger)
         logger.root = self.root
         logger.parent = self
-        logger.__init(name)
-        self.root.loggerDict[name] = logger
+        logger.__init__(name, level)
         return logger
 
     def setLevel(self, level):
         self.level = _checkLevel(level)
 
+    @_lock_setting
+    def setStream(self, stream):
+        if stream and stream is not NULL_STREAM:
+            assert stream.writable(), 'Param stream %r is not writable.' % stream
+        try:
+            if hasattr(self.root.stream, 'flush'):
+                self.root.stream.flush()
+        except:
+            pass
+        self.root.stream = stream
+
+    @_lock_setting
+    def setLogFile(self, logfile):
+        if isinstance(logfile, str):
+            logfile = LogFile(logfile)
+        elif logfile and not isinstance(logfile, LogFile):
+            warning('Param logfile %r is not a LogFile instance!', logfile)
+            logfile = None
+        if hasattr(self.root.logfile, 'close'):
+            self.root.logfile.close()
+        self.root.logfile = logfile
+
     def disable(self, level=None):
         '''
         :param level is None:  Disable this logger instance.
-        :param level is other: Setting the root instance's `_disable` attribute.
+        :param level is other: Setting the root instance's `disable` attribute.
         '''
         if level is None:
             self.disabled = True
         else:
-            self.root._disable = _checkLevel(level)
+            self.root.disable = _checkLevel(level)
 
     @_lock_setting
-    def enable(self):
-        '''Enable logger and all its parents.'''
-        logger = self
-        while logger:
-            logger.disabled = False
-            logger = logger.parent
+    def enable(self, level=None):
+        '''
+        :param level is None:  Enable logger and all its parents.
+        :param level is other: Setting the root instance's `disable` attribute.
+        '''
+        if level is None:
+            logger = self
+            while logger:
+                logger.disabled = False
+                logger = logger.parent
+        else:
+            self.root.disable = _checkLevel(level) - 1
 
     @_lock_setting
     def getDisabledState(self):
@@ -426,7 +450,7 @@ class Logger(object):
         return NOTSET
 
     def isEnabledFor(self, level):
-        if self.root._disable >= level or self.getDisabledState():
+        if self.root.disable >= level or self.getDisabledState():
             return False
         return level >= self.getEffectiveLevel()
 
@@ -441,7 +465,7 @@ class Logger(object):
         onerr = level >= WARNING
         head = '%s %s ' % (cts, levelName[0])
         if self.logName:
-            head = '%s%s ' % (head, self._name)
+            head = '%s%s ' % (head, self.name)
         _write(head, file=self.root.stream, onerr=onerr, color='HEAD')
         if args:
             msg = msg % args
@@ -487,7 +511,7 @@ class Logger(object):
             cts = time.strftime('%Y-%m-%d %H:%M:%S', ctt)
             ms = (ct - int(ct)) * 1000
             logfile.write('%s.%03d %s %s: %s' %
-                    (cts, ms, levelName, self._name, msg))
+                    (cts, ms, levelName, self.name, msg))
             if exc_info:
                 logfile.write(exc_info)
             if stack_info:
@@ -519,18 +543,75 @@ class Logger(object):
 
     fatal = critical
 
-def basicConfig(*args, **kwargs):
-    warning('Unable to format, the only format is "%H:%M:%S" + level code '
-            '+ logger name in head.')
-    warning('Use setLevel(level) to set output level.')
-    root.level = _checkLevel(kwargs.get('level', INFO))
+class RootLogger(Logger):
 
-root = Logger.getRootLogger('root', WARNING)
+    def __new__(cls, *args, **kwargs):
+        return cls.getRootLogger(*args, **kwargs)
+
+    def __init__(self, name='root', level=WARNING, stream=None, logfile=None):
+        if name not in _rootLoggerDict:
+            self.disable = 0
+            self.loggerDict = {}
+            self.root = self
+            self.parent = None
+            Logger.__init__(self, name, level)
+            self.stream = None
+            self.logfile = None
+            self.setStream(stream)
+            self.setLogFile(logfile)
+            self.loggerDict['root'] = self
+            _rootLoggerDict[name] = self
+
+    @classmethod
+    @_lock_setting
+    def getRootLogger(cls, name='root', level=WARNING, stream=None, logfile=None):
+        '''
+        :param stream: An opened stream.
+        :param logfile: A log filename or an opened LogFile Instance.
+        '''
+        if name.find('.') >= 0:
+            warning('Root logger\'s name can not contains ".", '
+                    'but the giving name is "%s".', name)
+            name = name.replace('.', '-')
+            warning('The root logger\'s name has been replaced with "%s".', name)
+        try:
+            return _rootLoggerDict[name]
+        except KeyError:
+            pass
+        logger = object.__new__(RootLogger)
+        logger.__init__(name, level, stream, logfile)
+        return logger
+
+@_lock_setting
+def basicConfig(**kwargs):
+    handlers = kwargs.pop('handlers', None)
+    if handlers:
+        raise ValueError('clogging does not implemented handlers!')
+    level = kwargs.pop('level', None)
+    if level:
+        setLevel(level)
+    stream = kwargs.pop('stream', None)
+    if stream:
+        setStream(stream)
+    filename = kwargs.pop('filename', None)
+    logfile = kwargs.pop('logfile', None) or filename
+    if logfile:
+        setLogFile(logfile)
+    if kwargs:
+        warning('Unable to format, the only format is "%H:%M:%S" + level code '
+                '+ logger name in head.')
+
+getRootLogger = RootLogger.getRootLogger
+root = getRootLogger()
 root.logName = False
 Logger.root = root
 
 getLogger = root.getLogger
 setLevel = root.setLevel
+setStream = root.setStream
+setLogFile = root.setLogFile
+disable=root.disable
+enable=root.enable
 log = root.log
 debug = root.debug
 info = root.info
@@ -538,9 +619,6 @@ warning = warn = root.warning
 error = root.error
 exception = root.exception
 critical = fatal = root.critical
-
-def disable(level):
-    root.disable(level)
 
 def replace_logging():
     '''Need to re-import logging module after replaced.'''

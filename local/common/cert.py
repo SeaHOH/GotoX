@@ -265,7 +265,7 @@ def check_ca():
     if not os.path.exists(ca_keyfile):
         logging.error('CAkey.pem 不存在，清空 certs 文件夹。')
         any(os.remove(x) for x in glob.glob(os.path.join(sub_certdir, '*.crt')))
-        if GC.LISTEN_CHECKSYSCA and sys.platform.startswith('win'):
+        if GC.MISC_CHECKSYSCA and sys.platform.startswith('win'):
             logging.warning('CAkey.pem 不存在，将从系统证书中删除无效的 CA 证书')
         else:
             logging.warning('删除功能未启用或未支持，请自行删除 [%s CA] 证书' % ca_vendor)
@@ -286,7 +286,7 @@ def check_ca():
         with open(ca_certfile, 'wb') as fp:
             fp.write(crypto.dump_certificate(crypto.FILETYPE_PEM, ca))
     #检查系统 CA 证书
-    if GC.LISTEN_CHECKSYSCA and import_ca() != 0:
+    if GC.MISC_CHECKSYSCA and import_ca() != 0:
         logging.warning('install root certificate failed, Please run as administrator/root/sudo')
     #检查伪造网站密钥
     if os.path.exists(sub_keyfile):

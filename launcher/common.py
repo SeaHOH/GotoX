@@ -8,11 +8,10 @@ import time
 import socket
 from urllib.request import urlopen, Request
 
+def get_dirname(path):
+    return os.path.dirname(os.path.realpath(path))
 
-__file__ = os.path.abspath(__file__)
-if os.path.islink(__file__):
-    __file__ = getattr(os, 'readlink', lambda x: x)(__file__)
-file_dir = os.path.dirname(__file__)
+file_dir = get_dirname(__file__)
 root_dir = os.path.dirname(file_dir)
 # GotoX CA
 ca1 = os.path.join(root_dir, 'cert', 'CA.crt')
