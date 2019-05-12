@@ -4,7 +4,9 @@ A simple colorful logging module for console or terminal output.
 Similar, but not fully compatible with official 'logging.__init__' module.
 '''
 
-import sys, os, time, traceback
+import sys, os, time, traceback, locale
+from encodings import search_function as searchCodecInfo
+from codecs import CodecInfo
 from .common.util import make_lock_decorator
 
 __all__ = ['CRITICAL', 'FATAL', 'ERROR', 'WARNING', 'WARN', 'INFO', 'DEBUG',
@@ -47,6 +49,9 @@ _nameToLevel = {
 def getLevelName(level):
     return str(_levelToName.get(level) or _nameToLevel.get(level) or
             'Level %s' % level)
+
+unicode = u''.__class__
+preferredEncoding = locale.getpreferredencoding(False)
 
 if hasattr(sys, '_getframe'):
     currentframe = lambda: sys._getframe(3)
@@ -182,10 +187,10 @@ def _checkLevel(level):
         rv = level
     elif str(level) == level:
         if level not in _nameToLevel:
-            raise ValueError("Unknown level: %r" % level)
+            raise ValueError('Unknown level: %r' % level)
         rv = _nameToLevel[level]
     else:
-        raise TypeError("Level not an integer or a valid string: %r" % level)
+        raise TypeError('Level not an integer or a valid string: %r' % level)
     return rv
 
 @_lock_setting
@@ -195,7 +200,7 @@ def _checkOrigLevel(level):
     elif str(level) == level:
         rv = level
     else:
-        raise TypeError("Level not an integer or a valid string: %r" % level)
+        raise TypeError('Level not an integer or a valid string: %r' % level)
     return rv in _nameToLevel and rv not in _addedLevelNames
 
 def _write(msg, file=None, onerr=None, color=None, reset=None):
@@ -257,25 +262,41 @@ _logFiles = {}
 class LogFile(object):
 
     @_lock_logfile
-    def __new__(cls, filename, mode='a', encoding=None,
-                maxsize=float('inf'), rotation=1):
+    def __new__(cls, filename, mode='a',
+                     encoding=None, errors='backslashreplace',
+                     maxsize=float('inf'), rotation=1):
+        '''
+        :param filename: if the string is not an absolute path, it will
+                         converted with os.path.abspath.
+        :param mode:     if the mode not allowed write, a ValueError will be raise.
+        :param encoding: if not set, use locale.getpreferredencoding(False).
+        :param maxsize:  max file size of log file.
+        :param rotation: max number of log file's rotation.
+        '''
+        mode.replace('x', 'w')
+        if 'a' not in mode:
+            if 'w' not in mode and '+' not in mode:
+                raise ValueError('Open log file "%s" with mode "%s" can not '
+                                 'be wrote!' % (filename, mode))
+            warning('Log file "%s" will be overwrote!', filename)
         filename = os.path.abspath(filename)
+        encoding = encoding or preferredEncoding
         try:
             logfile = _logFiles[filename]
         except:
             logfile = object.__new__(cls)
             logfile.stream = None
+            logfile.codecInfo = None
         else:
             if logfile.encoding != encoding and logfile.stream:
-                raise ValueError('File "%s" is in use, the encoding is mismatch'
-                                 ', encoding in use: %s, new encoding: %s' % 
-                                 (filename, logfile.encoding, encoding))
-            if logfile.mode != mode or logfile.encoding != encoding:
+                warning('File "%s" is in use, the write encoding will change, '
+                        'encoding in use: %s, new encoding: %s' % 
+                        (filename, logfile.encoding, encoding))
+            if logfile.encoding != encoding or logfile.mode != mode:
                 logfile.close()
-        if 'r' in mode or 'w' in mode:
-            warning('Log file "%s" will be overwrote!', filename)
         logfile.filename = filename
         logfile.mode = mode
+        logfile.errors = errors
         logfile.encoding = encoding
         logfile.maxsize = maxsize
         logfile.rotation = rotation
@@ -290,12 +311,22 @@ class LogFile(object):
         dir = os.path.dirname(self.filename)
         if not os.path.exists(dir):
             os.makedirs(dir)
-        try:
-            self.size = os.path.getsize(self.filename)
-        except:
+        mode = self.mode
+        if 'b' not in mode:
+            mode += 'b'
+        self.stream = open(self.filename, mode)
+        if 'r' in mode:
             self.size = 0
-        self.stream = open(self.filename, self.mode,
-                encoding=self.encoding, errors='backslashreplace')
+        else:
+            self.size = os.path.getsize(self.filename)
+        if not self.codecInfo or self.encoding != self.codecInfo.name:
+            self.codecInfo = searchCodecInfo(self.encoding)
+            if self.codecInfo:
+                self.encoding = self.codecInfo.name
+            else:
+                self.codecInfo = CodecInfo(name=self.encoding,
+                                           encode=self._encode,
+                                           decode=None)
 
     def close(self):
         if self.stream:
@@ -307,15 +338,28 @@ class LogFile(object):
                 if hasattr(stream, 'close'):
                     stream.close()
 
+    def encode(self, s, errors):
+        return self.codecInfo.encode(s, errors)
+
+    def _encode(self, s, errors):
+        consumed = len(s)
+        if isinstance(s, unicode):
+            s = s.encode(self.encoding, errors)
+        return s, consumed
+
     def write(self, s):
         if hasattr(self.stream, 'write'):
-            self.stream.write(s)
-            self.size += len(s)
+            data, consumed = self.encode(s, self.errors)
+            size = len(data)
+            if self.size + size > self.maxsize:
+                self.rotate()
+            self.stream.write(data)
+            self.size += size
+            return consumed
+        return 0
 
     def flush(self):
-        if self.size > self.maxsize:
-            self.rotate()
-        elif hasattr(self.stream, 'flush'):
+        if hasattr(self.stream, 'flush'):
             self.stream.flush()
 
     def rotate(self):
@@ -387,6 +431,9 @@ class Logger(object):
 
     @_lock_setting
     def setStream(self, stream):
+        '''
+        Pass NULL_STREAM to ignore stream output.
+        '''
         if stream and stream is not NULL_STREAM:
             assert stream.writable(), 'Param stream %r is not writable.' % stream
         try:
@@ -566,7 +613,7 @@ class RootLogger(Logger):
     @_lock_setting
     def getRootLogger(cls, name='root', level=WARNING, stream=None, logfile=None):
         '''
-        :param stream: An opened stream.
+        :param stream:  An opened stream.
         :param logfile: A log filename or an opened LogFile Instance.
         '''
         if name.find('.') >= 0:

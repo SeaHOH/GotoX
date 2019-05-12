@@ -258,11 +258,9 @@ def main():
     info.append('\n  直 连 域 名 : %s' % DDDVer)
     info.append('\n  安 装 证 书 : 设置代理后访问 http://gotox.go/')
     info.append('=' * 80)
-    info.append('')
     info = '\n'.join(info)
-    print(info, end='')
-    logfile.write(info)
-    logfile.flush()
+    print(info)
+    print(info, file=logfile)
 
     pre_start()
     del pre_start, info
