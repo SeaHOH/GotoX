@@ -4,7 +4,7 @@ A simple colorful logging module for console or terminal output.
 Similar, but not fully compatible with official 'logging.__init__' module.
 '''
 
-import sys, os, time, traceback, locale
+import sys, os, time, traceback
 from encodings import search_function as searchCodecInfo
 from codecs import CodecInfo
 from .common.util import make_lock_decorator
@@ -51,7 +51,14 @@ def getLevelName(level):
             'Level %s' % level)
 
 unicode = u''.__class__
-preferredEncoding = locale.getpreferredencoding(False)
+preferredEncoding = None
+
+def getpreferredencoding():
+    global preferredEncoding
+    if preferredEncoding is None:
+        import locale
+        preferredEncoding = locale.getpreferredencoding(False)
+    return preferredEncoding
 
 if hasattr(sys, '_getframe'):
     currentframe = lambda: sys._getframe(3)
@@ -280,7 +287,7 @@ class LogFile(object):
                                  'be wrote!' % (filename, mode))
             warning('Log file "%s" will be overwrote!', filename)
         filename = os.path.abspath(filename)
-        encoding = encoding or preferredEncoding
+        encoding = encoding or getpreferredencoding()
         try:
             logfile = _logFiles[filename]
         except:

@@ -8,7 +8,7 @@ sys.dont_write_bytecode = True
 import struct
 import socket
 from common import (
-    file_dir, root_dir, DataSourceManager, download_as_list,
+    file_dir, direct_ipdb, DataSourceManager, download_as_list,
     parse_set_proxy, select_path, getlogger
     )
 
@@ -244,7 +244,7 @@ if is_main:
                非交互模式使用 HTTP 代理，无效地址或无法链接代理时会直接结束脚本
 
 ''')
-    ipdb1 = os.path.join(root_dir, 'data', 'directip.db')
+    ipdb1 = direct_ipdb
     ipdb2 = os.path.join(file_dir, 'directip.db')
     data_source = data_source_manager.get_source(*sys.argv)
     if parse_set_proxy(data_source):

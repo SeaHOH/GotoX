@@ -48,11 +48,14 @@ sys.dont_write_bytecode = True
 
 #这条代码负责添加依赖库路径，不要改变位置
 from . import compat
+compat.init()
 
 import logging
 from .GlobalConfig import GC
 
 log_config = {'level': GC.LOG_LEVEL}
+if not GC.LOG_PRINT:
+    log_config['stream'] = logging.NULL_STREAM
 if GC.LOG_SAVE:
     logfile = logging.LogFile(GC.LOG_FILE, maxsize=GC.LOG_FILESIZE, rotation=GC.LOG_ROTATION)
     log_config['logfile'] = logfile
@@ -235,22 +238,17 @@ def main():
         if not GC.GAE_APPIDS:
             logging.critical('请编辑 %r 文件，添加可用的 AppID 到 [gae] 配置中，否则无法使用 GAE 代理！', GC.CONFIG_FILENAME)
         if not GC.PROXY_ENABLE:
-            #logging.info('开始将 GC.IPLIST_MAP names=%s 解析为 IP 列表', list(GC.IPLIST_MAP))
             resolve_iplist()
-        #if 'uvent.loop' in sys.modules and isinstance(gevent.get_hub().loop, __import__('uvent').loop.UVLoop):
-        #    logging.info('Uvent enabled, patch forward_socket')
-        #    AutoProxyHandler.forward_socket = AutoProxyHandler.green_forward_socket
 
     info = ['=' * 80]
     info.append(' GotoX  版 本 : %s (python/%s gevent/%s pyOpenSSL/%s)' % (__version__, sys.version.split(' ')[0], geventver, opensslver))
-    #info.append(' Uvent Version    : %s (pyuv/%s libuv/%s)\n' % (__import__('uvent').__version__, __import__('pyuv').__version__, __import__('pyuv').LIBUV_VERSION) if all(x in sys.modules for x in ('pyuv', 'uvent')) else '')
     info.append('\n GAE    AppID : %s' % ('|'.join(GC.GAE_APPIDS) or '请填入 AppID'))
     info.append('\n GAE 远程验证 : %s启用' % '已' if GC.GAE_SSLVERIFY else '未')
     info.append('\n  监 听 地 址 : 自动代理 - %s:%d' % (GC.LISTEN_IP, GC.LISTEN_AUTO_PORT))
     info.append('                GAE 代理 - %s:%d' % (GC.LISTEN_IP, GC.LISTEN_GAE_PORT))
-    info.append('\n Local Proxy  : %s:%s' % (GC.PROXY_HOST, GC.PROXY_PORT) if GC.PROXY_ENABLE else '')
     info.append('\n  代 理 认 证 : %s认证' % (GC.LISTEN_AUTH == 0 and '无需' or (GC.LISTEN_AUTH == 2 and 'IP ') or 'Basic '))
-    info.append('\n  调 试 信 息 : %s' % logging._levelToName[GC.LOG_LEVEL])
+    info.append('\n  调 试 信 息 : %s' % logging.getLevelName(GC.LOG_LEVEL))
+    info.append('\n  保 存 日 志 : %s' % GC.LOG_FILE if GC.LOG_SAVE else '否')
     info.append('\n  连 接 模 式 : 远程 - %s' % GC.LINK_REMOTESSLTXT)
     info.append('                本地 - %s' % GC.LINK_LOCALSSLTXT)
     info.append('\n  网 络 配 置 : %s' % GC.LINK_PROFILE)

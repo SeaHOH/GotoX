@@ -13,12 +13,77 @@ def get_dirname(path):
 
 file_dir = get_dirname(__file__)
 root_dir = os.path.dirname(file_dir)
+py_dir = os.path.join(root_dir, 'python')
+app_start = os.path.join(root_dir, 'start.py')
+icon_gotox = os.path.join(root_dir, 'gotox.ico')
+config_dir = os.path.join(root_dir, 'config')
+direct_ipdb = os.path.join(root_dir, 'data', 'directip.db')
+direct_domains = os.path.join(root_dir, 'data', 'directdomains.txt')
 # GotoX CA
 ca1 = os.path.join(root_dir, 'cert', 'CA.crt')
 # APNIC 和 GitHub 使用的 CA
 ca2 = os.path.join(root_dir, 'cert', 'cacert-ds.pem')
 context = None
 logging = None
+
+
+if root_dir not in sys.path:
+    sys.path.insert(0, root_dir)
+
+from local.compat.monkey_patch import patch_configparser
+patch_configparser()
+import re
+from configparser import ConfigParser
+
+
+CONFIG_FILENAME = os.path.join(config_dir, 'Config.ini')
+CONFIG_USER_FILENAME = re.sub(r'\.ini$', '.user.ini', CONFIG_FILENAME)
+CONFIG_AUTO_FILENAME = os.path.join(config_dir, 'ActionFilter.ini')
+
+def load_config():
+    _LOGLv = {
+        0 : logging.WARNING,
+        1 : logging.INFO,
+        2 : logging.TEST,
+        3 : logging.DEBUG
+        }
+
+    CONFIG = ConfigParser(inline_comment_prefixes=('#', ';'))
+    CONFIG._optcre = re.compile(r'(?P<option>[^=\s]+)\s*(?P<vi>=?)\s*(?P<value>.*)')
+    CONFIG.read([CONFIG_FILENAME, CONFIG_USER_FILENAME])
+    LISTEN_IP = CONFIG.get('listen', 'ip')
+    if LISTEN_IP == '0.0.0.0':
+        LISTEN_IP = '127.0.0.1'
+    elif LISTEN_IP == '::':
+        LISTEN_IP = '::1'
+    elif LISTEN_IP == '':
+        LINK_PROFILE = CONFIG.get('link', 'profile')
+        if LINK_PROFILE not in ('ipv4', 'ipv6', 'ipv46'):
+            LINK_PROFILE = 'ipv4'
+        LISTEN_IP = '127.0.0.1' if '4' in LINK_PROFILE else '::1'
+    LISTEN_GAE_PORT = CONFIG.getint('listen', 'gae_port', fallback=8086)
+    LISTEN_AUTO_PORT = CONFIG.getint('listen', 'auto_port', fallback=8087)
+    LISTEN_GAE = '%s:%d' % (LISTEN_IP, LISTEN_GAE_PORT)
+    LISTEN_AUTO = '%s:%d' % (LISTEN_IP, LISTEN_AUTO_PORT)
+    LOG_PRINT = CONFIG.getboolean('log', 'print', fallback=True)
+    LOG_LEVEL = _LOGLv[min(CONFIG.getint('log', 'level', fallback=1), 3)]
+    log_config = {'level': LOG_LEVEL}
+    if not LOG_PRINT:
+        log_config['stream'] = logging.NULL_STREAM
+    logging.basicConfig(**log_config)
+    return LISTEN_GAE, LISTEN_AUTO
+
+def getlogger(use_print=False):
+    global logging
+    if logging is None:
+        if use_print:
+            class logging:
+                warning = info = debug = print
+        else:
+            from local import clogging as logging
+            logging.replace_logging()
+            logging.addLevelName(15, 'TEST', logging.COLORS.GREEN)
+    return logging
 
 class DataSource:
     datefmt = None
@@ -393,13 +458,3 @@ def select_path(*path):
         return path[1]
     else:
         print('输入错误！')
-
-def getlogger(is_main):
-    global logging
-    if logging is None:
-        if is_main:
-            class logging:
-                warning = info = debug = print
-        else:
-            import logging
-    return logging

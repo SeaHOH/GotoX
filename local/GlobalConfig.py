@@ -47,49 +47,54 @@ class GC:
     #    if m:
     #        CONFIG.set(m.group(1).lower(), m.group(2).lower(), value)
 
-    MISC_CHECKPROCESS = CONFIG.getboolean('misc', 'checkprocess')
-    MISC_CHECKSYSCA = CONFIG.getboolean('misc', 'checksysca')
+    MISC_CHECKPROCESS = CONFIG.getboolean('misc', 'checkprocess', fallback=True)
+    MISC_CHECKSYSCA = CONFIG.getboolean('misc', 'checksysca', fallback=True)
 
     LISTEN_IP = CONFIG.get('listen', 'ip')
     LISTEN_IPHOST = CONFIG.get('listen', 'iphost')
-    if not LISTEN_IPHOST and LISTEN_IP not in ('0.0.0.0', '::'):
-        LISTEN_IPHOST = LISTEN_IP
-    LISTEN_GAE_PORT = CONFIG.getint('listen', 'gae_port')
-    LISTEN_AUTO_PORT = CONFIG.getint('listen', 'auto_port')
-    LISTEN_AUTH = min(CONFIG.getint('listen', 'auth'), 2)
+    if not LISTEN_IPHOST:
+        if LISTEN_IP in ('0.0.0.0', ''):
+            LISTEN_IPHOST = '127.0.0.1'
+        elif LISTEN_IP == '::':
+            LISTEN_IPHOST = '::1'
+        else:
+            LISTEN_IPHOST = LISTEN_IP
+    LISTEN_GAE_PORT = CONFIG.getint('listen', 'gae_port', fallback=8086)
+    LISTEN_AUTO_PORT = CONFIG.getint('listen', 'auto_port', fallback=8087)
+    LISTEN_AUTH = min(CONFIG.getint('listen', 'auth', fallback=0), 2)
     LISTEN_AUTHWHITELIST = CONFIG.get('listen', 'authwhitelist')
     LISTEN_AUTHWHITELIST = tuple(LISTEN_AUTHWHITELIST.split('|')) if LISTEN_AUTHWHITELIST else ()
-    LISTEN_AUTHUSER = CONFIG.get('listen', 'authuser')
-    LISTEN_AUTHUSER = tuple(LISTEN_AUTHUSER.split('|')) if LISTEN_AUTHUSER else (':',)
+    LISTEN_AUTHUSER = tuple(CONFIG.get('listen', 'authuser', fallback=':').split('|'))
 
-    LOG_VISIBLE = CONFIG.getboolean('log', 'visible')
-    LOG_LEVEL = _LOGLv[min(CONFIG.getint('log', 'level'), 3)]
-    LOG_SAVE = CONFIG.getboolean('log', 'save')
+    LOG_VISIBLE = CONFIG.getboolean('log', 'visible', fallback=True)
+    LOG_PRINT = CONFIG.getboolean('log', 'print', fallback=True)
+    LOG_LEVEL = _LOGLv[min(CONFIG.getint('log', 'level', fallback=1), 3)]
+    LOG_SAVE = CONFIG.getboolean('log', 'save', fallback=False)
     LOG_FILE = CONFIG.get('log', 'file', fallback='log.txt')
     LOG_FILE = get_realpath(LOG_FILE, log_dir)
     if os.path.isdir(LOG_FILE):
         LOG_FILE = os.path.join(LOG_FILE, 'log.txt')
-    LOG_FILESIZE = CONFIG.getint('log', 'filesize') * 1024
-    LOG_ROTATION = max(CONFIG.getint('log', 'rotation'), 1)
+    LOG_FILESIZE = CONFIG.getint('log', 'filesize', fallback=1024) * 1024
+    LOG_ROTATION = max(CONFIG.getint('log', 'rotation', fallback=1), 1)
 
     LINK_PROFILE = CONFIG.get('link', 'profile')
     if LINK_PROFILE not in ('ipv4', 'ipv6', 'ipv46'):
         LINK_PROFILE = 'ipv46'
-    LINK_FASTV6CHECK = CONFIG.getboolean('link', 'fastv6check')
-    LINK_WINDOW = max(min(CONFIG.getint('link', 'window'), 12), 2)
-    LINK_MAXPERIP = max(min(CONFIG.getint('link', 'maxperip'), 32), 3)
-    LINK_RECVBUFFER = max(min(CONFIG.getint('link', 'recvbuffer'), 4194304), 32768)
-    LINK_VERIFYG2PK = CONFIG.getboolean('link', 'verifyg2pk')
-    LINK_LOCALSSLTXT = CONFIG.get('link', 'localssl') or 'TLS'
-    LINK_REMOTESSLTXT = CONFIG.get('link', 'remotessl') or 'TLSv1.2'
+    LINK_FASTV6CHECK = CONFIG.getboolean('link', 'fastv6check', fallback=True)
+    LINK_WINDOW = max(min(CONFIG.getint('link', 'window', fallback=3), 12), 2)
+    LINK_MAXPERIP = max(min(CONFIG.getint('link', 'maxperip', fallback=8), 32), 3)
+    LINK_RECVBUFFER = max(min(CONFIG.getint('link', 'recvbuffer', fallback=1024 * 128), 1024 * 1024 *4), 1024 * 32)
+    LINK_VERIFYG2PK = CONFIG.getboolean('link', 'verifyg2pk', fallback=True)
+    LINK_LOCALSSLTXT = CONFIG.get('link', 'localssl', fallback='TLS')
+    LINK_REMOTESSLTXT = CONFIG.get('link', 'remotessl', fallback='TLSv1.2')
     LINK_LOCALSSL = _SSLv[LINK_LOCALSSLTXT]
     LINK_REMOTESSL = max(_SSLv[LINK_REMOTESSLTXT], _SSLv['TLS'])
-    LINK_REQUESTCOMPRESS = _brotli and CONFIG.getboolean('link', 'requestcompress')
-    LINK_TIMEOUT = max(CONFIG.getint('link', 'timeout'), 3)
-    LINK_FWDTIMEOUT = max(CONFIG.getint('link', 'fwdtimeout'), 3)
-    LINK_KEEPTIME = CONFIG.getint('link', 'keeptime')
-    LINK_FWDKEEPTIME = CONFIG.getint('link', 'fwdkeeptime')
-    LINK_TEMPTIME = CONFIG.getint('link', 'temptime')
+    LINK_REQUESTCOMPRESS = _brotli and CONFIG.getboolean('link', 'requestcompress', fallback=False)
+    LINK_TIMEOUT = max(CONFIG.getint('link', 'timeout', fallback=5), 3)
+    LINK_FWDTIMEOUT = max(CONFIG.getint('link', 'fwdtimeout', fallback=8), 3)
+    LINK_KEEPTIME = CONFIG.getint('link', 'keeptime', fallback=180)
+    LINK_FWDKEEPTIME = CONFIG.getint('link', 'fwdkeeptime', fallback=120)
+    LINK_TEMPTIME = CONFIG.getint('link', 'temptime', fallback=900)
     LINK_TEMPTIME_S = LINK_TEMPTIME % 60
     if LINK_TEMPTIME_S:
         LINK_TEMPTIME_S = ' %d 分 %d 秒' % (LINK_TEMPTIME // 60, LINK_TEMPTIME_S)
@@ -99,23 +104,23 @@ class GC:
     LINK_TEMPWHITELIST = tuple(LINK_TEMPWHITELIST.split('|')) if LINK_TEMPWHITELIST else ()
 
     GAE_APPIDS = re.findall(r'[\w\-\.]+', CONFIG.get('gae', 'appid').replace('.appspot.com', ''))
-    GAE_DEBUG = CONFIG.getint('gae', 'debug')
+    GAE_DEBUG = CONFIG.getint('gae', 'debug', fallback=0)
     GAE_PASSWORD = CONFIG.get('gae', 'password').strip()
-    GAE_PATH = CONFIG.get('gae', 'path')
-    GAE_MAXPERIP = min(CONFIG.getint('gae', 'maxperip'), 8)
-    GAE_TIMEOUT = max(CONFIG.getint('gae', 'timeout'), 3)
-    GAE_KEEPALIVE = CONFIG.getboolean('gae', 'keepalive')
-    GAE_KEEPTIME = CONFIG.getint('gae', 'keeptime')
-    GAE_MAXREQUESTS = min(CONFIG.getint('gae', 'maxrequsts'), 5)
-    GAE_SSLVERIFY = CONFIG.getboolean('gae', 'sslverify')
+    GAE_PATH = CONFIG.get('gae', 'path', fallback='/_gh/')
+    GAE_MAXPERIP = min(CONFIG.getint('gae', 'maxperip', fallback=2), 8)
+    GAE_TIMEOUT = max(CONFIG.getint('gae', 'timeout', fallback=10), 3)
+    GAE_KEEPALIVE = CONFIG.getboolean('gae', 'keepalive', fallback=True)
+    GAE_KEEPTIME = CONFIG.getint('gae', 'keeptime', fallback=30)
+    GAE_MAXREQUESTS = min(CONFIG.getint('gae', 'maxrequsts', fallback=2), 5)
+    GAE_SSLVERIFY = CONFIG.getboolean('gae', 'sslverify', fallback=True)
     GAE_FETCHMAX = CONFIG.getint('gae', 'fetchmax', fallback=2)
     #在服务端，这个数值代表的范围大小会增加 1
     GAE_MAXSIZE = min(CONFIG.getint('gae', 'maxsize', fallback=1024 * 1024 * 4), 1024 * 1024 * 32 - 1)
     GAE_IPLIST = CONFIG.get('gae', 'iplist')
-    GAE_IPLIST2P = CONFIG.get('gae', 'iplist2p') or 'google_2p'
+    GAE_IPLIST2P = CONFIG.get('gae', 'iplist2p', fallback='google_2p')
     GAE_SERVERNAME = CONFIG.get('gae', 'servername').encode()
     GAE_SERVERNAME = tuple(GAE_SERVERNAME.split(b'|')) if GAE_SERVERNAME else None
-    GAE_ENABLEPROXY = CONFIG.getboolean('gae', 'enableproxy')
+    GAE_ENABLEPROXY = CONFIG.getboolean('gae', 'enableproxy', fallback=False)
     GAE_PROXYLIST = CONFIG.get('gae', 'proxylist')
     GAE_PROXYLIST = GAE_PROXYLIST.split('|') if GAE_PROXYLIST else None
     if not GAE_PROXYLIST:
@@ -143,39 +148,39 @@ class GC:
     if GAE_ENABLEPROXY:
         GAE_TESTGWSIPLIST = False
 
-    FILTER_ACTION = CONFIG.getint('filter', 'action')
-    FILTER_ACTION = FILTER_ACTION if FILTER_ACTION in (1, 2, 3, 4) else 3
-    FILTER_SSLACTION = CONFIG.getint('filter', 'sslaction')
-    FILTER_SSLACTION = FILTER_SSLACTION if FILTER_SSLACTION in (1, 2, 3, 4) else 2
+    FILTER_ACTION = max(min(CONFIG.getint('filter', 'action', fallback=3), 4), 1)
+    FILTER_SSLACTION = max(min(CONFIG.getint('filter', 'sslaction', fallback=2), 4), 1)
 
-    PICKER_SERVERNAME = CONFIG.get('picker', 'servername').encode()
-    PICKER_COMDOMAIN = CONFIG.get('picker', 'comdomain')
-    PICKER_BLOCKTIME = CONFIG.getfloat('picker', 'blocktime', fallback=12)
-    PICKER_TIMESBLOCK = CONFIG.getint('picker', 'timesblock', fallback=2)
+    PICKER_SERVERNAME = CONFIG.get('picker', 'servername', fallback='fonts.googleapis.com').encode()
+    PICKER_COMDOMAIN = CONFIG.get('picker', 'comdomain', fallback='*.googleapis.com')
+    PICKER_BLOCKTIME = CONFIG.getfloat('picker', 'blocktime', fallback=0.3)
+    PICKER_TIMESBLOCK = CONFIG.getint('picker', 'timesblock', fallback=3)
     PICKER_TIMESDEL = CONFIG.getint('picker', 'timesdel', fallback=10)
-    PICKER_DELASSOETED = CONFIG.getboolean('picker', 'delassoeted')
-    PICKER_STATDAYS = CONFIG.getint('picker', 'statdays', fallback=4)
-    PICKER_STATDAYS = max(min(PICKER_STATDAYS, 5), 2)
-    PICKER_SORTSTAT = CONFIG.getboolean('picker', 'sortstat')
+    PICKER_DELASSOETED = CONFIG.getboolean('picker', 'delassoeted', fallback=False)
+    PICKER_STATDAYS = max(min(CONFIG.getint('picker', 'statdays', fallback=4), 5), 2)
+    PICKER_SORTSTAT = CONFIG.getboolean('picker', 'sortstat', fallback=False)
     PICKER_BLOCK = CONFIG.get('picker', 'block')
     PICKER_BLOCK = tuple(PICKER_BLOCK.split('|')) if PICKER_BLOCK else ()
-    PICKER_GAE_ENABLE = CONFIG.getboolean('picker/gae', 'enable')
+    PICKER_GAE_ENABLE = CONFIG.getboolean('picker/gae', 'enable', fallback=True)
     PICKER_GAE_MINRECHECKTIME = CONFIG.getint('picker/gae', 'minrechecktime', fallback=40)
     PICKER_GAE_MINCNT = CONFIG.getint('picker/gae', 'mincnt', fallback=6)
-    PICKER_GAE_MAXTIMEOUT = CONFIG.getint('picker/gae', 'maxtimeout', fallback=2000)
-    PICKER_GAE_MAXTHREADS = CONFIG.getint('picker/gae', 'maxthreads', fallback=10)
-    PICKER_GWS_ENABLE = CONFIG.getboolean('picker/gws', 'enable')
+    PICKER_GAE_MAXTIMEOUT = CONFIG.getint('picker/gae', 'maxtimeout', fallback=3000)
+    PICKER_GAE_MAXTHREADS = CONFIG.getint('picker/gae', 'maxthreads', fallback=1)
+    PICKER_GWS_ENABLE = CONFIG.getboolean('picker/gws', 'enable', fallback=True)
     PICKER_GWS_MINRECHECKTIME = CONFIG.getint('picker/gws', 'minrechecktime', fallback=30)
-    PICKER_GWS_MINCNT = CONFIG.getint('picker/gws', 'mincnt', fallback=6)
+    PICKER_GWS_MINCNT = CONFIG.getint('picker/gws', 'mincnt', fallback=10)
     PICKER_GWS_MAXTIMEOUT = CONFIG.getint('picker/gws', 'maxtimeout', fallback=1000)
-    PICKER_GWS_MAXTHREADS = CONFIG.getint('picker/gws', 'maxthreads', fallback=10)
+    PICKER_GWS_MAXTHREADS = CONFIG.getint('picker/gws', 'maxthreads', fallback=3)
 
-    if not PICKER_SERVERNAME:
-        wait_exit('没有找到 [picker/servername]，请检查配置文件：%r，参考注释进行填写。', CONFIG_FILENAME)
+    if not PICKER_SERVERNAME or not PICKER_COMDOMAIN:
+        logging.warning('没有找到 [picker/servername|comdomain]，将使用默认值。'
+                        '请检查配置文件：%r，参考注释进行填写。', CONFIG_FILENAME)
+        PICKER_SERVERNAME = b'fonts.googleapis.com'
+        PICKER_COMDOMAIN = '*.googleapis.com'
 
-    #PROXY_ENABLE = CONFIG.getboolean('proxy', 'enable')
+    #PROXY_ENABLE = CONFIG.getboolean('proxy', 'enable', fallback=False)
     PROXY_ENABLE = False
-    PROXY_AUTODETECT = CONFIG.getint('proxy', 'autodetect') if CONFIG.has_option('proxy', 'autodetect') else 0
+    PROXY_AUTODETECT = CONFIG.getboolean('proxy', 'autodetect', fallback=False)
     PROXY_HOST = CONFIG.get('proxy', 'host')
     PROXY_PORT = CONFIG.getint('proxy', 'port')
     PROXY_USERNAME = CONFIG.get('proxy', 'username')
@@ -192,35 +197,33 @@ class GC:
     #        PROXY_PASSWROD = password
     #        PROXY_HOST = proxyhost
     #        PROXY_PORT = int(proxyport)
-    if PROXY_ENABLE:
+    if PROXY_ENABLE and PROXY_HOST and PROXY_PORT:
         proxy = 'https://%s:%s@%s:%d' % (PROXY_USERNAME or '', PROXY_PASSWROD or '', PROXY_HOST, PROXY_PORT)
     else:
         proxy = ''
 
     AUTORANGE_FAST_ENDSWITH = CONFIG.get('autorange/fast', 'endswith')
     AUTORANGE_FAST_ENDSWITH = tuple(AUTORANGE_FAST_ENDSWITH.split('|')) if AUTORANGE_FAST_ENDSWITH else ()
-    AUTORANGE_FAST_FIRSTSIZE = CONFIG.getint('autorange/fast', 'firstsize')
-    AUTORANGE_FAST_MAXSIZE = CONFIG.getint('autorange/fast', 'maxsize')
-    AUTORANGE_FAST_THREADS = CONFIG.getint('autorange/fast', 'threads')
-    AUTORANGE_FAST_LOWSPEED = CONFIG.getint('autorange/fast', 'lowspeed')
+    AUTORANGE_FAST_THREADS = CONFIG.getint('autorange/fast', 'threads', fallback=5)
+    AUTORANGE_FAST_FIRSTSIZE = CONFIG.getint('autorange/fast', 'firstsize', fallback=1024 * 32)
+    AUTORANGE_FAST_MAXSIZE = CONFIG.getint('autorange/fast', 'maxsize', fallback=1024 * 256)
+    AUTORANGE_FAST_LOWSPEED = CONFIG.getint('autorange/fast', 'lowspeed', fallback=1024)
 
     AUTORANGE_BIG_ONSIZE = CONFIG.getint('autorange/big', 'onsize', fallback=1024 * 1024 * 32)
-    AUTORANGE_BIG_MAXSIZE = CONFIG.getint('autorange/big', 'maxsize')
-    AUTORANGE_BIG_SLEEPTIME = CONFIG.getint('autorange/big', 'sleeptime')
-    AUTORANGE_BIG_THREADS = CONFIG.getint('autorange/big', 'threads')
-    AUTORANGE_BIG_LOWSPEED = CONFIG.getint('autorange/big', 'lowspeed')
+    AUTORANGE_BIG_THREADS = CONFIG.getint('autorange/big', 'threads', fallback=2)
+    AUTORANGE_BIG_MAXSIZE = CONFIG.getint('autorange/big', 'maxsize', fallback=1024 * 1024 * 4)
+    AUTORANGE_BIG_SLEEPTIME = CONFIG.getint('autorange/big', 'sleeptime', fallback=5)
+    AUTORANGE_BIG_LOWSPEED = CONFIG.getint('autorange/big', 'lowspeed', fallback=0)
 
-    DNS_SERVERS = CONFIG.get('dns', 'servers')
-    DNS_SERVERS = tuple(DNS_SERVERS.split('|')) if DNS_SERVERS else ('8.8.8.8',)
-    DNS_LOCAL_SERVERS = CONFIG.get('dns', 'localservers')
-    DNS_LOCAL_SERVERS = tuple(DNS_LOCAL_SERVERS.split('|')) if DNS_LOCAL_SERVERS else ('114.114.114.114',)
-    DNS_LOCAL_HOST = CONFIG.getboolean('dns', 'localhost')
-    DNS_OVER_HTTPS = CONFIG.getboolean('dns', 'overhttps')
-    DNS_OVER_HTTPS_LIST = CONFIG.get('dns', 'overhttpslist') or 'google_gws'
+    DNS_SERVERS = tuple(CONFIG.get('dns', 'servers', fallback='8.8.8.8').split('|'))
+    DNS_LOCAL_SERVERS = tuple(CONFIG.get('dns', 'localservers', fallback='114.114.114.114').split('|'))
+    DNS_LOCAL_HOST = CONFIG.getboolean('dns', 'localhost', fallback=True)
+    DNS_OVER_HTTPS = CONFIG.getboolean('dns', 'overhttps', fallback=True)
+    DNS_OVER_HTTPS_LIST = CONFIG.get('dns', 'overhttpslist', fallback='google_gws')
     DNS_OVER_HTTPS_ECS = CONFIG.get('dns', 'overhttpsecs')
     DNS_IP_API = CONFIG.get('dns', 'ipapi')
     DNS_IP_API = tuple(DNS_IP_API.split('|')) if DNS_IP_API else ()
-    DNS_PRIORITY = CONFIG.get('dns', 'priority').split('|')
+    DNS_PRIORITY = CONFIG.get('dns', 'priority', fallback='system|overhttps|remote').split('|')
     DNS_BLACKLIST = set(CONFIG.get('dns', 'blacklist').split('|'))
 
     DNS_DEF_PRIORITY = ['system', 'remote', 'overhttps']

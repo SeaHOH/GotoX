@@ -8,7 +8,7 @@ sys.dont_write_bytecode = True
 import time
 import socket
 from common import (
-    file_dir, root_dir, DataSourceManager, download_as_list,
+    file_dir, direct_domains, DataSourceManager, download_as_list,
     parse_set_proxy, select_path, getlogger
     )
 
@@ -108,7 +108,7 @@ if is_main:
 
 ''')
 
-    txt1 = os.path.join(root_dir, 'data', 'directdomains.txt')
+    txt1 = direct_domains
     txt2 = os.path.join(file_dir, 'directdomains.txt')
     data_source = data_source_manager.get_source(*sys.argv)
     if parse_set_proxy(data_source):

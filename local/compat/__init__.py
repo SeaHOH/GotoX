@@ -27,65 +27,37 @@ if os.path.dirname(sys.executable) != py_dir:
     sys.path.append(packages)
     sys.path.extend(glob.glob(os.path.join(packages, '*.egg')))
 
-try:
-    import gevent
-    import gevent.monkey
-    gevent.monkey.patch_all(os=False, signal=False, subprocess=False, Event=True)
-except ImportError:
-    wait_exit('无法找到 gevent 或者与 Python 版本不匹配，请安装 gevent-1.0.0 '
-              '以上版本，或将相应 .egg 放到 %r 文件夹！', packages, exc_info=True)
-except TypeError:
-    gevent.monkey.patch_all(os=False)
-
-replace_logging()
-import logging
-logging.addLevelName(15, 'TEST', logging.COLORS.GREEN)
-
-if gevent.__version__ < '1.0.0':
-    logging.warning('警告：请更新 gevent 至 1.0.0 以上版本！')
-
-try:
-    import OpenSSL
-except ImportError:
-    wait_exit('无法找到 pyOpenSSL，请安装 pyOpenSSL-16.0.0 以上版本，'
-              '或将相应 .egg 放到 %r 文件夹！', packages, exc_info=True)
-
-try:
-    import dnslib
-except ImportError:
-    wait_exit('无法找到 dnslib，请安装 dnslib-0.8.3 以上版本，'
-              '或将相应 .egg 放到 %r 文件夹！', packages, exc_info=True)
-
-
-import builtins
-from configparser import (
-    _UNSET, NoSectionError, NoOptionError, RawConfigParser, ConfigParser)
-
-#去掉 lower 以支持选项名称大小写共存
-RawConfigParser.optionxform = lambda s, opt: opt
-
-#支持指定 getint、getfloat、getboolean 非法值的 fallback
-def _get_conv(self, section, option, conv, *, raw=False, vars=None,
-              fallback=_UNSET, **kwargs):
+def init():
     try:
-        return self._get(section, conv, option, raw=raw, vars=vars, **kwargs)
-    except (NoSectionError, NoOptionError, ValueError):
-        if fallback is _UNSET:
-            raise
-        if isinstance(conv, type):
-            return conv(fallback)
-        else:
-            return bool(fallback)
+        import gevent
+        import gevent.monkey
+        gevent.monkey.patch_all(os=False, signal=False, subprocess=False, Event=True)
+    except ImportError:
+        wait_exit('无法找到 gevent 或者与 Python 版本不匹配，请安装 gevent-1.0.0 '
+                  '以上版本，或将相应 .egg 放到 %r 文件夹！', packages, exc_info=True)
+    except TypeError:
+        gevent.monkey.patch_all(os=False)
 
-RawConfigParser._get_conv = _get_conv
+    replace_logging()
+    import logging
+    logging.addLevelName(15, 'TEST', logging.COLORS.GREEN)
+    logging.preferredEncoding = 'cp936'
 
-#默认编码
-_read = ConfigParser.read
-ConfigParser.read = lambda s, f, encoding='utf8': _read(s, f, encoding)
+    if gevent.__version__ < '1.0.0':
+        logging.warning('警告：请更新 gevent 至 1.0.0 以上版本！')
 
-#重写了类方法 __getattr__ 时，修正 hasattr
-NOATTR = object()
-builtins.gethasattr = lambda o, a: getattr(o, a, NOATTR) != NOATTR
+    try:
+        import OpenSSL
+    except ImportError:
+        wait_exit('无法找到 pyOpenSSL，请安装 pyOpenSSL-16.0.0 以上版本，'
+                  '或将相应 .egg 放到 %r 文件夹！', packages, exc_info=True)
 
-class classlist(list): pass
-builtins.classlist = classlist
+    try:
+        import dnslib
+    except ImportError:
+        wait_exit('无法找到 dnslib，请安装 dnslib-0.8.3 以上版本，'
+                  '或将相应 .egg 放到 %r 文件夹！', packages, exc_info=True)
+
+    from .monkey_patch import patch_builtins, patch_configparser
+    patch_builtins()
+    patch_configparser()

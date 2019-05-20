@@ -3,59 +3,23 @@
 
 import os
 import sys
-from common import get_dirname
 
 sys.dont_write_bytecode = True
 
-app_root = os.path.dirname(get_dirname(__file__))
-py_dir = os.path.join(app_root, 'python')
+from common import (
+    root_dir as app_root, app_start, icon_gotox, direct_ipdb, direct_domains,
+    get_dirname, getlogger, load_config as _load_config)
+
+logging = getlogger()
+
 app_start = os.path.join(app_root, 'start.py')
-icon_gotox = os.path.join(app_root, 'gotox.ico')
 create_shortcut_js = os.path.join(app_root, 'create_shortcut.vbs')
-config_dir = os.path.join(app_root, 'config')
-direct_ipdb = os.path.join(app_root, 'data', 'directip.db')
-direct_domains = os.path.join(app_root, 'data', 'directdomains.txt')
 refresh_proxy = os.path.join(app_root, 'launcher', 'refresh_proxy_win.py')
 
-#使用安装版 Python
-if get_dirname(sys.executable) != py_dir:
-    helpers = os.path.join(py_dir, 'site-packages', 'helpers_win32.egg')
-    sys.path.insert(0, helpers)
-sys.path.insert(0, app_root)
-
-import re
-from configparser import ConfigParser
-#默认编码
-_read = ConfigParser.read
-ConfigParser.read = lambda s, f, encoding='utf8': _read(s, f, encoding)
-
-CONFIG_FILENAME = os.path.join(config_dir, 'Config.ini')
-CONFIG_USER_FILENAME = re.sub(r'\.ini$', '.user.ini', CONFIG_FILENAME)
-CONFIG_AUTO_FILENAME = os.path.join(config_dir, 'ActionFilter.ini')
-
-def load_config():
-    global LISTEN_GAE, LISTEN_AUTO
-    CONFIG = ConfigParser(inline_comment_prefixes=('#', ';'))
-    CONFIG._optcre = re.compile(r'(?P<option>[^=\s]+)\s*(?P<vi>=?)\s*(?P<value>.*)')
-    CONFIG.read([CONFIG_FILENAME, CONFIG_USER_FILENAME])
-    LISTEN_IP = CONFIG.get('listen', 'ip')
-    if LISTEN_IP == '0.0.0.0':
-        LISTEN_IP = '127.0.0.1'
-    elif LISTEN_IP == '::':
-        LISTEN_IP = '::1'
-    elif LISTEN_IP == '':
-        LINK_PROFILE = CONFIG.get('link', 'profile')
-        if LINK_PROFILE not in ('ipv4', 'ipv6', 'ipv46'):
-            LINK_PROFILE = 'ipv4'
-        LISTEN_IP = '127.0.0.1' if '4' in LINK_PROFILE else '::1'
-    _LISTEN_GAE = '%s:%d' % (LISTEN_IP, CONFIG.getint('listen', 'gae_port'))
-    _LISTEN_AUTO = '%s:%d' % (LISTEN_IP, CONFIG.getint('listen', 'auto_port'))
-    LISTEN_GAE = proxy_server(_LISTEN_GAE, True)
-    LISTEN_AUTO = proxy_server(_LISTEN_AUTO, True)
-    LOG_LEVEL = _LOGLv[min(CONFIG.getint('log', 'level'), 3)]
-    logging.setLevel(LOG_LEVEL)
 
 import winreg
+from subprocess import Popen
+from local import __version__ as gotoxver
 
 SET_PATH = r'Software\Microsoft\Windows\CurrentVersion\Internet Settings'
 SETTINGS = winreg.OpenKey(winreg.HKEY_CURRENT_USER, SET_PATH, 0, winreg.KEY_ALL_ACCESS)
@@ -164,19 +128,13 @@ def refresh_proxy_state(enable=None):
             winreg.SetValueEx(SETTINGS, 'ProxyOverride', 0,  winreg.REG_SZ, ProxyOverride)
     Popen((sys.executable, refresh_proxy))
 
-from subprocess import Popen
-from local import __version__ as gotoxver, clogging as logging
-
-logging.replace_logging()
-logging.addLevelName(15, 'TEST', logging._colors.GREEN)
-_LOGLv = {
-    0 : logging.WARNING,
-    1 : logging.INFO,
-    2 : logging.TEST,
-    3 : logging.DEBUG
-    }
-
 GotoX_app = None
+
+def load_config():
+    global LISTEN_GAE, LISTEN_AUTO
+    _LISTEN_GAE, _LISTEN_AUTO = _load_config()
+    LISTEN_GAE = proxy_server(_LISTEN_GAE, True)
+    LISTEN_AUTO = proxy_server(_LISTEN_AUTO, True)
 
 def start_GotoX():
     global GotoX_app
