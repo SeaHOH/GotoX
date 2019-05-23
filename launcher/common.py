@@ -30,17 +30,13 @@ logging = None
 if root_dir not in sys.path:
     sys.path.insert(0, root_dir)
 
-from local.compat.monkey_patch import patch_configparser
-patch_configparser()
-import re
-from configparser import ConfigParser
-
-
-CONFIG_FILENAME = os.path.join(config_dir, 'Config.ini')
-CONFIG_USER_FILENAME = re.sub(r'\.ini$', '.user.ini', CONFIG_FILENAME)
-CONFIG_AUTO_FILENAME = os.path.join(config_dir, 'ActionFilter.ini')
+from local.compat import replace_logging, patch_configparser
 
 def load_config():
+    patch_configparser()
+    import re
+    from configparser import ConfigParser
+
     _LOGLv = {
         0 : logging.WARNING,
         1 : logging.INFO,
@@ -48,6 +44,9 @@ def load_config():
         3 : logging.DEBUG
         }
 
+    CONFIG_FILENAME = os.path.join(config_dir, 'Config.ini')
+    CONFIG_USER_FILENAME = re.sub(r'\.ini$', '.user.ini', CONFIG_FILENAME)
+    CONFIG_AUTO_FILENAME = os.path.join(config_dir, 'ActionFilter.ini')
     CONFIG = ConfigParser(inline_comment_prefixes=('#', ';'))
     CONFIG._optcre = re.compile(r'(?P<option>[^=\s]+)\s*(?P<vi>=?)\s*(?P<value>.*)')
     CONFIG.read([CONFIG_FILENAME, CONFIG_USER_FILENAME])
@@ -80,9 +79,8 @@ def getlogger(use_print=False):
             class logging:
                 warning = info = debug = print
         else:
-            from local import clogging as logging
-            logging.replace_logging()
-            logging.addLevelName(15, 'TEST', logging.COLORS.GREEN)
+            replace_logging()
+            import logging
     return logging
 
 class DataSource:

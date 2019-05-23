@@ -23,9 +23,10 @@ from local import __version__ as gotoxver
 
 SET_PATH = r'Software\Microsoft\Windows\CurrentVersion\Internet Settings'
 SETTINGS = winreg.OpenKey(winreg.HKEY_CURRENT_USER, SET_PATH, 0, winreg.KEY_ALL_ACCESS)
-ProxyOverride = ('localhost;127.*;192.168.*;10.*;172.16.*;172.17.*;172.18.*;'
-                 '172.19.*;172.20.*;172.21.*;172.22.*;172.23.*;172.24.*;172.25.*;'
-                 '172.26.*;172.27.*;172.28.*;172.29.*;172.30.*;172.31.*')
+ProxyOverride = ';'.join(
+    ['localhost', '127.*', '192.168.*', '10.*'] +
+    ['100.%d.*' % (64 + n) for n in range(1 << 6)] +
+    ['172.%d.*' % (16 + n) for n in range(1 << 4)])
 
 class proxy_server:
     __slots__ = 'type', 'pac', 'http', 'https', 'ftp', 'socks'
