@@ -258,7 +258,8 @@ def main():
     info.append('=' * 80)
     info = '\n'.join(info)
     print(info)
-    print(info, file=logfile)
+    if GC.LOG_SAVE:
+        print(info, file=logfile)
 
     pre_start()
     del pre_start, info
