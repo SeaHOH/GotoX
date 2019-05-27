@@ -13,7 +13,6 @@ from local.GlobalConfig import GC
 
 direct_ipdb = os.path.join(data_dir, 'directip.db')
 direct_domains = os.path.join(data_dir, 'directdomains.txt')
-direct_domains_temp = tuple(domain for domain in GC.LINK_TEMPWHITELIST if domain[0] != '@')
 direct_cache = LRUCache(GC.DNS_CACHE_ENTRIES//2)
 local_cache = LRUCache(GC.DNS_CACHE_ENTRIES)
 direct_tlds = (
@@ -235,7 +234,7 @@ def isdirect(host):
         return direct_cache[host]
     except KeyError:
         pass
-    direct = host.endswith(direct_domains_temp)
+    direct = host in direct_domains_temp_dict
     if not direct:
         for ip in dns_resolve(host):
             if isipv4(ip) and ip in ipdb:
@@ -249,6 +248,9 @@ def islocal(host):
         return local_cache[host]
     except KeyError:
         pass
+    if host in direct_domains_black_dict:
+        local_cache[host] = False
+        return False
     if host in direct_domains_dict:
         local_cache[host] = True
         return True
@@ -262,6 +264,14 @@ else:
         if isip(host):
             return host,
         return _dns_resolve(host, qtypes=qtypes, local=False)
+
+direct_domains_temp_dict = DomainsDict()
+for domain in GC.LINK_TEMPWHITELIST:
+    direct_domains_temp_dict.add(domain)
+
+direct_domains_black_dict = DomainsDict()
+for domain in GC.DNS_LOCAL_BLACKLIST:
+    direct_domains_black_dict.add(domain)
 
 def load_ipdb():
     global ipdb, IPDBVer
@@ -280,9 +290,8 @@ def load_domains():
     domains_dict = DomainsDict()
     for domain in direct_tlds:
         domains_dict.add(domain)
-    for domain in GC.LINK_TEMPWHITELIST:
-        if domain[0] == '@':
-            domains_dict.add(domain[1:])
+    for domain in GC.DNS_LOCAL_WHITELIST:
+        domains_dict.add(domain)
     if os.path.exists(direct_domains):
         domains_dict.add_file(direct_domains)
         DDDVer = '%s, domains count: %d, IPs count: %d' % (

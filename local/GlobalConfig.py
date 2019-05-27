@@ -218,11 +218,17 @@ class GC:
     DNS_SERVERS = tuple(CONFIG.get('dns', 'servers', fallback='8.8.8.8').split('|'))
     DNS_LOCAL_SERVERS = tuple(CONFIG.get('dns', 'localservers', fallback='114.114.114.114').split('|'))
     DNS_LOCAL_HOST = CONFIG.getboolean('dns', 'localhost', fallback=True)
+    DNS_LOCAL_WHITELIST = CONFIG.get('dns', 'localwhitelist')
+    DNS_LOCAL_WHITELIST = tuple(DNS_LOCAL_WHITELIST.split('|')) if DNS_LOCAL_WHITELIST else ()
+    DNS_LOCAL_BLACKLIST = CONFIG.get('dns', 'localblacklist')
+    DNS_LOCAL_BLACKLIST = tuple(DNS_LOCAL_BLACKLIST.split('|')) if DNS_LOCAL_BLACKLIST else ()
     DNS_OVER_HTTPS = CONFIG.getboolean('dns', 'overhttps', fallback=True)
     DNS_OVER_HTTPS_LIST = CONFIG.get('dns', 'overhttpslist', fallback='google_gws')
-    DNS_OVER_HTTPS_ECS = CONFIG.get('dns', 'overhttpsecs')
+    DNS_OVER_HTTPS_ECS = CONFIG.get('dns', 'overhttpsecs', fallback='auto')
     DNS_IP_API = CONFIG.get('dns', 'ipapi')
     DNS_IP_API = tuple(DNS_IP_API.split('|')) if DNS_IP_API else ()
+    if DNS_OVER_HTTPS_ECS is 'auto' and not DNS_IP_API:
+        DNS_OVER_HTTPS_ECS = ''
     DNS_PRIORITY = CONFIG.get('dns', 'priority', fallback='system|overhttps|remote').split('|')
     DNS_BLACKLIST = set(CONFIG.get('dns', 'blacklist').split('|'))
 

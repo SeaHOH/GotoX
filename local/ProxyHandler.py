@@ -445,7 +445,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         if ce:
             if ce.startswith('none'):
                 #某些服务器压缩模块会产生多余的 'none'
-                ce = ce[4:].strip(', ')
+                ce = ce[4:].lstrip(', ')
                 if ce:
                     response_headers['Content-Encoding'] = ce
                 else:
