@@ -3,13 +3,15 @@
 def dummy(*args, **kwargs): pass
 
 def clean_after_invoked(func):
+    result = None
     def newfunc(*args, **kwargs):
-        if func.__globals__[func.__code__.co_name] is dummy:
-            return
-        try:
-            return func(*args, **kwargs)
-        finally:
-            func.__globals__[func.__code__.co_name] = dummy
+        nonlocal result
+        if func.__globals__[func.__code__.co_name] is not dummy:
+            try:
+                result = func(*args, **kwargs)
+            finally:
+                func.__globals__[func.__code__.co_name] = dummy
+        return result
 
     return newfunc
 

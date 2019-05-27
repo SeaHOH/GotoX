@@ -367,7 +367,7 @@ class HTTPUtil(BaseHTTPUtil):
 
         if self.gws and GC.GAE_ENABLEPROXY:
             self.gws_front_connection_time = LRUCache(128)
-            self.gws_front_connection_time.set('ip', LRUCache(128), noexpire=True)
+            self.gws_front_connection_time.set('ip', LRUCache(128), expire=False)
             self.create_ssl_connection = self.create_gws_connection_withproxy
 
         #if self.proxy:

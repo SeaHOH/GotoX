@@ -52,6 +52,8 @@ class LRUCache:
     __marker2 = object()
 
     def __init__(self, max_items, expire=0):
+        # expire == 0：最近最少使用过期
+        # expire >  0：最近最少使用过期 + 时间过期
         self.cache = {}
         self.key_order = collections.deque()
         self.max_items = int(max_items)
@@ -66,6 +68,11 @@ class LRUCache:
         self.key_order.remove(key)
 
     def __setitem__(self, key, value):
+        _ve = self.cache.get(key)
+        if _ve is not None:
+            if _ve[1] < 0:
+                self.set(key, value, -1)
+                return
         self.set(key, value)
 
     def __getitem__(self, key):
@@ -86,11 +93,17 @@ class LRUCache:
         return len(self.key_order)
 
     @_lock_i_lock
-    def set(self, key, value, expire=0):
-        # expire <  0：永不过期
+    def set(self, key, value, expire=None):
+        # expire is False or /
+        # expire <  0：永不过期，只能在这里设置
         # expire == 0：最近最少使用过期
         # expire >  0：最近最少使用过期 + 时间过期
-        expire = int(expire) or self.expire
+        if expire is None:
+            expire = self.expire
+        elif expire is False:
+            expire = -1
+        else:
+            expire = int(expire)
         if expire > 0:
             expire += int(time())
         cache = self.cache
