@@ -4,8 +4,10 @@ def dummy(*args, **kwargs): pass
 
 def clean_after_invoked(func):
     def newfunc(*args, **kwargs):
+        if func.__globals__[func.__code__.co_name] is dummy:
+            return
         try:
-            func(*args, **kwargs)
+            return func(*args, **kwargs)
         finally:
             func.__globals__[func.__code__.co_name] = dummy
 
