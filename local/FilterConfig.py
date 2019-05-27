@@ -106,8 +106,12 @@ class actionfilterlist(list):
                     host = host.lower()
                 if path[:1] == '@':
                     path = re.compile(path[1:]).search
-                if filters.action == FAKECERT and v and '*' not in v:
-                    v = v.encode()
+                v = v.rstrip()
+                if filters.action == FAKECERT:
+                    if not v:
+                        v = None
+                    elif '*' not in v:
+                        v = v.encode()
                 if filters.action in (FORWARD, DIRECT):
                     if v[:1] == '@':
                         p, _, v = v.partition(' ')
@@ -124,14 +128,14 @@ class actionfilterlist(list):
                     v = v, p
                 elif filters.action in (REDIRECT, IREDIRECT):
                     if v[:1] == '!':
-                        v = v[1:].lstrip(' \t')
+                        v = v[1:].lstrip()
                         mhost = False
                     else:
                         mhost = True
                     if '>>' in v:
                         patterns, _, replaces = v.partition('>>')
-                        patterns = patterns.rstrip(' \t')
-                        replaces = replaces.lstrip(' \t')
+                        patterns = patterns.rstrip()
+                        replaces = replaces.lstrip()
                         if ' ' in replaces:
                             raction, _, replaces = replaces.partition(' ')
                             if raction in ('forward', 'direct', 'gae'):
@@ -140,14 +144,14 @@ class actionfilterlist(list):
                                 raction = 'do_PROXY', raction[6:]
                             else:
                                 raction = None
-                            replaces = replaces.rstrip(' \t')
+                            replaces = replaces.rstrip()
                         else:
                             raction = None
                         unquote = replaces[:1] == '@'
                         if unquote:
-                            replaces = replaces[1:].lstrip(' \t')
+                            replaces = replaces[1:].lstrip()
                         if patterns[:1] == '@':
-                            patterns = patterns[1:].lstrip(' \t')
+                            patterns = patterns[1:].lstrip()
                             rule = partial(re.compile(patterns).sub, replaces)
                         else:
                             rule = patterns, replaces, 1

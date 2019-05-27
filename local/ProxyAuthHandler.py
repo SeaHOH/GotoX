@@ -80,7 +80,7 @@ div, input {font-size: 12pt; font-family: arial,sans-serif}
 
         #不会过期的白名单项目
         for ip in GC.LISTEN_AUTHWHITELIST:
-            auth_white_list.set(ip, True, noexpire=True)
+            auth_white_list.set(ip, True, expire=False)
 
         def _check_auth(self):
             form_data = self.get_form_data()

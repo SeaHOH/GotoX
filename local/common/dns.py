@@ -24,9 +24,9 @@ if '6' in GC.LINK_PROFILE:
 def reset_dns():
     dns.clear()
     #保持链接 GAE 列表不过期
-    dns.set('google_gae', GC.IPLIST_MAP['google_gae'], noexpire=True)
-    dns.set('google_gws', GC.IPLIST_MAP['google_gws'], noexpire=True)
-    dns.set(dnshostalias, GC.IPLIST_MAP[GC.DNS_OVER_HTTPS_LIST], noexpire=True)
+    dns.set('google_gae', GC.IPLIST_MAP['google_gae'], expire=False)
+    dns.set('google_gws', GC.IPLIST_MAP['google_gws'], expire=False)
+    dns.set(dnshostalias, GC.IPLIST_MAP[GC.DNS_OVER_HTTPS_LIST], expire=False)
 
 def set_dns(host, iporname):
     #先处理正常解析
@@ -73,14 +73,9 @@ def dns_resolve(host, qtypes=qtypes):
     if isip(host):
         dns[host] = iplist = [host]
         return iplist
-    try:
-        iplist = dns[host]
-        #避免 DNS 响应较慢时重复设置 IP
-        while not iplist and iplist != 0:
-            sleep(0.01)
-            iplist = dns[host]
-    except KeyError:
-        dns[host] = None
+    iplist = dns.gettill(host)
+    if not iplist and iplist != 0:
+        dns.setpadding(host)
         iplist = _dns_resolve(host, qtypes)
         if iplist:
             dns[host] = iplist = list(set(iplist))

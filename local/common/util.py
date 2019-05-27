@@ -43,50 +43,42 @@ def make_lock_decorator(lock=None, rlock=False):
         _lock_decorator_cache[lock] = lock_decorator
     return lock_decorator
 
-NONEKEY = object()
-FAILOBJ = object()
 _lock_i_lock = make_lock_decorator('lock')
 
 class LRUCache:
     # Modified from http://pypi.python.org/pypi/lru/
     #最近最少使用缓存，支持过期时间设置
+    __marker = object()
+    __marker2 = object()
 
-    def __init__(self, max_items, expire=None):
+    def __init__(self, max_items, expire=0):
         self.cache = {}
-        self.max_items = int(max_items)
-        self.expire = expire
-        self.key_expire = {}
-        self.key_noexpire = set()
         self.key_order = collections.deque()
+        self.max_items = int(max_items)
+        self.expire = int(expire)
         self.lock = threading.Lock()
-        if expire:
+        if self.expire > 0:
             start_new_thread(self._cleanup, ())
 
     @_lock_i_lock
     def __delitem__(self, key):
-        if key in self.cache:
-            self.key_order.remove(key)
-            if key in self.key_expire:
-                del self.key_expire[key]
-            if key in self.key_noexpire:
-                del self.key_noexpire[key]
-            del self.cache[key]
-        else:
-            raise KeyError(key)
+        del self.cache[key]
+        self.key_order.remove(key)
 
     def __setitem__(self, key, value):
         self.set(key, value)
 
     def __getitem__(self, key):
-        value = self.get(key, FAILOBJ)
-        if value is FAILOBJ:
+        value = self.get(key, self.__marker)
+        if value is self.__marker:
             raise KeyError(key)
         else:
             return value
 
     @_lock_i_lock
     def __contains__(self, key):
-        self._expire_check(key)
+        if self._expire_check(key):
+            return False
         return key in self.cache
 
     @_lock_i_lock
@@ -94,27 +86,34 @@ class LRUCache:
         return len(self.key_order)
 
     @_lock_i_lock
-    def set(self, key, value, expire=False, noexpire=False):
-        if noexpire:
-            expire = False
-            self.key_noexpire.add(key)
-        elif key in self.key_noexpire:
-            expire = False
-        else:
-            expire = expire or self.expire
-        if expire:
-            self.key_expire[key] = int(time()) + expire
-        elif key in self.key_expire:
-            del self.key_expire[key]
-        self._mark(key)
-        self.cache[key] = value
+    def set(self, key, value, expire=0):
+        # expire <  0：永不过期
+        # expire == 0：最近最少使用过期
+        # expire >  0：最近最少使用过期 + 时间过期
+        expire = int(expire) or self.expire
+        if expire > 0:
+            expire += int(time())
+        cache = self.cache
+        key_order = self.key_order
+        max_items = self.max_items
+        if key in cache:
+            key_order.remove(key)
+        key_order.appendleft(key)
+        cache[key] = value, expire
+        while len(key_order) > max_items:
+            key = key_order.pop()
+            value, expire = cache[key]
+            if expire < 0:
+                key_order.appendleft(key)
+            else:
+                del cache[key]
 
     @_lock_i_lock
     def get(self, key, value=None):
-        self._expire_check(key)
-        if key in self.cache:
-            self._mark(key)
-            return self.cache[key]
+        if key in self.cache and not self._expire_check(key):
+            self.key_order.remove(key)
+            self.key_order.appendleft(key)
+            return self.cache[key][0]
         else:
             return value
 
@@ -122,100 +121,117 @@ class LRUCache:
     def getstate(self, key):
         contains = key in self.cache
         value = self.cache.get(key)
-        self._expire_check(key)
-        expired = key not in self.cache
-        return contains, expired, value
+        expired = self._expire_check(key)
+        return contains, expired, value if value is None else value[0]
+
+    def setpadding(self, key, padding=__marker2):
+        #设置填充占位
+        self[key] = padding
+
+    def gettill(self, key, padding=__marker2, timeout=30):
+        #获取非填充占位值
+        n = 0
+        timeout_interval = 0.01
+        timeout = int(timeout / timeout_interval)
+        value = self.get(key)
+        while value is padding:
+            n += 1
+            if n > timeout:
+                return None
+            sleep(timeout_interval)
+            value = self.cache[host]
+        return value
 
     @_lock_i_lock
-    def pop(self, key=NONEKEY):
-        if key is not NONEKEY:
-            self._expire_check(key)
-            if key in self.cache:
-                self._mark(key)
-                value = self.cache[key]
-                self.key_order.remove(key)
-                if key in self.key_expire:
-                    del self.key_expire[key]
-                if key in self.key_noexpire:
-                    del self.key_noexpire[key]
-                del self.cache[key]
-                return value
-            else:
+    def pop(self, key, value=__marker):
+        try:
+            if self._expire_check(key):
                 raise KeyError(key)
-        #未指明 key 时不检查抛出项是否过期，慎用！
-        #返回元组 (key, value)
-        if self.key_order:
-            key = self.key_order.pop()
-            value = self.cache[key]
-            if key in self.key_noexpire:
-                del self.key_noexpire[key]
-            if key in self.key_expire:
-                del self.key_expire[key]
-            del self.cache[key]
-            return key, value
+            value = self.cache.pop(key)[0]
+        except KeyError:
+            if value is self.__marker:
+                raise
         else:
-            raise IndexError('pop from empty LRUCache')
+            self.key_order.remove(key)
+        return value
 
-    def _expire_check(self, key):
-        key_expire = self.key_expire
-        if key in key_expire:
-            now = int(time())
-            timeleft = key_expire[key] - now
-            if timeleft <= 0:
-                self.key_order.remove(key)
-                del key_expire[key]
-                del self.cache[key]
-            elif timeleft < 8:
-                #为可能存在的紧接的调用保持足够的反应时间
-                key_expire[key] = now + 8
+    @_lock_i_lock
+    def popitem(self, last=True):
+        if last:
+            index = -1
+            pop = self.key_order.pop
+        else:
+            index = 0
+            pop = self.key_order.popleft
+        try:
+            while True:
+                if not self._expire_check(index=index):
+                    break
+            key = pop()
+        except IndexError:
+            raise IndexError('popitem from empty LRUCache')
+        value = self.cache.pop(key)[0]
+        return key, value
 
-    def _mark(self, key):
-        key_order = self.key_order
+    def _expire_check(self, key=__marker, index=None):
+        if key is self.__marker and isinstance(index, int):
+            key = self.key_order[index]
         cache = self.cache
         if key in cache:
-            key_order.remove(key)
-        key_order.appendleft(key)
-        while len(key_order) > self.max_items:
-            key = key_order.pop()
-            if key in self.key_noexpire:
-                key_order.appendleft(key)
-            else:
-                if key in self.key_expire:
-                    del self.key_expire[key]
-                del cache[key]
+            value, expire = cache[key]
+            if expire > 0:
+                now = int(time())
+                timeleft = expire - now
+                if timeleft <= 0:
+                    del cache[key]
+                    if isinstance(index, int):
+                        del self.key_order[index]
+                    else:
+                        self.key_order.remove(key)
+                    return True
+                elif timeleft < 8:
+                    #为可能存在的紧接的调用保持足够的反应时间
+                    cache[key] = value, now + 8
 
     def _cleanup(self):
-        #按每秒一个的频率循环检查并清除靠后的 l/m 个项目中的过期项目
-        lock = self.lock
-        key_order = self.key_order
-        key_expire = self.key_expire
-        key_noexpire = self.key_noexpire
-        cache = self.cache
-        max_items = self.max_items
+        #按每秒一次的频率循环检查并清除靠后的 l/m 个项目中的过期项目
         m = 4
         n = 1
+        lock = self.lock
+        key_order = self.key_order
+        cache = self.cache
+        clean_items = self.max_items // m
         while True:
             sleep(1)
             with lock:
-                l = len(key_order)
-                if l:
-                    if l // m < n:
-                        n = 1
-                    key = key_order[-n]
-                    if key in key_noexpire:
+                l = len(key_order) // m
+                if l < clean_items:
+                    n = 1
+                    continue
+                if n > l:
+                    n = 1
+                now = int(time())
+                while True:
+                    try:
+                        key = key_order[-n]
+                    except IndexError:
+                        break
+                    value, expire = self.cache[key]
+                    if expire < 0:
                         del key_order[-n]
                         key_order.appendleft(key)
-                    elif key_expire[key] <= int(time()):
+                        #终止全部都是永不过期项目的极端情况
+                        break
+                    elif 0 < expire <= now:
                         del key_order[-n]
-                        del key_expire[key]
                         del cache[key]
+                    else:
                         n += 1
+                        break
 
     @_lock_i_lock
     def clear(self):
         self.cache.clear()
-        self.key_expire.clear()
-        self.key_noexpire.clear()
         self.key_order.clear()
 
 class LimiterEmpty(OSError):

@@ -43,24 +43,12 @@ def check_reset():
 def get_fake_sni(host):
     if not isinstance(host, str):
         return False
-    key = 'https://' + host
-    contains, expired, filter = ssl_filters_cache.getstate(key)
-    if not contains:
-        get_connect_action(True, host)
-        contains, expired, filter = ssl_filters_cache.getstate(key)
-    if expired:
-        logging.warning('%r 的临时 "FAKECERT" 规则已经失效。', key)
-        ssl_filters_cache[key] = filter = filter[-1]
-    if filter[2] == FAKECERT:
-        rule = filter[1]
-        if isinstance(rule, tuple):
-            rule = rule[1]
+    action, rule = get_connect_action(True, host)
+    if action == 'do_FAKECERT':
         if isinstance(rule, bytes):
             return None if rule == b'@none' else rule
-        elif rule == '*':
-            return random_hostname().encode()
-        elif '*' in rule:
-            return random_hostname(rule).encode()
+        elif isinstance(rule, str):
+            return random_hostname(None if rule == '*' else rule).encode()
     return False
 
 def get_redirect(target, url):
@@ -114,7 +102,7 @@ REDIRECTS = 'do_REDIRECT', 'do_IREDIRECT'
 TEMPGAE = 'do_GAE', None
 #默认规则
 filter_DEF = '', '', numToAct[GC.FILTER_ACTION], None
-ssl_filter_DEF = numToSSLAct[GC.FILTER_SSLACTION], None, 0
+ssl_filter_DEF = numToSSLAct[GC.FILTER_SSLACTION], None
 
 def set_temp_action(scheme, host, path):
     schemes = '', scheme
@@ -139,13 +127,13 @@ def set_temp_connect_action(host):
     #防止重复替换
     if action != 'do_FAKECERT':
         #设置临时规则的过期时间
-        ssl_filters_cache.set(host, ('do_FAKECERT', *filter[1:], filter), GC.LINK_TEMPTIME)
+        ssl_filters_cache.set(host, ('do_FAKECERT', filter), GC.LINK_TEMPTIME)
 
 def get_action(scheme, host, path, url):
     check_reset()
     schemes = '', scheme
     key = '%s://%s' % (scheme, host)
-    filters = filters_cache.get(key)
+    filters = filters_cache.gettill(key)
     if filters:
         #以缓存规则进行匹配
         for i in range(len(filters)):
@@ -180,7 +168,8 @@ def get_action(scheme, host, path, url):
             gn += 1
         filter = None
         #建立缓存条目
-        filters_cache[key] = []
+        filters_cache.setpadding(key)
+        _filters = []
         for filters in ACTION_FILTERS:
             if filters.action == FAKECERT:
                 continue
@@ -188,7 +177,7 @@ def get_action(scheme, host, path, url):
                 if schemefilter in schemes and match_host_filter(hostfilter, host):
                     action = numToAct[filters.action]
                     #填充规则到缓存
-                    filters_cache.cache[key].append((schemefilter, pathfilter, action, target))
+                    _filters.append((schemefilter, pathfilter, action, target))
                     #匹配第一个，后面忽略
                     if not filter and match_path_filter(pathfilter, path):
                         #计算重定向网址
@@ -201,7 +190,8 @@ def get_action(scheme, host, path, url):
                         else:
                             filter = action, target
         #添加默认规则
-        filters_cache.cache[key].append(filter_DEF)
+        _filters.append(filter_DEF)
+        filters_cache[key] = _filters
         return filter or filter_DEF[2:]
     finally:
         with gLock:
@@ -216,22 +206,25 @@ def get_connect_action(ssl, host):
     if contains:
         if expired:
             logging.warning('%r 的临时 "FAKECERT" 规则已经失效。', key)
-            ssl_filters_cache[key] = filter = filter[-1]
-        return filter[:2]
+            ssl_filters_cache[key] = filter = filter[1]
+        else:
+            filter = ssl_filters_cache.gettill(key)
+        return filter
     global gn
     try:
         with gLock:
             gn += 1
+        ssl_filters_cache.setpadding(key)
         for filters in ACTION_FILTERS:
             for schemefilter, hostfilter, _, target in filters:
                 if schemefilter in schemes and match_host_filter(hostfilter, host):
                     #填充结果到缓存
-                    ssl_filters_cache[key] = filter = numToSSLAct[filters.action], target, filters.action
+                    ssl_filters_cache[key] = filter = numToSSLAct[filters.action], target
                     #匹配第一个，后面忽略
-                    return filter[:2]
+                    return filter
         #添加默认规则
         ssl_filters_cache[key] = ssl_filter_DEF
-        return ssl_filter_DEF[:2]
+        return ssl_filter_DEF
     finally:
         with gLock:
             gn -= 1
