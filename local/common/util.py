@@ -113,9 +113,8 @@ class LRUCache:
         if key in self.cache and not self._expire_check(key):
             self.key_order.remove(key)
             self.key_order.appendleft(key)
-            return self.cache[key][0]
-        else:
-            return value
+            value = self.cache[key][0]
+        return value
 
     @_lock_i_lock
     def getstate(self, key):
@@ -139,7 +138,7 @@ class LRUCache:
             if n > timeout:
                 return None
             sleep(timeout_interval)
-            value = self.cache[host]
+            value = self.cache[key][0]
         return value
 
     @_lock_i_lock
