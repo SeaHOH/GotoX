@@ -213,7 +213,7 @@ def main():
                     'PFW'          : '天网防火墙',
                     }
                 softwares = [k for k in blacklist]
-                tasklist = dict((x.name.lower(), x) for x in get_process_list())
+                tasklist = {x.name.lower(): x for x in get_process_list()}
                 softwares = [x for x in softwares if x.lower() in tasklist]
                 if softwares:
                     displaylist = {}

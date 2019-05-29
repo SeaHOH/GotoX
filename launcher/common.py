@@ -19,6 +19,9 @@ icon_gotox = os.path.join(root_dir, 'gotox.ico')
 config_dir = os.path.join(root_dir, 'config')
 direct_ipdb = os.path.join(root_dir, 'data', 'directip.db')
 direct_domains = os.path.join(root_dir, 'data', 'directdomains.txt')
+config_filename = os.path.join(config_dir, 'Config.ini')
+config_user_filename = os.path.join(config_dir, 'Config.user.ini')
+config_auto_filename = os.path.join(config_dir, 'ActionFilter.ini')
 # GotoX CA
 ca1 = os.path.join(root_dir, 'cert', 'CA.crt')
 # APNIC 和 GitHub 使用的 CA
@@ -44,12 +47,9 @@ def load_config():
         3 : logging.DEBUG
         }
 
-    CONFIG_FILENAME = os.path.join(config_dir, 'Config.ini')
-    CONFIG_USER_FILENAME = re.sub(r'\.ini$', '.user.ini', CONFIG_FILENAME)
-    CONFIG_AUTO_FILENAME = os.path.join(config_dir, 'ActionFilter.ini')
     CONFIG = ConfigParser(inline_comment_prefixes=('#', ';'))
     CONFIG._optcre = re.compile(r'(?P<option>[^=\s]+)\s*(?P<vi>=?)\s*(?P<value>.*)')
-    CONFIG.read([CONFIG_FILENAME, CONFIG_USER_FILENAME])
+    CONFIG.read([config_filename, config_user_filename])
     LISTEN_IP = CONFIG.get('listen', 'ip')
     if LISTEN_IP == '0.0.0.0':
         LISTEN_IP = '127.0.0.1'
@@ -82,6 +82,17 @@ def getlogger(use_print=False):
             replace_logging()
             import logging
     return logging
+
+try:
+    startfile = os.startfile
+except AttributeError:
+    def startfile(filename):
+        from subprocess import call
+        if sys.platform.startswith('darwin'):
+            operation = 'open'
+        elif os.name == 'posix':
+            operation = 'xdg-open'
+        call((operation, filename))
 
 class DataSource:
     datefmt = None

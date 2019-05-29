@@ -353,8 +353,8 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             self.close_connection = self.cc
             return self.request_headers.copy(), self.payload
         #处理请求
-        request_headers = dict((k.title(), v) for k, v in self.headers.items() \
-                               if k.title() not in self.skip_request_headers)
+        request_headers = {k.title(): v for k, v in self.headers.items()
+                               if k.title() not in self.skip_request_headers}
         pconnection = self.headers.get('Proxy-Connection')
         if pconnection and \
                 self.request_version < 'HTTP/1.1' and \
@@ -434,8 +434,8 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
 
     def handle_response_headers(self, response):
         #处理响应
-        response_headers = dict((k.title(), v) for k, v in response.headers.items() \
-                                if k.title() not in self.skip_response_headers)
+        response_headers = {k.title(): v for k, v in response.headers.items()
+                                if k.title() not in self.skip_response_headers}
         self.response_length = response.length or 0
         #明确设置 Accept-Ranges
         if response_headers.get('Accept-Ranges') != 'bytes':

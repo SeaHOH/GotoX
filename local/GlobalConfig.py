@@ -37,8 +37,8 @@ CONFIG._optcre = re.compile(r'(?P<option>[^=\s]+)\s*(?P<vi>=?)\s*(?P<value>.*)')
 class GC:
 
     CONFIG_FILENAME = os.path.join(config_dir, 'Config.ini')
+    CONFIG_USER_FILENAME = os.path.join(config_dir, 'Config.user.ini')
     CONFIG_IPDB = os.path.join(data_dir, 'ip.use')
-    CONFIG_USER_FILENAME = re.sub(r'\.ini$', '.user.ini', CONFIG_FILENAME)
     CONFIG.read([CONFIG_FILENAME, CONFIG_USER_FILENAME, CONFIG_IPDB])
 
     #load config from environment
@@ -62,9 +62,8 @@ class GC:
     LISTEN_GAE_PORT = CONFIG.getint('listen', 'gae_port', fallback=8086)
     LISTEN_AUTO_PORT = CONFIG.getint('listen', 'auto_port', fallback=8087)
     LISTEN_AUTH = min(CONFIG.getint('listen', 'auth', fallback=0), 2)
-    LISTEN_AUTHWHITELIST = CONFIG.get('listen', 'authwhitelist')
-    LISTEN_AUTHWHITELIST = tuple(LISTEN_AUTHWHITELIST.split('|')) if LISTEN_AUTHWHITELIST else ()
-    LISTEN_AUTHUSER = tuple(CONFIG.get('listen', 'authuser', fallback=':').split('|'))
+    LISTEN_AUTHWHITELIST = CONFIG.gettuple('listen', 'authwhitelist')
+    LISTEN_AUTHUSER = CONFIG.gettuple('listen', 'authuser', fallback=':')
 
     LOG_VISIBLE = CONFIG.getboolean('log', 'visible', fallback=True)
     LOG_PRINT = CONFIG.getboolean('log', 'print', fallback=True)
@@ -100,8 +99,7 @@ class GC:
         LINK_TEMPTIME_S = ' %d 分 %d 秒' % (LINK_TEMPTIME // 60, LINK_TEMPTIME_S)
     else:
         LINK_TEMPTIME_S = ' %d 分钟' % (LINK_TEMPTIME // 60)
-    LINK_TEMPWHITELIST = CONFIG.get('link', 'tempwhitelist')
-    LINK_TEMPWHITELIST = tuple(LINK_TEMPWHITELIST.split('|')) if LINK_TEMPWHITELIST else ()
+    LINK_TEMPWHITELIST = CONFIG.gettuple('link', 'tempwhitelist')
 
     GAE_APPIDS = re.findall(r'[\w\-\.]+', CONFIG.get('gae', 'appid').replace('.appspot.com', ''))
     GAE_DEBUG = CONFIG.getint('gae', 'debug', fallback=0)
@@ -118,18 +116,21 @@ class GC:
     GAE_MAXSIZE = min(CONFIG.getint('gae', 'maxsize', fallback=1024 * 1024 * 4), 1024 * 1024 * 32 - 1)
     GAE_IPLIST = CONFIG.get('gae', 'iplist')
     GAE_IPLIST2P = CONFIG.get('gae', 'iplist2p', fallback='google_2p')
-    GAE_SERVERNAME = CONFIG.get('gae', 'servername').encode()
-    GAE_SERVERNAME = tuple(GAE_SERVERNAME.split(b'|')) if GAE_SERVERNAME else None
+    GAE_SERVERNAME = tuple(name.encode() for name in CONFIG.getlist('gae', 'servername')) or None
     GAE_ENABLEPROXY = CONFIG.getboolean('gae', 'enableproxy', fallback=False)
-    GAE_PROXYLIST = CONFIG.get('gae', 'proxylist')
-    GAE_PROXYLIST = GAE_PROXYLIST.split('|') if GAE_PROXYLIST else None
+    GAE_PROXYLIST = CONFIG.getlist('gae', 'proxylist') or None
     if not GAE_PROXYLIST:
         GAE_ENABLEPROXY = False
     if GAE_ENABLEPROXY:
         GAE_IPLIST = GAE_IPLIST2P
         GAE_TIMEOUT = max(GAE_TIMEOUT, 10)
 
-    IPLIST_MAP = dict((k.lower(), [x for x in v.split('|') if x]) for k, v in CONFIG.items('iplist'))
+    try:
+        d = CONFIG._sections['iplist']
+    except KeyError:
+        IPLIST_MAP = {}
+    else:
+        IPLIST_MAP = {k: [x.strip() for x in v.split('|') if x.strip()] for k, v in d.items()}
 
     if 'google_gae' not in IPLIST_MAP:
         IPLIST_MAP['google_gae'] = []
@@ -159,8 +160,7 @@ class GC:
     PICKER_DELASSOETED = CONFIG.getboolean('picker', 'delassoeted', fallback=False)
     PICKER_STATDAYS = max(min(CONFIG.getint('picker', 'statdays', fallback=4), 5), 2)
     PICKER_SORTSTAT = CONFIG.getboolean('picker', 'sortstat', fallback=False)
-    PICKER_BLOCK = CONFIG.get('picker', 'block')
-    PICKER_BLOCK = tuple(PICKER_BLOCK.split('|')) if PICKER_BLOCK else ()
+    PICKER_BLOCK = CONFIG.gettuple('picker', 'block')
     PICKER_GAE_ENABLE = CONFIG.getboolean('picker/gae', 'enable', fallback=True)
     PICKER_GAE_MINRECHECKTIME = CONFIG.getint('picker/gae', 'minrechecktime', fallback=40)
     PICKER_GAE_MINCNT = CONFIG.getint('picker/gae', 'mincnt', fallback=6)
@@ -202,8 +202,7 @@ class GC:
     else:
         proxy = ''
 
-    AUTORANGE_FAST_ENDSWITH = CONFIG.get('autorange/fast', 'endswith')
-    AUTORANGE_FAST_ENDSWITH = tuple(AUTORANGE_FAST_ENDSWITH.split('|')) if AUTORANGE_FAST_ENDSWITH else ()
+    AUTORANGE_FAST_ENDSWITH = CONFIG.gettuple('autorange/fast', 'endswith')
     AUTORANGE_FAST_THREADS = CONFIG.getint('autorange/fast', 'threads', fallback=5)
     AUTORANGE_FAST_FIRSTSIZE = CONFIG.getint('autorange/fast', 'firstsize', fallback=1024 * 32)
     AUTORANGE_FAST_MAXSIZE = CONFIG.getint('autorange/fast', 'maxsize', fallback=1024 * 256)
@@ -215,22 +214,19 @@ class GC:
     AUTORANGE_BIG_SLEEPTIME = CONFIG.getint('autorange/big', 'sleeptime', fallback=5)
     AUTORANGE_BIG_LOWSPEED = CONFIG.getint('autorange/big', 'lowspeed', fallback=0)
 
-    DNS_SERVERS = tuple(CONFIG.get('dns', 'servers', fallback='8.8.8.8').split('|'))
-    DNS_LOCAL_SERVERS = tuple(CONFIG.get('dns', 'localservers', fallback='114.114.114.114').split('|'))
+    DNS_SERVERS = CONFIG.gettuple('dns', 'servers', fallback='8.8.8.8')
+    DNS_LOCAL_SERVERS = CONFIG.gettuple('dns', 'localservers', fallback='114.114.114.114')
     DNS_LOCAL_HOST = CONFIG.getboolean('dns', 'localhost', fallback=True)
-    DNS_LOCAL_WHITELIST = CONFIG.get('dns', 'localwhitelist')
-    DNS_LOCAL_WHITELIST = tuple(DNS_LOCAL_WHITELIST.split('|')) if DNS_LOCAL_WHITELIST else ()
-    DNS_LOCAL_BLACKLIST = CONFIG.get('dns', 'localblacklist')
-    DNS_LOCAL_BLACKLIST = tuple(DNS_LOCAL_BLACKLIST.split('|')) if DNS_LOCAL_BLACKLIST else ()
+    DNS_LOCAL_WHITELIST = CONFIG.gettuple('dns', 'localwhitelist')
+    DNS_LOCAL_BLACKLIST = CONFIG.gettuple('dns', 'localblacklist')
     DNS_OVER_HTTPS = CONFIG.getboolean('dns', 'overhttps', fallback=True)
     DNS_OVER_HTTPS_LIST = CONFIG.get('dns', 'overhttpslist', fallback='google_gws')
     DNS_OVER_HTTPS_ECS = CONFIG.get('dns', 'overhttpsecs', fallback='auto')
-    DNS_IP_API = CONFIG.get('dns', 'ipapi')
-    DNS_IP_API = tuple(DNS_IP_API.split('|')) if DNS_IP_API else ()
+    DNS_IP_API = CONFIG.gettuple('dns', 'ipapi')
     if DNS_OVER_HTTPS_ECS is 'auto' and not DNS_IP_API:
         DNS_OVER_HTTPS_ECS = ''
-    DNS_PRIORITY = CONFIG.get('dns', 'priority', fallback='system|overhttps|remote').split('|')
-    DNS_BLACKLIST = set(CONFIG.get('dns', 'blacklist').split('|'))
+    DNS_PRIORITY = CONFIG.getlist('dns', 'priority', fallback='system|overhttps|remote')
+    DNS_BLACKLIST = set(CONFIG.getlist('dns', 'blacklist'))
 
     DNS_DEF_PRIORITY = ['system', 'remote', 'overhttps']
     for dnstype in DNS_PRIORITY.copy():

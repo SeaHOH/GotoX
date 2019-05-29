@@ -66,6 +66,8 @@ elif GC.LINK_PROFILE == 'ipv6':
 class actionfilterlist(list):
 
     CONFIG_FILENAME = os.path.join(config_dir, 'ActionFilter.ini')
+    CONFIG = ConfigParser(inline_comment_prefixes=('#', ';'))
+    CONFIG._optcre = re.compile(r'(?P<option>[^\s]+)(?P<vi>\s+=)?\s*(?P<value>.*)')
 
     def __init__(self):
         list.__init__(self)
@@ -75,13 +77,12 @@ class actionfilterlist(list):
         start_new_thread(self.check_modify, ())
 
     def readconfig(self):
-        CONFIG = ConfigParser(inline_comment_prefixes=('#', ';'))
-        CONFIG._optcre = re.compile(r'(?P<option>[^\s]+)(?P<vi>\s+=)?\s*(?P<value>.*)')
-        CONFIG.read(self.CONFIG_FILENAME)
+        self.CONFIG._sections.clear()
+        self.CONFIG._proxies.clear()
+        self.CONFIG.read(self.CONFIG_FILENAME)
 
-        sections = CONFIG.sections()
         order_sections = []
-        for section in sections:
+        for section in self.CONFIG._sections:
             try:
                 order, action = isfiltername(section).group('order', 'action')
                 order_sections.append((int(order), action, section))
@@ -95,7 +96,7 @@ class actionfilterlist(list):
                 continue
             filters = classlist()
             filters.action = actToNum[action]
-            for k, v in CONFIG.items(section):
+            for k, v in self.CONFIG._sections[section].items():
                 scheme = ''
                 if k.find('://', 0, 9) > 0 :
                     scheme, _, k = k.partition('://')

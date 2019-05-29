@@ -8,7 +8,8 @@ sys.dont_write_bytecode = True
 
 from common import (
     root_dir as app_root, app_start, icon_gotox, direct_ipdb, direct_domains,
-    get_dirname, getlogger, load_config as _load_config)
+    config_filename, config_user_filename, config_auto_filename,
+    get_dirname, getlogger, startfile, load_config as _load_config)
 
 logging = getlogger()
 
@@ -273,9 +274,9 @@ def download_domains(p):
         balloons_warning(msg)
 
 last_main_menu = None
-sub_menu1 = (('打开默认配置', lambda x: Popen(CONFIG_FILENAME, shell=True)), #双击打开第一个有效命令
-             ('打开用户配置', lambda x: Popen(CONFIG_USER_FILENAME, shell=True)),
-             ('打开自动规则配置', lambda x: Popen(CONFIG_AUTO_FILENAME, shell=True)))
+sub_menu1 = (('打开默认配置', lambda x: startfile(config_filename)), #双击打开第一个有效命令
+             ('打开用户配置', lambda x: startfile(config_user_filename)),
+             ('打开自动规则配置', lambda x: startfile(config_auto_filename)))
 
 def build_menu(systray):
     mo_state = buildipdb.ds_APNIC.check_ext('mo') and MFS_CHECKED

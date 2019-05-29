@@ -46,7 +46,7 @@ class RangeFetch:
         isRangeFetchBig = self.__class__ is RangeFetchBig
         response = self.response
         response_status = response.status
-        response_headers = dict((k.title(), v) for k, v in response.headers.items())
+        response_headers = {k.title(): v for k, v in response.headers.items()}
         if 'Content-Range' in response_headers:
             start, end, length = tuple(int(x) for x in getrange(response_headers['Content-Range']).group(1, 2, 3))
             content_length = end + 1 - start
@@ -144,7 +144,7 @@ class RangeFetch:
         return self.handler.address_string(response)
 
     def __fetchlet(self, range_queue, data_queue, threadorder):
-        headers = dict((k.title(), v) for k, v in self.headers.items())
+        headers = {k.title(): v for k, v in self.headers.items()}
         #headers['Connection'] = 'close'
         while True:
             try:

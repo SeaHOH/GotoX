@@ -24,6 +24,7 @@ def patch_builtins():
 def patch_configparser():
     import logging
     from configparser import _UNSET, NoSectionError, NoOptionError, RawConfigParser
+    from collections import Iterable
 
     #去掉 lower 以支持选项名称大小写共存
     RawConfigParser.optionxform = lambda s, opt: opt
@@ -48,7 +49,13 @@ def patch_configparser():
                   fallback=_UNSET, **kwargs):
         try:
             value = self._get(section, option, raw=raw, vars=vars, **kwargs)
-            return conv(value)
+            value = conv(value)
+            if value or value in (0, False):
+                return value
+            if fallback is _UNSET:
+                return value
+            else:
+                raise ValueError
         except (NoSectionError, NoOptionError, ValueError) as e:
             if isinstance(e, ValueError) and value:
                 logging.warning('配置错误 [%s/%s] = %r：%r',
@@ -58,12 +65,52 @@ def patch_configparser():
         try:
             return conv(fallback)
         except ValueError:
-            if isinstance(conv, type):
-                raise
-            else:
+            if conv == self._convert_to_boolean:
                 return bool(fallback)
+            else:
+                raise
 
     RawConfigParser._get_conv = _get_conv
+
+    #添加 getlist、gettuple，分隔符为 |
+    def _convert_to_list(self, value):
+        # list 是可变序列，不直接返回
+        if not value:
+            return []
+        if isinstance(value, str):
+            value = (v.strip() for v in value.split('|') if v.strip())
+        if isinstance(value, Iterable):
+            return list(value)
+        else:
+            return [value]
+
+    def _convert_to_tuple(self, value):
+        # tuple 是不可变序列，直接返回
+        if isinstance(value, tuple):
+            return value
+        if not value:
+            return ()
+        if isinstance(value, str):
+            value = (v.strip() for v in value.split('|') if v.strip())
+        if isinstance(value, Iterable):
+            return tuple(value)
+        else:
+            return value,
+
+    def getlist(self, section, option, *, raw=False, vars=None,
+                   fallback=_UNSET, **kwargs):
+        return self._get_conv(section, option, self._convert_to_list,
+                              raw=raw, vars=vars, fallback=fallback, **kwargs)
+
+    def gettuple(self, section, option, *, raw=False, vars=None,
+                   fallback=_UNSET, **kwargs):
+        return self._get_conv(section, option, self._convert_to_tuple,
+                              raw=raw, vars=vars, fallback=fallback, **kwargs)
+
+    RawConfigParser._convert_to_list = _convert_to_list
+    RawConfigParser._convert_to_tuple = _convert_to_tuple
+    RawConfigParser.getlist = getlist
+    RawConfigParser.gettuple = gettuple
 
     #默认编码 utf8
     _read = RawConfigParser.read
