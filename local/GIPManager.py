@@ -253,7 +253,7 @@ class IPSource:
                                     for x, y in zip(ip_stat[ip], _ip_stat[:-1])]
                         else:
                             ip_stat[ip] = _ip_stat[:-1]
-            if ip_stat_today is None:
+            if file is ip_stat_files[0]:
                 ip_stat_today = deepcopy(ip_stat)
 
         self.ip_stat_files = ip_stat_files
