@@ -216,10 +216,11 @@ class LRUCache:
         while True:
             sleep(1)
             with lock:
-                l = len(key_order) // m
+                l = len(key_order)
                 if l < clean_items:
                     n = 1
                     continue
+                l = l // m
                 if n > l:
                     n = 1
                 now = int(time())
@@ -228,7 +229,7 @@ class LRUCache:
                         key = key_order[-n]
                     except IndexError:
                         break
-                    value, expire = self.cache[key]
+                    expire = self.cache[key][1]
                     if expire < 0:
                         del key_order[-n]
                         key_order.appendleft(key)
