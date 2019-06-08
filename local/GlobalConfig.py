@@ -31,7 +31,7 @@ _SSLv = {
 
 #load config from proxy.ini
 #ENV_CONFIG_PREFIX = 'GOTOX_'
-CONFIG = ConfigParser(inline_comment_prefixes=('#', ';'))
+CONFIG = ConfigParser(dict_type=dict, inline_comment_prefixes=('#', ';'))
 CONFIG._optcre = re.compile(r'(?P<option>[^=\s]+)\s*(?P<vi>=?)\s*(?P<value>.*)')
 
 class GC:
@@ -81,7 +81,7 @@ class GC:
         LINK_PROFILE = 'ipv46'
     LINK_FASTV6CHECK = CONFIG.getboolean('link', 'fastv6check', fallback=True)
     LINK_WINDOW = max(min(CONFIG.getint('link', 'window', fallback=3), 12), 2)
-    LINK_MAXPERIP = max(min(CONFIG.getint('link', 'maxperip', fallback=8), 32), 3)
+    LINK_MAXPERIP = max(min(CONFIG.getint('link', 'maxperip', fallback=6), 32), 3)
     LINK_RECVBUFFER = max(min(CONFIG.getint('link', 'recvbuffer', fallback=1024 * 128), 1024 * 1024 *4), 1024 * 32)
     LINK_VERIFYG2PK = CONFIG.getboolean('link', 'verifyg2pk', fallback=True)
     LINK_LOCALSSLTXT = CONFIG.get('link', 'localssl', fallback='TLS')

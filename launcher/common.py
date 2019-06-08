@@ -47,7 +47,7 @@ def load_config():
         3 : logging.DEBUG
         }
 
-    CONFIG = ConfigParser(inline_comment_prefixes=('#', ';'))
+    CONFIG = ConfigParser(dict_type=dict, inline_comment_prefixes=('#', ';'))
     CONFIG._optcre = re.compile(r'(?P<option>[^=\s]+)\s*(?P<vi>=?)\s*(?P<value>.*)')
     CONFIG.read([config_filename, config_user_filename])
     LISTEN_IP = CONFIG.get('listen', 'ip')
@@ -314,8 +314,6 @@ def parse_cmds(*args):
     kwargs = {}
     while args and not args[0].startswith('-'):
         del args[0]
-    if not args or not args[0].startswith('-'):
-        return kwargs
     cmd = ''
     for arg in args:
         if arg.startswith('-'):
@@ -358,9 +356,8 @@ def download(req):
                                 % (req.full_url, max_retries))
                 logging.warning('请忽略下面这个错误跟踪，并检查是否需要'
                                 '更改自动代理规则（ActionFilter.ini）。')
-                #利用错误抛出终止线程
-                raise OSError('链接失败', 0) if err is None else err
-            logging.debug('链接直连 IP 库网址失败，%d 秒后重试' % retry_delay)
+                raise err or OSError('连接失败', 0)
+            logging.debug('获取直连数据网址失败，%d 秒后重试' % retry_delay)
             time.sleep(retry_delay)
     return fd, l
 

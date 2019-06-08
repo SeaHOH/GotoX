@@ -322,10 +322,10 @@ class LogFile(object):
         if 'b' not in mode:
             mode += 'b'
         self.stream = open(self.filename, mode)
-        if 'r' in mode:
-            self.size = 0
-        else:
+        if 'a' in mode:
             self.size = os.path.getsize(self.filename)
+        else:
+            self.size = 0
         if not self.codecInfo or self.encoding != self.codecInfo.name:
             self.codecInfo = searchCodecInfo(self.encoding)
             if self.codecInfo:

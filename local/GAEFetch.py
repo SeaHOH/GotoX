@@ -100,6 +100,7 @@ def make_errinfo(response, htmltxt):
     del response.headers['Connection']
     response.headers['Content-Type'] = 'text/html; charset=utf-8'
     response.headers['Content-Length'] = len(htmltxt)
+    response.fp.close()
     response.fp = BytesIO(htmltxt)
     response.length = len(htmltxt)
 

@@ -154,34 +154,62 @@ class IPv4Database:
         #根据位置序数奇偶确定是否属于直连 IP
         return lo & 1
 
-class DomainsDict:
+class DomainsTree:
+    leaf = object()
     check_domain = re.compile(r'^[a-zA-z0-9\-\.]+$').match
 
     def __init__(self):
-        self.dict = {'ip': set()}
-        self.levels = []
+        self.root = {}
+        self.ips = set()
         self.update = 'N/A'
         self.count_dm = 0
-        self.count_ip = 0
+
+    @property
+    def count_ip(self):
+        return len(self.ips)
 
     def add(self, domain):
         if not domain or not isinstance(domain, str) or \
                 len(domain) > 253 or \
+                self.add_ip(domain) or \
                 self.check_domain(domain) is None:
             return
-        domain = domain.lower()
+
+        def clear_node(node, pname):
+            for k, v in node.items():
+                lname = '%s.%s' % (k, pname)
+                if v is self.leaf:
+                    logging.test('移除直连域名：%s', lname)
+                    self.count_dm -= 1
+                else:
+                    clear_node(v, lname)
+
         if domain[0] == '.':
             domain = domain[1:]
-        if self.add_ip(domain):
-            return
-        level = domain.count('.') + 1
-        try:
-            ds = self.dict[level]
-        except KeyError:
-            self.dict[level] = ds = set()
-            self.levels.append(level)
-            self.levels.sort()
-        ds.add(domain)
+        domain = domain.lower()
+        names = domain.split('.')
+        node = self.root
+        while names:
+            name = names.pop()
+            try:
+                child = node[name]
+            except KeyError:
+                if names:
+                    node[name] = child = {}
+                else:
+                    node[name] = self.leaf
+                    break
+            else:
+                if child is self.leaf:
+                    lname = domain[domain.find(name):]
+                    logging.warning('发现重复直连域名：%s < %s', domain, lname)
+                    return
+                elif not names:
+                    node[name] = self.leaf
+                    lname = domain[domain.find(name):]
+                    logging.warning('发现重复直连域名：%s > *.%s', domain, lname)
+                    clear_node(child, lname)
+            node = child
         self.count_dm += 1
 
     def add_ip(self, ip):
@@ -189,8 +217,7 @@ class DomainsDict:
             ip = socket.inet_pton(socket.AF_INET6, ip)
         elif not isipv4(ip):
             return
-        self.dict['ip'].add(ip)
-        self.count_ip += 1
+        self.ips.add(ip)
         return True
 
     def add_file(self, file):
@@ -214,16 +241,19 @@ class DomainsDict:
         if isipv6(host):
             host = socket.inet_pton(socket.AF_INET6, host)
         elif not isipv4(host):
-            hostsp = host.split('.')
-            max_level = len(hostsp)
-            for level in self.levels:
-                if level > max_level:
-                    break
-                domain = '.'.join(hostsp[-level:])
-                if domain in self.dict[level]:
+            names = host.lower().split('.')
+            node = self.root
+            while names:
+                name = names.pop()
+                try:
+                    child = node[name]
+                except KeyError:
+                    return False
+                if child is self.leaf:
                     return True
+                node = child
             return False
-        return host in self.dict['ip']
+        return host in self.ips
 
 def isdirect(host):
     if islocal(host):
@@ -234,7 +264,7 @@ def isdirect(host):
         return direct_cache[host]
     except KeyError:
         pass
-    direct = host in direct_domains_temp_dict
+    direct = host in direct_domains_temp_tree
     if not direct:
         for ip in dns_resolve(host):
             if isipv4(ip) and ip in ipdb:
@@ -248,10 +278,10 @@ def islocal(host):
         return local_cache[host]
     except KeyError:
         pass
-    if host in direct_domains_black_dict:
+    if host in direct_domains_black_tree:
         local_cache[host] = False
         return False
-    if host in direct_domains_dict:
+    if host in direct_domains_tree:
         local_cache[host] = True
         return True
 
@@ -265,13 +295,13 @@ else:
             return host,
         return _dns_resolve(host, qtypes=qtypes, local=False)
 
-direct_domains_temp_dict = DomainsDict()
+direct_domains_temp_tree = DomainsTree()
 for domain in GC.LINK_TEMPWHITELIST:
-    direct_domains_temp_dict.add(domain)
+    direct_domains_temp_tree.add(domain)
 
-direct_domains_black_dict = DomainsDict()
+direct_domains_black_tree = DomainsTree()
 for domain in GC.DNS_LOCAL_BLACKLIST:
-    direct_domains_black_dict.add(domain)
+    direct_domains_black_tree.add(domain)
 
 def load_ipdb():
     global ipdb, IPDBVer
@@ -286,22 +316,24 @@ def load_ipdb():
                         '其它系统请运行脚本 %r 下载更新。', buildscript)
 
 def load_domains():
-    global direct_domains_dict, DDDVer
-    domains_dict = DomainsDict()
-    for domain in direct_tlds:
-        domains_dict.add(domain)
-    for domain in GC.DNS_LOCAL_WHITELIST:
-        domains_dict.add(domain)
+    global direct_domains_tree, DDTVer
+    domains_tree = DomainsTree()
     if os.path.exists(direct_domains):
-        domains_dict.add_file(direct_domains)
-        DDDVer = '%s, domains count: %d, IPs count: %d' % (
-                domains_dict.update, domains_dict.count_dm, domains_dict.count_ip)
+        domains_tree.add_file(direct_domains)
+        DDTVer = '%s, domains count: %d, IPs count: %d' % (
+                domains_tree.update, domains_tree.count_dm, domains_tree.count_ip)
     else:
-        DDDVer = '列表文件未安装'
+        DDTVer = '列表文件未安装'
         buildscript = os.path.join(launcher_dir, 'builddomains.py')
         logging.warning('无法找到直连域名列表文件，Win 用户可用托盘工具下载更新，'
                         '其它系统请运行脚本 %r 下载更新。', buildscript)
-    direct_domains_dict = domains_dict
+    logging.info('开始添加内置直连域名列表')
+    for domain in direct_tlds:
+        domains_tree.add(domain)
+    logging.info('开始添加用户本地域名列表')
+    for domain in GC.DNS_LOCAL_WHITELIST:
+        domains_tree.add(domain)
+    direct_domains_tree = domains_tree
 
 def check_modify():
     if os.path.exists(direct_ipdb):
@@ -342,7 +374,7 @@ def check_modify():
                 domains_mtime = domains_file_mtime
                 local_cache.clear()
                 direct_cache.clear()
-                logging.warning('检测到直连域名列表更新，已重新加载：%s。', DDDVer)
+                logging.warning('检测到直连域名列表更新，已重新加载：%s。', DDTVer)
 
 load_ipdb()
 load_domains()

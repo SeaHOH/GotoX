@@ -75,7 +75,7 @@ from .common.cert import check_ca
 from .common.dns import _dns_resolve as dns_resolve
 from .common.net import isip, isipv4, isipv6
 from .common.path import icon_gotox
-from .common.region import IPDBVer, DDDVer
+from .common.region import IPDBVer, DDTVer
 from .ProxyServer import network_test, start_proxyserver
 from .ProxyHandler import AutoProxyHandler
 from . import GIPManager
@@ -253,7 +253,7 @@ def main():
     info.append('                本地 - %s' % GC.LINK_LOCALSSLTXT)
     info.append('\n  网 络 配 置 : %s' % GC.LINK_PROFILE)
     info.append('\n  IP 数 据 库 : %s' % IPDBVer)
-    info.append('\n  直 连 域 名 : %s' % DDDVer)
+    info.append('\n  直 连 域 名 : %s' % DDTVer)
     info.append('\n  安 装 证 书 : 设置代理后访问 http://gotox.go/')
     info.append('=' * 80)
     info = '\n'.join(info)
