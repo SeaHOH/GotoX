@@ -37,18 +37,7 @@ from .common.util import (
 from .FilterUtil import reset_method_list, get_fake_sni
 
 GoogleG23PKP = {
-# https://pki.google.com/GIAG2.crt
-b'''\
------BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnCoEd1zYUJE6BqOC4NhQ
-SLyJP/EZcBqIRn7gj8Xxic4h7lr+YQ23MkSJoHQLU09VpM6CYpXu61lfxuEFgBLE
-XpQ/vFtIOPRT9yTm+5HpFcTP9FMN9Er8n1Tefb6ga2+HwNBQHygwA0DaCHNRbH//
-OjynNwaOvUsRBOt9JN7m+fwxcfuU1WDzLkqvQtLL6sRqGrLMU90VS4sfyBlhH82d
-qD5jK4Q1aWWEyBnFRiL4U5W+44BKEMYq7LqXIBHHOZkQBKDwYXqVJYxOUnXitu0I
-yhT8ziJqs07PRgOXlwN+wLHee69FM8+6PnG33vQlJcINNYmdnfsOEXmJHjfFr45y
-aQIDAQAB
------END PUBLIC KEY-----
-''',
+# https://pki.google.com/GIAG2.crt 已过期
 # https://pki.goog/gsr2/GIAG3.crt
 # https://pki.goog/gsr2/GTSGIAG3.crt
 b'''\
@@ -67,6 +56,25 @@ b'''\
 -----BEGIN PUBLIC KEY-----
 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEG4ANKJrwlpAPXThRcA3Z4XbkwQvW
 hj5J/kicXpbBQclS4uyuQ5iSOGKcuCRt8ralqREJXuRsnLZo0sIT680+VQ==
+-----END PUBLIC KEY-----
+'''
+# https://pki.goog/gsr2/giag4.crt
+b'''\
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvSw7AnhsoyYa5z/crKtt
+B52X+R0ld3UdQBU4Yc/4wmF66cpHeEOMSmhdaY5RzYrowZ6kG1xXLrSoVUuudUPR
+fg/zjRqv/AAVDJFqc8OnhghzaWZU9zlhtRgY4lx4Z6pDosTuR5imCcKvwqiDztOJ
+r4YKHuk23p3cxu1zDnUsuN+cm4TkVtI1SsuSc9t1uErBvFIcW6v3dLcjrPkmwE61
+udZQlBDHJzCFwrhXLtXLlmuSA5/9pOuWJ+U3rSgS7ICSfa83vkBe00ymjIZT6ogD
+XWuFsu4edue27nG8g9gO1YozIUCV7+zExG0G5kxTovis+FJpy9hIIxSFrRIKM4DX
+aQIDAQAB
+-----END PUBLIC KEY-----
+'''
+# https://pki.goog/gsr4/giag4ecc.crt
+b'''\
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEWgDxDsTP7Od9rB8TPUltMacYCHYI
+NthcDjlPu3wP0Csmy6Drit3ghqaTqFecqcgks5RwcKQkT9rbY3e8lHuuAw==
 -----END PUBLIC KEY-----
 '''}
 
@@ -505,8 +513,8 @@ class HTTPUtil(BaseHTTPUtil):
             ip = ipaddr[0]
             try:
                 sock = self.get_tcp_socket(ip, timeout)
-                s = self.get_server_hostname(host, cache_key)
-                ssl_sock = self.get_ssl_socket(sock, self.get_server_hostname(host, cache_key))
+                server_name = self.get_server_hostname(host, cache_key)
+                ssl_sock = self.get_ssl_socket(sock, server_name)
                 # start connection time record
                 start_time = time()
                 # TCP connect
