@@ -606,17 +606,11 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             'Access-Control-Max-Age: 1728000',
             'Vary: Origin, X-Origin',
             'Content-Length: 0'
-            ]
-        headers = request_headers.get('Access-Control-Request-Headers')
-        if headers:
-            response.append('Access-Control-Allow-Headers: ' + headers)
-        else:
-            response.append('Access-Control-Allow-Headers: Authorization, If-Modified-Since')
-        origin = request_headers.get('Origin')
-        if origin:
-            response.append('Access-Control-Allow-Origin: ' + origin)
-        else:
-            response.append('Access-Control-Allow-Origin: *')
+        ]
+        headers = request_headers.get('Access-Control-Request-Headers', 'Authorization, If-Modified-Since')
+        response.append('Access-Control-Allow-Headers: ' + headers)
+        origin = request_headers.get('Origin', '*')
+        response.append('Access-Control-Allow-Origin: ' + origin)
         response.append('\r\n')
         self.write('\r\n'.join(response))
         logging.info('%s "%s FAKEOPTIONS %s HTTP/1.1" 200 0', self.address_string(response), self.action[3:], self.url)
