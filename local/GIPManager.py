@@ -504,8 +504,8 @@ class IPPoolSource:
     check_per_ip = 50
     get_per_ip_good = 20
     get_per_ip_other = 10
-    save_interval = 60 * 15
-    save_per_save_cmd = 1
+    save_interval = 60 * 5
+    save_per_save_cmd = 10
 
     def __new__(cls, ip_source, type):
         m = object.__new__(cls)
@@ -638,6 +638,7 @@ class IPManager:
         b'Connection: Close\r\n\r\n'
     )
     pick_gae_code = b'404', b'405'
+    pick_gae_verify_code  = b'500', b'302'
     pick_gws_res = (
         b' Found\r\n'
         b'Location: https://console.cloud.google.com/appengine'
@@ -859,7 +860,7 @@ class IPManager:
             http_gws.match_hostname(conn, hostname='www.appspot.com')
             conn.send(self.pick_gae_req)
             conn.read(9)
-            return conn.read(3) == b'302'
+            return conn.read(3) in self.pick_gae_verify_code
         except CertificateError:
             return False
         except:
@@ -884,6 +885,7 @@ class IPManager:
             #无法使用的 IP
             gae.ip_source.remove_ip(ip)
             gae.ip_source.del_ip(ip)
+            self.logger.debug('从 gae 分类移除 %s', ip)
         else:
             #无法肯定判断，但是可先加入
             gae.ip_source.add_ip(ip)

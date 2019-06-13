@@ -181,14 +181,9 @@ def download_cniplist_as_db(ipdb, p=1):
         _update.append(ds.update)
 
     try:
-        if p & ds_APNIC:
-            add(ds_APNIC)
-
-        if p & ds_17MON:
-            add(ds_17MON)
-
-        if p & ds_GAOYIFAN:
-            add(ds_GAOYIFAN)
+        for ds in data_source_manager.sources():
+            if p & ds:
+                add(ds)
 
         update = ' and '.join(_update)
         save_iplist_as_db(ipdb, iplist)
@@ -197,6 +192,7 @@ def download_cniplist_as_db(ipdb, p=1):
         logging.warning('更新直连 IP 库 %r 失败：%s' % (ipdb, e))
     finally:
         downloading = False
+        data_source_manager.clear_source_data()
 
 def test(ipdb):
     global update

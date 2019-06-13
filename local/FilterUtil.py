@@ -101,32 +101,22 @@ def match_path_filter(filter, path):
 REDIRECTS = 'do_REDIRECT', 'do_IREDIRECT'
 TEMPGAE = 'do_GAE', None
 #默认规则
-filter_DEF = '', '', numToAct[GC.FILTER_ACTION], None
+filter_DEF = '', numToAct[GC.FILTER_ACTION], None
 ssl_filter_DEF = numToSSLAct[GC.FILTER_SSLACTION], None
 
-def set_temp_action(scheme, host, path):
-    schemes = '', scheme
-    key = '%s://%s' % (scheme, host)
-    filters = filters_cache.get(key)
-    if not filters:
-        url = '%s://%s/%s' % (scheme, host, path)
-        get_action(scheme, host, path, url)
-        filters = filters_cache.get(key)
-    #以临时规则替换缓存规则中第一个匹配
-    for i in range(len(filters)):
-        schemefilter, pathfilter, action, target = filter = filters[i]
-        if schemefilter in schemes and match_path_filter(pathfilter, path):
-            #防止重复替换
-            if action != 'TEMPGAE':
-                filters[i] = '', '', 'TEMPGAE', (time() + GC.LINK_TEMPTIME, filter)
-            break
+def set_temp_action(host):
+    #将临时规则插入缓存规则中第一个位置
+    filters = filters_cache[host]
+    action = filters[0][1]
+    if action != 'TEMPGAE':
+        filter = '', 'TEMPGAE', time() + GC.LINK_TEMPTIME
+        filters.insert(0, filter)
 
 def set_temp_connect_action(host):
+    #将缓存规则替换为临时规则
     filter = ssl_filters_cache[host]
     action = filter[0]
-    #防止重复替换
     if action != 'do_FAKECERT':
-        #设置临时规则的过期时间
         ssl_filters_cache.set(host, ('do_FAKECERT', filter), GC.LINK_TEMPTIME)
 
 def get_action(scheme, host, path, url):
@@ -135,10 +125,19 @@ def get_action(scheme, host, path, url):
     key = '%s://%s' % (scheme, host)
     filters = filters_cache.gettill(key)
     if filters:
+        #是否临时规则
+        _, action, expire = filters[0]
+        if action == 'TEMPGAE':
+            if time() > expire:
+                del filters[0]
+                logging.warning('%r 的临时 "GAE" 规则已经失效。', key)
+            #符合自动多线程时不使用临时 GAE 规则，仍尝试默认规则
+            #是否包含元组元素（媒体文件）
+            elif not any(path.endswith(x) for x in GC.AUTORANGE_FAST_ENDSWITH):
+                return TEMPGAE
         #以缓存规则进行匹配
-        for i in range(len(filters)):
-            schemefilter, pathfilter, action, target = filters[i]
-            if schemefilter in schemes and match_path_filter(pathfilter, path):
+        for pathfilter, action, target in filters:
+            if match_path_filter(pathfilter, path):
                 #计算重定向网址
                 if action in REDIRECTS:
                     target = get_redirect(target, url)
@@ -147,20 +146,6 @@ def get_action(scheme, host, path, url):
                         if durl and durl != url:
                             return action, target
                     continue
-                #是否临时规则
-                if action == 'TEMPGAE':
-                    expire, origfilter = target
-                    #过期之后恢复默认规则
-                    if time() > expire:
-                        filters[i] = origfilter
-                        logging.warning('%r 的临时 "GAE" 规则已经失效。', key)
-                        return origfilter[2:]
-                    #符合自动多线程时不使用临时 GAE 规则，仍尝试默认规则
-                    #是否包含元组元素（媒体文件）
-                    elif any(path.endswith(x) for x in GC.AUTORANGE_FAST_ENDSWITH):
-                        return origfilter[2:]
-                    else:
-                        return TEMPGAE
                 return action, target
     global gn
     try:
@@ -177,7 +162,7 @@ def get_action(scheme, host, path, url):
                 if schemefilter in schemes and match_host_filter(hostfilter, host):
                     action = numToAct[filters.action]
                     #填充规则到缓存
-                    _filters.append((schemefilter, pathfilter, action, target))
+                    _filters.append((pathfilter, action, target))
                     #匹配第一个，后面忽略
                     if not filter and match_path_filter(pathfilter, path):
                         #计算重定向网址
@@ -192,7 +177,7 @@ def get_action(scheme, host, path, url):
         #添加默认规则
         _filters.append(filter_DEF)
         filters_cache[key] = _filters
-        return filter or filter_DEF[2:]
+        return filter or filter_DEF[1:]
     finally:
         with gLock:
             gn -= 1

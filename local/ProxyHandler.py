@@ -1211,15 +1211,14 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         logging.warning('%s "%s %s" 已经被拦截', self.address_string(), self.command, self.url or self.host)
 
     def _set_temp_GAE(self):
-        hostparts = 'https' if self.ssl else 'http', self.host
-        host = '%s://%s' % hostparts
+        host = 'http%s://%s' % ('s' if self.ssl else '', self.host)
         #最近是否失败（缓存设置超时两分钟）
         try:
             f = self.badhost[host] & 12
             if f == 0:
                 self.badhost[host] |= 4
             elif f == 4:
-                set_temp_action(*hostparts, self.path[1:])
+                set_temp_action(host)
                 logging.warning('将 %r 加入 "GAE" 规则%s。', host, GC.LINK_TEMPTIME_S)
                 self.badhost[host] |= 8
         except KeyError:

@@ -58,11 +58,12 @@ def download_domains_as_txt(txt, p=1):
         count += len(ds.itemlist)
 
     try:
-        if p & ds_FELIX:
-            for child_ds in ds_FELIX.get_all_children():
-                if ds_FELIX.check_ext(child_ds.name):
-                    add(child_ds)
-            add(ds_FELIX)
+        for ds in data_source_manager.sources():
+            if p & ds:
+                for child_ds in ds.get_children():
+                    if ds.check_ext(child_ds.name):
+                        add(child_ds)
+                add(ds)
 
         domains_list.append(b'')
         domains_list.append(b'#end')
@@ -75,6 +76,7 @@ def download_domains_as_txt(txt, p=1):
         logging.warning('更新直连域名列表 %r 失败：%s' % (txt, e))
     finally:
         downloading = False
+        data_source_manager.clear_source_data()
 
 data_source_manager = DataSourceManager()
 ds_FELIX = data_source_manager.add('Felix', Url_FCHINA, parse_dnsmasq_domains, 'felixonmars/accelerated-domains.china')

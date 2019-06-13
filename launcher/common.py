@@ -138,7 +138,7 @@ class DataSource:
     def get_child(self, name):
         return self.__children.get(name.lower())
 
-    def get_all_children(self):
+    def get_children(self):
         return self.__children.values()
 
     def add_ext(self, names):
@@ -235,6 +235,11 @@ class DataSource:
     def update(self, value):
         self.__update = value
 
+    def clear(self):
+        self.itemlist.clear()
+        for child_ds in self.get_children():
+            child_ds.clear()
+
     def __get_other_sign(self, other):
         if isinstance(other, self.__class__):
             other = other.sign
@@ -288,13 +293,13 @@ class DataSourceManager:
     def load_ext(self, filename=None):
         if filename:
             self.ext_conf = filename
-        for _, ds in self.__valid.items():
+        for ds in self.sources():
             ds.load_ext()
 
     def save_ext(self, filename=None):
         if filename:
             self.ext_conf = filename
-        for _, ds in self.__valid.items():
+        for ds in self.sources():
             ds.save_ext()
 
     def get_source(self, *args):
@@ -308,6 +313,13 @@ class DataSourceManager:
                 for name in kwargs[par]:
                     self.__valid[par].set_ext(name)
         return data_source
+
+    def clear_source_data(self):
+        for ds in self.sources():
+            ds.clear()
+
+    def sources(self):
+        return self.__valid.values()
 
 def parse_cmds(*args):
     args = list(args)
