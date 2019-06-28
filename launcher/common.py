@@ -339,7 +339,10 @@ def download(req):
     #显式加载 CA，确保正常使用
     global context
     if context is None:
-        context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+        context.options |= ssl.OP_NO_SSLv2
+        context.options |= ssl.OP_NO_SSLv3
+        context.options |= getattr(ssl._ssl, 'OP_NO_COMPRESSION', 0)
         context.verify_mode = ssl.CERT_REQUIRED
         context.check_hostname = True
         context.set_ciphers(ssl._RESTRICTED_SERVER_CIPHERS)

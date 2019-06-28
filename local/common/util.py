@@ -364,26 +364,36 @@ MESSAGE_TEMPLATE = '''
 <meta http-equiv="content-type" content="text/html;charset=utf-8">
 <title>$title</title>
 <style><!--
-body {font-family: arial,sans-serif}
-div.nav {margin-top: 1ex}
-div.nav A {font-size: 10pt; font-family: arial,sans-serif}
-span.nav {font-size: 10pt; font-family: arial,sans-serif; font-weight: bold}
-div.nav A,span.big {font-size: 12pt; color: #0000cc}
-div.nav A {font-size: 10pt; color: black}
-A.l:link {color: #6f6f6f}
-A.u:link {color: green}
+body {
+    font-family: arial,sans-serif;
+    background-color: #ffffff;
+}
+.header {
+    background-color: #3366cc;
+    width: 100%;
+}
+.header span {
+    font-size: 16pt;
+    font-weight: bold;
+    color: #ffffff;
+    padding: 8px 20px;
+    width: 100%;
+}
+blockquote {font-size: 150%;}
+.foot {
+    background-color: #3366cc;
+    width: 100%;
+    height: 6px;
+}
 //--></style>
 </head>
-<body text=#000000 bgcolor=#ffffff>
-<table border=0 cellpadding=2 cellspacing=0 width=100%>
-<tr><td bgcolor=#3366cc><font face=arial,sans-serif color=#ffffff><b>Message</b></td></tr>
-<tr><td> </td></tr></table>
-<blockquote>
+<body>
+<div class=header><span>Message</span></div>
+<div><blockquote>
 <H1>$banner</H1>
 $detail
-<p>
-</blockquote>
-<table width=100% cellpadding=0 cellspacing=0><tr><td bgcolor=#3366cc><img alt="" width=1 height=4></td></tr></table>
+<p></blockquote></div>
+<div class=foot><span></span></div>
 </body></html>
 '''
 MESSAGE_TEMPLATE = string.Template(MESSAGE_TEMPLATE).substitute

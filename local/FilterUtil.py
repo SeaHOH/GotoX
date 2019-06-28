@@ -127,7 +127,7 @@ def get_action(scheme, host, path, url):
     if filters:
         #是否临时规则
         _, action, expire = filters[0]
-        if action == 'TEMPGAE':
+        if action is 'TEMPGAE':
             if time() > expire:
                 del filters[0]
                 logging.warning('%r 的临时 "GAE" 规则已经失效。', key)
@@ -137,6 +137,8 @@ def get_action(scheme, host, path, url):
                 return TEMPGAE
         #以缓存规则进行匹配
         for pathfilter, action, target in filters:
+            if action is 'TEMPGAE':
+                continue
             if match_path_filter(pathfilter, path):
                 #计算重定向网址
                 if action in REDIRECTS:

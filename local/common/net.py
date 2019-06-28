@@ -20,13 +20,30 @@ closed_errno = errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE
 bypass_errno = -1, *closed_errno
 
 dchars = ['bcdfghjklmnpqrstvwxyz', 'aeiou', '0123456789']
-pchars = [0, 0, 0, 1, 2, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1]
-subds = [
-    'www', 'img', 'pic', 'js', 'game', 'mail', 'static', 'ajax', 'video', 'lib',
-    'login', 'player', 'image', 'api', 'upload', 'download', 'cdnjs', 'cc', 's',
-    'book', 'v', 'service', 'web', 'forum', 'bbs', 'news', 'home', 'wiki', 'it'
-    ]
-gtlds = ['org', 'com', 'net', 'gov', 'edu', 'xyz','info']
+pchars = [*(0,) * 8, *(1,) * 6, *(2,) * 1]
+subds = (
+    'www|img|pic|js|game|mail|static|ajax|video|lib|login|player|image|api|art|'
+    'upload|download|cdnjs|cc|s|book|v|service|web|forum|bbs|news|home|wiki|it|'
+    'feeds|update|blog|doc|play|read|go|info|tv|day|accounts|store|feed|docs|f|'
+    'member|map|pay|support|en|log|comment|style|music|knowledge|help|buy|milk|'
+    'story|media|movie|paper|photo|topic|studio|drama|study|place|group|garden|'
+    'sport|fun|page|sound|term|test|kind|rate|gift|join|master|tree|a|you|show|'
+    'one|other|raw|solid|funny|knife|native|cow|physical|watch|beautiful|frame|'
+    'character|box|account|issue|step|reason|face|item|metal|paint|review|room|'
+    'cycle|screen|structure|view|friend|notice|id|market|brief|spell|font|start'
+).split('|')
+gtlds = [
+    *('com',) * 8,
+    *('org',) * 5,
+    *('net',) * 3,
+    *('gov',) * 2,
+    *('edu',) * 2,
+    *('xyz',) * 1,
+    *('info',) * 1
+]
+random.shuffle(pchars)
+random.shuffle(subds)
+random.shuffle(gtlds)
 
 def random_hostname(wildcard_host=None):
     replace_wildcard = wildcard_host and '*' in wildcard_host
@@ -99,14 +116,6 @@ def isipv6(ip, AF_INET6=socket.AF_INET6, inet_pton=socket.inet_pton):
         return False
     else:
         return True
-
-#import re
-
-#isipv4 = re.compile(r'^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$').match
-#isipv6 = re.compile(r'^(?!:[^:]|.*::.*::)'
-#                    r'(?:[0-9a-f]{0,4}(?:(?<=::)|(?<!::):)){7}'
-#                    r'([0-9a-f]{1,4}'
-#                    r'|(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})$', re.I).match
 
 def get_parent_domain(host):
     ip = isip(host)

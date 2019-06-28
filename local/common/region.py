@@ -179,7 +179,7 @@ class DomainsTree:
             for k, v in node.items():
                 lname = '%s.%s' % (k, pname)
                 if v is self.leaf:
-                    logging.test('移除直连域名：%s', lname)
+                    logging.debug('移除直连域名：%s', lname)
                     self.count_dm -= 1
                 else:
                     clear_node(v, lname)
@@ -202,12 +202,12 @@ class DomainsTree:
             else:
                 if child is self.leaf:
                     lname = domain[domain.find(name):]
-                    logging.warning('发现重复直连域名：%s < %s', domain, lname)
+                    logging.test('发现重复直连域名：%s < %s', domain, lname)
                     return
                 elif not names:
                     node[name] = self.leaf
                     lname = domain[domain.find(name):]
-                    logging.warning('发现重复直连域名：%s > *.%s', domain, lname)
+                    logging.test('发现重复直连域名：%s > *.%s', domain, lname)
                     clear_node(child, lname)
             node = child
         self.count_dm += 1
@@ -327,10 +327,10 @@ def load_domains():
         buildscript = os.path.join(launcher_dir, 'builddomains.py')
         logging.warning('无法找到直连域名列表文件，Win 用户可用托盘工具下载更新，'
                         '其它系统请运行脚本 %r 下载更新。', buildscript)
-    logging.info('开始添加内置直连域名列表')
+    logging.test('开始添加内置直连域名列表')
     for domain in direct_tlds:
         domains_tree.add(domain)
-    logging.info('开始添加用户本地域名列表')
+    logging.test('开始添加用户本地域名列表')
     for domain in GC.DNS_LOCAL_WHITELIST:
         domains_tree.add(domain)
     direct_domains_tree = domains_tree
