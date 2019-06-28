@@ -317,36 +317,57 @@ class Limiter:
 class LimitBase:
     '''Base limiter via dict key.
 
-    _key:        dict key which marking objects
-    limiters:    limiters in dict
-    max_per_key: allow objects max size per key
-    timeout:     push and pop method timedout
-    lock:        a threading.Lock Instance
+    _key:                 dict key which marking objects
+    _limiters_cache:      store the idle limiters
+    _limiters_cache_size: max number of the idle limiters
+
+    Subclasses must customize the following properties:
+    limiters:             limiters in dict
+    max_per_key:          allow objects max size per key
+    timeout:              push and pop method timedout
+    lock:                 a threading.Lock Instance
     '''
 
     _key = None
+    _limiters_cache = []
+    _limiters_cache_size = 128
 
     def __init__(self, key, max_per_key=None, timeout=None):
         max_per_key = max_per_key or self.max_per_key
         timeout = timeout or self.timeout
+        exist = None
         with self.lock:
             try:
                 limiter = self.limiters[key]
+                exist = True
             except KeyError:
-                self.limiters[key] = limiter = Limiter(max_per_key)
-        limiter.push(timeout=timeout, maxsize=max_per_key)
+                if self._limiters_cache:
+                    limiter = self._limiters_cache.pop()
+                    limiter.maxsize = max_per_key
+                else:
+                    limiter = Limiter(max_per_key)
+                #避免在 lock 释放后 limiter 可能被 clearup 删除
+                limiter._Limiter__qsize = 1
+                self.limiters[key] = limiter
+        if exist:
+            limiter.push(timeout=timeout, maxsize=max_per_key)
         self._key = key
 
+    #主要使用 close 来解除限制，可避免只使用 __del__ 时需频繁地主动 GC
     def __del__(self):
+        self.close()
+
+    def close(self):
         if self._key:
             self._key, key = None, self._key
             try:
-                limiter = self.limiters[key]
-            except KeyError:
+                with self.lock:
+                    self.limiters[key].pop(block=False)
+                if self.limiters[key].empty():
+                    start_new_thread(self.clearup, (key,))
+            except:
+                #阻止抛出任何错误
                 pass
-            else:
-                limiter.pop(block=False)
-                start_new_thread(self.clearup, (key,))
             return True
 
     @classmethod
@@ -355,7 +376,9 @@ class LimitBase:
         try:
             with cls.lock:
                 if cls.limiters[key].empty():
-                    del cls.limiters[key]
+                    limiter = cls.limiters.pop(key)
+                    if len(cls._limiters_cache) < cls._limiters_cache_size:
+                        cls._limiters_cache.append(limiter)
         except KeyError:
             pass
 

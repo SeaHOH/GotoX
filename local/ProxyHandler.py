@@ -596,6 +596,8 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                         else:
                             response.sock.used = None
                             http_util.tcp_connection_cache[connection_cache_key].append((time(), response.sock))
+                    else:
+                        response.sock.close()
 
     def fake_OPTIONS(self, request_headers):
         response = [
@@ -871,13 +873,12 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 qGAE.put(True)
                 if response:
                     response.close()
-                    if noerror:
-                        if GC.GAE_KEEPALIVE:
-                            #放入套接字缓存
-                            http_gws.ssl_connection_cache['google_gae|:443'].append((time(), response.sock))
-                        else:
-                            #干扰严重时考虑不复用
-                            response.sock.close()
+                    if noerror and GC.GAE_KEEPALIVE:
+                        #放入套接字缓存
+                        http_gws.ssl_connection_cache['google_gae|:443'].append((time(), response.sock))
+                    else:
+                        #干扰严重时考虑不复用
+                        response.sock.close()
 
     #未配置 AppID
     if not GC.GAE_APPIDS:

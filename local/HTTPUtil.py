@@ -4,7 +4,6 @@
 import sys
 import os
 import re
-import gc
 import socket
 import ssl
 import struct
@@ -92,17 +91,15 @@ class LimitConnection(LimitBase):
     lock = threading.Lock()
 
     def __init__(self, sock, ip, max_per_ip=None, timeout=None):
-        #利用 __del__ 需及时触发回收
-        gc.collect()
         super().__init__(ip, max_per_ip, timeout)
         self._sock = sock
 
-    def __del__(self):
-        if super().__del__():
-            self._sock.close()
-
     def __getattr__(self, attr):
         return getattr(self._sock, attr)
+
+    def close(self):
+        if super().close():
+            self._sock.close()
 
     @classmethod
     def full(cls, ip):
@@ -120,9 +117,6 @@ class LimitRequest(LimitBase):
     max_per_key = 2
     timeout = 8
     lock = threading.Lock()
-
-    def close(self):
-        self.__del__()
 
 class BaseHTTPUtil:
     '''Basic HTTP Request Class'''
@@ -320,6 +314,7 @@ class BaseHTTPUtil:
                 sock.close()
                 return
         except OSError:
+            sock.close()
             return
         return True
 
@@ -337,17 +332,19 @@ class BaseHTTPUtil:
             #将键名放入元组
             keys = tuple(connection_cache.keys())
             for cache_key in keys:
+                if cache_key not in connection_cache:
+                    continue
                 cache = connection_cache[cache_key]
-                if not cache:
-                    del connection_cache[cache_key]
                 try:
                     while cache:
                         ctime, connection = cached_connection = cache.popleft()
-                        if check_connection_alive(connection._sock, keeptime, ctime):
+                        if check_connection_alive(connection, keeptime, ctime):
                             cache.appendleft(cached_connection)
                             break
                 except Exception as e:
                     logging.error('check_connection_cache(type=%r, key=%r) 错误：%s', type, cache_key, e)
+                if not cache:
+                    del connection_cache[cache_key]
 
     def clear_all_connection_cache(self):
         self.tcp_connection_cache.clear()
@@ -408,6 +405,7 @@ class HTTPUtil(BaseHTTPUtil):
                 queobj.put(sock)
                 return
 
+        sock = None
         try:
             sock = self.get_tcp_socket(ipaddr[0], timeout)
             # start connection time record
@@ -420,6 +418,8 @@ class HTTPUtil(BaseHTTPUtil):
             sock.xip = ipaddr
             queobj.put(sock)
         except NetWorkIOError as e:
+            if sock:
+                sock.close()
             # any socket.error, put Excpetions to output queobj.
             e.xip = ipaddr
             queobj.put(e)
@@ -511,6 +511,7 @@ class HTTPUtil(BaseHTTPUtil):
                     return
 
             ip = ipaddr[0]
+            sock = None
             try:
                 sock = self.get_tcp_socket(ip, timeout)
                 server_name = self.get_server_hostname(host, cache_key)
@@ -541,6 +542,8 @@ class HTTPUtil(BaseHTTPUtil):
                 # put ssl socket object to output queobj
                 queobj.put(ssl_sock)
             except NetWorkIOError as e:
+                if sock:
+                    sock.close()
                 # any socket.error, put Excpetions to output queobj.
                 e.xip = ipaddr
                 if callback:
@@ -564,14 +567,14 @@ class HTTPUtil(BaseHTTPUtil):
                 if ssl_sock.ssl_time < ssl_time_threshold:
                     cache.append((now, ssl_sock))
                 else:
-                    ssl_sock._sock.close()
+                    ssl_sock.close()
 
     def create_ssl_connection(self, address, hostname, cache_key, getfast=None, forward=None, **kwargs):
         def get_cache_sock():
             try:
                 while cache:
                     ctime, ssl_sock = cache.pop()
-                    if self.check_connection_alive(ssl_sock._sock, self.keeptime, ctime):
+                    if self.check_connection_alive(ssl_sock, self.keeptime, ctime):
                         return ssl_sock
             except IndexError:
                 pass
@@ -854,7 +857,7 @@ class HTTPUtil(BaseHTTPUtil):
                     timeout += 10
                 if ssl_sock:
                     ip = ssl_sock.xip
-                    ssl_sock._sock.close()
+                    ssl_sock.close()
                 elif sock:
                     ip = sock.xip
                     sock.close()

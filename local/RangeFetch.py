@@ -263,11 +263,13 @@ class RangeFetch:
                     if noerror:
                         #放入套接字缓存
                         ssl_connection_cache['google_gae|:443'].append((time(), response.sock))
-                    elif self.delable:
-                        with self.tLock:
-                             if xip in self.iplist and len(self.iplist) > self.minip:
-                                self.iplist.remove(xip)
-                                logging.warning('%s RangeFetch 移除故障 ip %s', self.address_string(response), xip)
+                    else:
+                        response.sock.close()
+                        if self.delable:
+                            with self.tLock:
+                                 if xip in self.iplist and len(self.iplist) > self.minip:
+                                    self.iplist.remove(xip)
+                                    logging.warning('%s RangeFetch 移除故障 ip %s', self.address_string(response), xip)
                 if noerror:
                     sleep(0.1)
 

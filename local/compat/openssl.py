@@ -121,9 +121,9 @@ class SSLConnection:
     readinto = recv_into
 
     def close(self):
-        closed = getattr(self, '_closed', True)
-        if not closed:
+        if hasattr(self._sock, 'close'):
             self._sock.close()
+            self._sock = None
 
     def makefile(self, *args, **kwargs):
         return socket.socket.makefile(self, *args, **kwargs)
