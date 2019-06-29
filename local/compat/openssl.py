@@ -5,10 +5,14 @@ import errno
 from OpenSSL import SSL, crypto
 from select import select
 from ipaddress import ip_address
-from ssl import _dnsname_match, _ipaddress_match
+from ssl import (
+    _DEFAULT_CIPHERS, _RESTRICTED_SERVER_CIPHERS,
+    _dnsname_match, _ipaddress_match)
 
 zero_errno = errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTSOCK
 zero_EOF_error = -1, 'Unexpected EOF'
+def_ciphers = _DEFAULT_CIPHERS.encode()
+res_ciphers = _RESTRICTED_SERVER_CIPHERS.encode()
 
 class SSLConnection:
     '''API-compatibility wrapper for Python OpenSSL's Connection-class.'''
@@ -59,7 +63,21 @@ class SSLConnection:
         client.set_accept_state()
         return client, addr
 
+    def session_reused(self):
+        return SSL._lib.SSL_session_reused(self._ssl) == 1
+
     def do_handshake(self):
+        with self._sock.lock:
+            name = '_session' + (':' in self._sock._key and '6' or '4')
+            session = getattr(self._context, name, None)
+            if session is not None:
+                self.set_session(session)
+            self.__iowait(self._connection.do_handshake)
+            if session is None or not self.session_reused():
+                setattr(self._context, name, self.get_session())
+
+    def do_handshake_server_side(self):
+        self.set_accept_state()
         self.__iowait(self._connection.do_handshake)
 
     def connect(self, addr):

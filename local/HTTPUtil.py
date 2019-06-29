@@ -8,7 +8,6 @@ import socket
 import ssl
 import struct
 import random
-import binascii
 import socks
 import collections
 import OpenSSL
@@ -21,7 +20,7 @@ from threading import _start_new_thread as start_new_thread
 from http.client import HTTPResponse
 from .GlobalConfig import GC
 from .compat.openssl import (
-    zero_EOF_error, SSLConnection,
+    zero_EOF_error, res_ciphers, SSL, SSLConnection,
     CertificateError, CertificateErrorTab, match_hostname
     )
 from .common.dns import dns, dns_resolve
@@ -121,7 +120,7 @@ class LimitRequest(LimitBase):
 class BaseHTTPUtil:
     '''Basic HTTP Request Class'''
 
-    ssl_ciphers = ssl._RESTRICTED_SERVER_CIPHERS
+    ssl_ciphers = res_ciphers
     new_sock4_cache = collections.deque()
     new_sock6_cache = collections.deque()
 
@@ -129,7 +128,7 @@ class BaseHTTPUtil:
         if GC.LINK_VERIFYG2PK:
             self.google_verify = self.google_verify_g23
         #建立公用 CA 证书库
-        self._context = OpenSSL.SSL.Context(OpenSSL.SSL.SSLv23_METHOD)
+        self._context = SSL.Context(SSL.SSLv23_METHOD)
         self.load_cacert(cacert)
         self._cert_store = OpenSSL._util.lib.SSL_CTX_get_cert_store(self._context._context)
         if ssl_ciphers:
@@ -167,14 +166,26 @@ class BaseHTTPUtil:
             return self.context_cache[server_hostname]
         except KeyError:
             pass
-        #强制 GWS 使用 TLSv1.2
-        context = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_2_METHOD if self.gws else GC.LINK_REMOTESSL)
-        #cache
-        context.set_session_id(binascii.b2a_hex(os.urandom(10)))
-        context.set_session_cache_mode(OpenSSL.SSL.SESS_CACHE_BOTH)
-        #validate
+        if self.gws:
+            #强制 GWS 使用 TLSv1.2
+            context = SSL.Context(SSL.TLSv1_2_METHOD)
+        else:
+            context = SSL.Context(GC.LINK_REMOTESSL)
+            #兼容模式 TLS 禁用 TLSv1 及以下版本
+            if GC.LINK_REMOTESSL == SSL.SSLv23_METHOD:
+                context.set_options(SSL.OP_NO_SSLv2)
+                context.set_options(SSL.OP_NO_SSLv3)
+                context.set_options(SSL.OP_NO_TLSv1)
+        #不使用压缩
+        context.set_options(SSL.OP_NO_COMPRESSION)
+        #通用问题修复
+        context.set_options(SSL.OP_ALL)
+        #会话重用
+        context.set_session_cache_mode(SSL.SESS_CACHE_CLIENT)
+        #证书验证
         OpenSSL._util.lib.SSL_CTX_set_cert_store(context._context, self._cert_store)
-        context.set_verify(OpenSSL.SSL.VERIFY_PEER, self._verify_callback)
+        context.set_verify(SSL.VERIFY_PEER, self._verify_callback)
+        #加密选择
         context.set_cipher_list(self.ssl_ciphers)
         self.context_cache[server_hostname] = context
         return context
@@ -909,10 +920,7 @@ gws_ciphers = (
     '!ECDHE-RSA-AES128-SHA:'
     #'!aNULL:!eNULL:!MD5:!DSS:!RC4:!3DES'
     '!aNULL:!eNULL:!EXPORT:!EXPORT40:!EXPORT56:!LOW:!RC4:!CBC'
-    )
-
-def_ciphers = ssl._DEFAULT_CIPHERS
-res_ciphers = ssl._RESTRICTED_SERVER_CIPHERS
+    ).encode()
 
 # max_window=4, timeout=8, proxy='', ssl_ciphers=None, max_retry=2
 http_gws = HTTPUtil(os.path.join(cert_dir, 'cacerts', 'gws.pem'), gws_ciphers, GC.LINK_WINDOW, GC.GAE_TIMEOUT, GC.proxy)

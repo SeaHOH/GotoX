@@ -16,7 +16,7 @@ from time import time, sleep
 from functools import partial
 from threading import _start_new_thread as start_new_thread
 from http.server import BaseHTTPRequestHandler, SimpleHTTPRequestHandler
-from .compat.openssl import SSL, SSLConnection, CertificateError
+from .compat.openssl import res_ciphers, SSL, SSLConnection, CertificateError
 from .common import cert
 from .common.decompress import decompress_readers
 from .common.dns import reset_dns, set_dns, dns_resolve, dns
@@ -110,7 +110,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             context.set_tlsext_servername_callback(self.pick_certificate)
             try:
                 request = SSLConnection(context, request)
-                request.set_accept_state()
+                request.do_handshake_server_side()
                 self.ssl_request = True
                 rd, _, ed = select([request], [], [request], 4)
                 if ed:
@@ -1051,7 +1051,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         context = self.get_context()
         try:
             ssl_sock = SSLConnection(context, self.connection)
-            ssl_sock.set_accept_state()
+            ssl_sock.do_handshake_server_side()
             self.fakecert = True
         except ssl.SSLEOFError:
             return
@@ -1332,7 +1332,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             self.close_connection = True
 
     @_lock_context
-    def get_context(self, servername=None):
+    def get_context(self, servername=None, callback=lambda *x: 1):
         #维护一个 ssl context 缓存
         host = servername or self.host
         ip = isip(host)
@@ -1347,9 +1347,26 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         except KeyError:
             certfile = cert.get_cert(host, ip)
             self.context_cache[host] = context = SSL.Context(GC.LINK_LOCALSSL)
+            #兼容模式 TLS 禁用 TLSv1 及以下版本
+            if GC.LINK_LOCALSSL == SSL.SSLv23_METHOD:
+                context.set_options(SSL.OP_NO_SSLv2)
+                context.set_options(SSL.OP_NO_SSLv3)
+                context.set_options(SSL.OP_NO_TLSv1)
+            #不使用压缩
+            context.set_options(SSL.OP_NO_COMPRESSION)
+            #通用问题修复
+            context.set_options(SSL.OP_ALL)
+            #假证书
             context.use_privatekey_file(cert.sub_keyfile)
             context.use_certificate_file(certfile)
-            context.set_session_id('GotoX_SSL_Server')
+            #无客户端验证
+            context.set_verify(SSL.VERIFY_NONE, callback)
+            #加密选择
+            context.set_cipher_list(res_ciphers)
+            context.set_options(SSL.OP_CIPHER_SERVER_PREFERENCE)
+            #会话重用
+            context.set_session_id(os.urandom(16))
+            context.set_session_cache_mode(SSL.SESS_CACHE_SERVER)
             return context
 
     def send_CA(self):
