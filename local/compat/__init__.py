@@ -41,6 +41,7 @@ if os.path.dirname(sys.executable) != py_dir:
 
 @clean_after_invoked
 def init():
+    patch_stdout()
     try:
         import gevent
         import gevent.monkey

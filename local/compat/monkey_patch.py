@@ -10,6 +10,16 @@ def replace_logging():
     clogging.preferredEncoding = 'cp936'
 
 @clean_after_invoked
+def patch_stdout():
+    import io
+    import sys
+    if sys.version_info[1] < 6:
+        sys.stdout = io.TextIOWrapper(sys.stdout.detach(),
+                                      encoding=sys.stdout.encoding,
+                                      errors='backslashreplace',
+                                      line_buffering=True)
+
+@clean_after_invoked
 def patch_builtins():
     import builtins
 
