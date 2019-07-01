@@ -29,6 +29,18 @@ _SSLv = {
     'TLSv1.2' : 6
     }
 
+def _servers_2_addresses(servers, default_port):
+    for server in servers:
+        addr, _, port = server.partition(':')
+        try:
+            port = int(port)
+        except:
+            port = default_port
+        yield addr, port
+
+def servers_2_addresses(servers, default_port):
+    return tuple(_servers_2_addresses(servers, default_port))
+
 #load config from proxy.ini
 #ENV_CONFIG_PREFIX = 'GOTOX_'
 CONFIG = ConfigParser(dict_type=dict, inline_comment_prefixes=('#', ';'))
@@ -214,8 +226,8 @@ class GC:
     AUTORANGE_BIG_SLEEPTIME = CONFIG.getint('autorange/big', 'sleeptime', fallback=5)
     AUTORANGE_BIG_LOWSPEED = CONFIG.getint('autorange/big', 'lowspeed', fallback=0)
 
-    DNS_SERVERS = CONFIG.gettuple('dns', 'servers', fallback='8.8.8.8')
-    DNS_LOCAL_SERVERS = CONFIG.gettuple('dns', 'localservers', fallback='114.114.114.114')
+    DNS_SERVERS = servers_2_addresses(CONFIG.gettuple('dns', 'servers', fallback='8.8.8.8'), 53)
+    DNS_LOCAL_SERVERS = servers_2_addresses(CONFIG.gettuple('dns', 'localservers', fallback='114.114.114.114'), 53)
     DNS_LOCAL_HOST = CONFIG.getboolean('dns', 'localhost', fallback=True)
     DNS_LOCAL_WHITELIST = CONFIG.gettuple('dns', 'localwhitelist')
     DNS_LOCAL_BLACKLIST = CONFIG.gettuple('dns', 'localblacklist')

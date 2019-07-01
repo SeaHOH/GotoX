@@ -92,8 +92,23 @@ reset_dns()
 from .region import islocal
 from local.HTTPUtil import http_gws
 
+def _address_string(xip):
+    xip0, xip1 = xip[:2]
+    if isipv6(xip):
+        xip0 = '[%s]' % xip0
+    if xip1 in (53, 443):
+        return xip0
+    else:
+        return '%s:%s' % (xip0, xip1)
+
 def address_string(item):
-   return item.xip[0] + ' ' if hasattr(item, 'xip') else ''
+    if not hasattr(item, 'xip'):
+        return ''
+    xips = item.xip
+    if isinstance(xips, list):
+        return '｜'.join(_address_string(xip) for xip in xips) + ' '
+    else:
+        return _address_string(xips) + ' '
 
 class dns_params:
     ssl = True
@@ -151,7 +166,7 @@ def _https_resolve(qname, qtype, queobj):
         finally:
             if response:
                 response.close()
-                xip = response.xip[0]
+                xip = response.xip
                 if noerror:
                     if GC.GAE_KEEPALIVE:
                         http_gws.ssl_connection_cache[https_resolve_cache_key].append((time(), response.sock))
@@ -172,7 +187,7 @@ def _dns_over_https_resolve(qname, qtypes=qtypes):
         if xip and xip not in xips:
             xips.append(xip)
     if xips:
-        iplist.xip = '｜'.join(xips),
+        iplist.xip = xips
     return iplist
 
 remote_query_opt = dnslib.EDNS0(flags='do', udp_len=1024)
@@ -190,8 +205,8 @@ def _dns_remote_resolve(qname, dnsservers, blacklist=[], timeout=2, qtypes=qtype
         query.add_ar(remote_query_opt)
         query_datas.append(query.pack())
         #ids.append(query.header.id)
-    dns_v4_servers = [x for x in dnsservers if isipv4(x)]
-    dns_v6_servers = [x for x in dnsservers if isipv6(x)]
+    dns_v4_servers = [x for x in dnsservers if isipv4(x[0])]
+    dns_v6_servers = [x for x in dnsservers if isipv6(x[0])]
     socks = []
     if dns_v4_servers:
         sock_v4 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -209,11 +224,11 @@ def _dns_remote_resolve(qname, dnsservers, blacklist=[], timeout=2, qtypes=qtype
     try:
         for dnsserver in dns_v4_servers:
             for query_data in query_datas:
-                sock_v4.sendto(query_data, (dnsserver, 53))
+                sock_v4.sendto(query_data, dnsserver)
                 query_times += 1
         for dnsserver in dns_v6_servers:
             for query_data in query_datas:
-                sock_v6.sendto(query_data, (dnsserver, 53))
+                sock_v6.sendto(query_data, dnsserver)
                 query_times += 1
     except socket.error as e:
         logging.warning('send dns query=%s socket: %r', query, e)
@@ -262,15 +277,15 @@ def _dns_remote_resolve(qname, dnsservers, blacklist=[], timeout=2, qtypes=qtype
                     v4_resolved = _v4_resolved
                     v6_resolved = _v6_resolved
                     iplist.extend(_iplist)
-                if xip[0] not in xips:
-                    xips.append(xip[0])
+                if xip not in xips:
+                    xips.append(xip)
         except socket.error as e:
             logging.warning('receive dns query=%s socket: %r', query, e)
     for sock in socks:
         sock.close()
     logging.debug('query qname=%r reply iplist=%s', qname, iplist)
     if xips:
-        iplist.xip = '｜'.join(xips),
+        iplist.xip = xips
     return iplist
 
 def get_dnsserver_list():
@@ -308,7 +323,7 @@ local_dnsservers = set(ip for ip in get_dnsserver_list() if isip(ip))
 if '127.0.0.1' in local_dnsservers and '::1' in local_dnsservers:
     #视为同一个本地服务器，大多数情况下这是正确地
     local_dnsservers.remove('::1')
-local_dnsservers = list(local_dnsservers)
+local_dnsservers = tuple((server, 53) for server in local_dnsservers)
 if local_dnsservers:
     logging.test('已读取系统当前 DNS 设置：%r', local_dnsservers)
 else:
@@ -331,8 +346,8 @@ def dns_system_resolve(host, qtypes=qtypes):
     except:
         iplist = None
     cost = int((time() - now) * 1000)
-    logging.test('dns_system_resolve 已缓存：%s/%s，耗时：%s 毫秒，%s = %s',
-                 len(dns), dns.max_items, cost, host, iplist or '查询失败')
+    logging.test('%sdns_system_resolve 已缓存：%s/%s，耗时：%s 毫秒，%s = %s',
+                 address_string(iplist), len(dns), dns.max_items, cost, host, iplist or '查询失败')
     return iplist
 
 def dns_remote_resolve(host, qtypes=qtypes):
