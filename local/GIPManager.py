@@ -13,8 +13,9 @@ from time import time, sleep, localtime, strftime
 from threading import _start_new_thread as start_new_thread
 from .common.internet_active import internet_v4, internet_v6
 from .common.net import NetWorkIOError, random_hostname, isip, isipv4, isipv6
+from .common.decorator import make_lock_decorator
 from .common.path import data_dir
-from .common.util import make_lock_decorator, LimiterFull
+from .common.util import LimiterFull
 from .compat.openssl import zero_EOF_error, CertificateError
 from .HTTPUtil import http_gws
 from .ProxyServer import network_test

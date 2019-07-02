@@ -1,6 +1,6 @@
 # coding:utf-8
 
-from . import clean_after_invoked
+from local.common.decorator import clean_after_invoked
 
 @clean_after_invoked
 def replace_logging():

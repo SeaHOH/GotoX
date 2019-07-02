@@ -26,12 +26,10 @@ from .compat.openssl import (
 from .common.dns import dns, dns_resolve
 from .common.internet_active import internet_v4, internet_v6
 from .common.net import NetWorkIOError, random_hostname, bypass_errno, isip
+from .common.decorator import make_lock_decorator
 from .common.path import cert_dir
 from .common.proxy import parse_proxy, proxy_no_rdns
-from .common.util import (
-    make_lock_decorator, LRUCache,
-    LimiterFull, LimitBase, wait_exit
-    )
+from .common.util import LRUCache, LimiterFull, LimitBase, wait_exit
 from .FilterUtil import reset_method_list, get_fake_sni
 
 GoogleG23PKP = {
@@ -99,15 +97,6 @@ class LimitConnection(LimitBase):
     def close(self):
         if super().close():
             self._sock.close()
-
-    @classmethod
-    def full(cls, ip):
-        try:
-            limiter = cls.limiters[ip]
-        except KeyError:
-            return False
-        else:
-            return limiter.full()
 
 class LimitRequest(LimitBase):
     'A request limiter for host cache key.'
@@ -845,17 +834,17 @@ class HTTPUtil(BaseHTTPUtil):
                 headers['Content-Length'] = str(len(payload))
 
         for i in range(self.max_retry):
-            limiter = None
+            limiter_pushed = True
             sock = None
             ssl_sock = None
             ip = ''
             try:
-                limiter = LimitRequest(connection_cache_key)
+                limiter_pushed = LimitRequest.push(connection_cache_key)
                 if ssl:
                     ssl_sock = self.create_ssl_connection(address, hostname, connection_cache_key, getfast=bool(getfast))
                 else:
                     sock = self.create_connection(address, hostname, connection_cache_key)
-                limiter.close()
+                limiter_pushed = LimitRequest.pop(connection_cache_key)
                 result = ssl_sock or sock
                 if result:
                     result.settimeout(timeout)
@@ -882,13 +871,15 @@ class HTTPUtil(BaseHTTPUtil):
                     if ip and realurl:
                         self.ssl_connection_time[ip] = self.timeout + 1
                 if not realurl and e.args[0] in bypass_errno or i == self.max_retry - 1 and isinstance(e, LimiterFull):
+                    if ip:
+                        e.xip = ip
                     raise e
                 #确保不重复上传数据
                 if has_content and (sock or ssl_sock):
                     return
             finally:
-                if limiter:
-                    limiter.close()
+                if limiter_pushed:
+                    LimitRequest.pop(connection_cache_key)
 
 # Google video ip can act as Google Web Server if cipher suits not include
 # RC4-SHA

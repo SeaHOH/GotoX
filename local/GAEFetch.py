@@ -12,7 +12,8 @@ from .GlobalConfig import GC
 from .GIPManager import test_ip_gae
 from .HTTPUtil import http_gws
 from .common.decompress import GzipSock
-from .common.util import make_lock_decorator, LRUCache
+from .common.decorator import make_lock_decorator
+from .common.util import LRUCache
 
 timezone_PST = timezone - 3600 * 8 # UTC-8
 timezone_PDT = timezone - 3600 * 7 # UTC-7

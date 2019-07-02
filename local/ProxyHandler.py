@@ -19,6 +19,7 @@ from http.server import BaseHTTPRequestHandler, SimpleHTTPRequestHandler
 from .compat.openssl import res_ciphers, SSL, SSLConnection, CertificateError
 from .common import cert
 from .common.decompress import decompress_readers
+from .common.decorator import make_lock_decorator
 from .common.dns import reset_dns, set_dns, dns_resolve, dns
 from .common.net import (
     NetWorkIOError, reset_errno, closed_errno, bypass_errno,
@@ -26,7 +27,7 @@ from .common.net import (
 from .common.path import web_dir
 from .common.proxy import parse_proxy, proxy_no_rdns
 from .common.region import isdirect
-from .common.util import make_lock_decorator, LRUCache, LimiterFull, message_html
+from .common.util import LRUCache, LimiterFull, message_html
 from .GlobalConfig import GC
 from .HTTPUtil import LimitRequest, http_gws, http_nor
 from .RangeFetch import RangeFetchs
@@ -195,7 +196,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             self.wfile.flush() #actually send the response if not already done.
         except socket.timeout as e:
             #a read or a write timed out.  Discard this connection
-            self.log_error("Request timed out: %r", e)
+            logging.debug('%s Request timed out: %r', self.address_string(), e)
             self.close_connection = True
         except SSL.Error as e:
             if isinstance(e.args[0], list) and any('certificate unknown' in arg for arg in e.args[0][0]):
@@ -533,7 +534,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                         return
                     #非默认规则、直连 IP
                     elif self.target or isdirect(self.host):
-                        logging.warning('%s do_DIRECT "%s %s" 没有正确响应，重试。', self.address_string(response), self.command, self.url)
+                        logging.warning('%s do_DIRECT "%s %s" 没有正确响应，重试。', self.address_string(), self.command, self.url)
                         continue
                     else:
                         logging.warn('%s do_DIRECT "%s %s" 失败，尝试使用 "GAE" 规则。', self.address_string(), self.command, self.url)
@@ -569,16 +570,16 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 #连接重置
                 if e.args[0] in reset_errno:
                     if isdirect(self.host):
-                        logging.warning('%s do_DIRECT "%s %s" 连接被重置，重试。', self.address_string(response), self.command, self.url)
+                        logging.warning('%s do_DIRECT "%s %s" 连接被重置，重试。', self.address_string(e), self.command, self.url)
                         continue
                     else:
-                        logging.warning('%s do_DIRECT "%s %s" 连接被重置，尝试使用 "GAE" 规则。', self.address_string(response), self.command, self.url)
+                        logging.warning('%s do_DIRECT "%s %s" 连接被重置，尝试使用 "GAE" 规则。', self.address_string(e), self.command, self.url)
                         return self.go_GAE()
                 elif e.args[0] not in bypass_errno:
                     raise e
             except Exception as e:
                 noerror = False
-                logging.warning('%s do_DIRECT "%s %s" 失败：%r', self.address_string(response), self.command, self.url, e)
+                logging.warning('%s do_DIRECT "%s %s" 失败：%r', self.address_string(response or e), self.command, self.url, e)
                 raise e
             finally:
                 if not noerror:
@@ -615,7 +616,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         response.append('Access-Control-Allow-Origin: ' + origin)
         response.append('\r\n')
         self.write('\r\n'.join(response))
-        logging.info('%s "%s FAKEOPTIONS %s HTTP/1.1" 200 0', self.address_string(response), self.action[3:], self.url)
+        logging.info('%s "%s FAKEOPTIONS %s HTTP/1.1" 200 0', self.address_string(), self.action[3:], self.url)
 
     def do_GAE(self):
         #发送请求到 GAE 代理
@@ -678,7 +679,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         last_response = None
         for retry in range(GC.GAE_FETCHMAX):
             if retry > 0 and payload:
-                logging.warning('%s do_GAE 由于有上传数据 "%s %s" 终止重试', self.address_string(), self.command, self.url)
+                logging.warning('%s do_GAE 由于有上传数据 "%s %s" 终止重试', self.address_string(last_response), self.command, self.url)
                 self.close_connection = True
                 return
             appid = get_appid()
@@ -834,7 +835,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                         (isinstance(e, NetWorkIOError) and len(e.args) > 1 and 'bad write' in e.args[1]) or \
                         (isinstance(e.args[0], list) and any('bad write' in arg for arg in e.args[0][0])):
                     #连接主动终止
-                    logging.debug('%s do_GAE %r 返回 %r，终止', self.address_string(response), self.url, e)
+                    logging.debug('%s do_GAE %r 返回 %r，终止', self.address_string(response or e), self.url, e)
                     self.close_connection = True
                     return
                 elif retry < GC.GAE_FETCHMAX - 1:
@@ -844,13 +845,13 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                             request_headers['Range'] = 'bytes=%d-%s' % (start, end)
                     elif start > 0:
                         #终止不支持 Range 的且中途失败的请求
-                        logging.error('%s do_GAE "%s %s" 失败：%r', self.address_string(response), self.command, self.url, e)
+                        logging.error('%s do_GAE "%s %s" 失败：%r', self.address_string(response or e), self.command, self.url, e)
                         self.close_connection = True
                         return
-                    logging.warning('%s do_GAE "%s %s" 返回：%r，重试', self.address_string(response), self.command, self.url, e)
+                    logging.warning('%s do_GAE "%s %s" 返回：%r，重试', self.address_string(response or e), self.command, self.url, e)
                 else:
                     #请求失败
-                    logging.exception('%s do_GAE "%s %s" 失败：%r', self.address_string(response), self.command, self.url, e)
+                    logging.exception('%s do_GAE "%s %s" 失败：%r', self.address_string(response or e), self.command, self.url, e)
                     self.close_connection = True
             finally:
                 if retry == GC.GAE_FETCHMAX - 1 and not headers_sent:
@@ -903,10 +904,10 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         else:
             create_connection = http_util.create_connection
         for _ in range(2):
-            limiter = None
+            limiter_pushed = None
             limited = None
             try:
-                limiter = LimitRequest(connection_cache_key)
+                limiter_pushed = LimitRequest.push(connection_cache_key)
                 if not GC.PROXY_ENABLE:
                     remote = create_connection((host, port), hostname, connection_cache_key, ssl=self.ssl, forward=self.fwd_timeout)
                 else:
@@ -915,11 +916,12 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 break
             except LimiterFull:
                 limited = True
+                logging.warning('%s 转发到 %r 失败：%r', self.address_string(), self.url or host, e)
             except NetWorkIOError as e:
                 logging.warning('%s 转发到 %r 失败：%r', self.address_string(e), self.url or host, e)
             finally:
-                if limiter:
-                    limiter.close()
+                if limiter_pushed:
+                    LimitRequest.pop(connection_cache_key)
         if remote is None:
             if not limited and not isdirect(host):
                 if self.command == 'CONNECT':
@@ -1394,34 +1396,31 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         self.close_connection = False
         self.write('HTTP/1.1 204 No Content\r\n'
                    'Content-Length: 0\r\n\r\n')
-        logging.warning('%s "%s %s HTTP/1.1" 204 0，GotoX 命令执行完毕。',
-            self.address_string(), self.command, self.url)
+        logging.warning('%s "%s %s HTTP/1.1" 204 0，GotoX 命令 [%s] 执行完毕。',
+            self.address_string(), self.command, self.url, cmd)
 
     def log_error(self, format, *args):
         self.close_connection = True
-        if format != "Request timed out: %r":
-            logging.error('%s "%s %s %s" 失败，%s', self.address_string(), self.action[3:], self.command, self.url or self.host, format % args)
+        logging.error('%s "%s %s %s" 失败，' + format, self.address_string(), self.action[3:], self.command, self.url or self.host, *args)
 
     def address_string(self, response=None):
         #返回请求和响应的地址
         if not hasattr(self, 'address_str'):
-            client_ip = self.client_address[0]
+            client_ip, client_port = self.client_address[0:2]
             if client_ip.endswith('127.0.0.1'):
                 client_ip = 'L4'
             elif client_ip == '::1':
                 client_ip = 'L6'
-            self.address_str = '%s:%s->' % (client_ip, self.client_address[1])
-        xip0, xip1 = getattr(response, 'xip', ('', None))
+            self.address_str = '%s:%s->' % (client_ip, client_port)
+        if not hasattr(response, 'xip'):
+            return self.address_str
+        xip0, xip1 = response.xip
         if isipv6(xip0):
             xip0 = '[%s]' % xip0
-        if hasattr(self, 'port') and self.port in (80, 443):
-            if xip0:
-                return '%s%s' % (self.address_str, xip0)
-        elif xip0:
+        if xip1 in (80, 443):
+            return '%s%s' % (self.address_str, xip0)
+        else:
             return '%s%s:%s' % (self.address_str, xip0, xip1)
-        elif hasattr(self, 'port'):
-            return '%s:%s' % (self.address_str, self.port)
-        return self.address_str
 
 class GAEProxyHandler(AutoProxyHandler):
 

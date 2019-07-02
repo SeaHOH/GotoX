@@ -2,46 +2,13 @@
 
 import os
 import string
-import _thread
 import threading
 import collections
 import logging
 from time import time, sleep
 from threading import _start_new_thread as start_new_thread
+from .decorator import make_lock_decorator
 
-LockType = _thread.LockType, threading.Lock, threading._CRLock, threading._PyRLock
-_lock_decorator_cache = {}
-
-def make_lock_decorator(lock=None, rlock=False):
-    if isinstance(lock, str):
-        try:
-            return _lock_decorator_cache[lock]
-        except KeyError:
-            pass
-    elif lock is None:
-        if rlock:
-            lock = threading.RLock()
-        else:
-            lock = threading.Lock()
-    elif isinstance(lock, LockType):
-        raise ValueError('lock parameter must be a lock name string or instance.')
-
-    def lock_decorator(func):
-        def newfunc(*args, **kwargs):
-            if isinstance(lock, str):
-                _lock = getattr(args[0], lock)
-            else:
-                _lock = lock
-            _lock.acquire()
-            try:
-                return func(*args, **kwargs)
-            finally:
-                _lock.release()
-        return newfunc
-
-    if isinstance(lock, str):
-        _lock_decorator_cache[lock] = lock_decorator
-    return lock_decorator
 
 _lock_i_lock = make_lock_decorator('lock')
 
@@ -317,11 +284,12 @@ class Limiter:
 class LimitBase:
     '''Base limiter via dict key.
 
+    Don't modify the following properties in subclass:
     _key:                 dict key which marking objects
     _limiters_cache:      store the idle limiters
     _limiters_cache_size: max number of the idle limiters
 
-    Subclasses must customize the following properties:
+    Subclass must customize the following properties:
     limiters:             limiters in dict
     max_per_key:          allow objects max size per key
     timeout:              push and pop method timedout
@@ -333,24 +301,7 @@ class LimitBase:
     _limiters_cache_size = 128
 
     def __init__(self, key, max_per_key=None, timeout=None):
-        max_per_key = max_per_key or self.max_per_key
-        timeout = timeout or self.timeout
-        exist = None
-        with self.lock:
-            try:
-                limiter = self.limiters[key]
-                exist = True
-            except KeyError:
-                if self._limiters_cache:
-                    limiter = self._limiters_cache.pop()
-                    limiter.maxsize = max_per_key
-                else:
-                    limiter = Limiter(max_per_key)
-                #避免在 lock 释放后 limiter 可能被 clearup 删除
-                limiter._Limiter__qsize = 1
-                self.limiters[key] = limiter
-        if exist:
-            limiter.push(timeout=timeout, maxsize=max_per_key)
+        self.push(key, max_per_key, timeout)
         self._key = key
 
     #主要使用 close 来解除限制，可避免只使用 __del__ 时需频繁地主动 GC
@@ -358,20 +309,55 @@ class LimitBase:
         self.close()
 
     def close(self):
-        if self._key:
-            self._key, key = None, self._key
-            try:
-                with self.lock:
-                    self.limiters[key].pop(block=False)
-                if self.limiters[key].empty():
-                    start_new_thread(self.clearup, (key,))
-            except:
-                #阻止抛出任何错误
-                pass
+        self._key, key = None, self._key
+        if key:
+            self.pop(key)
             return True
 
     @classmethod
+    def push(cls, key, max_per_key=None, timeout=None):
+        max_per_key = max_per_key or cls.max_per_key
+        timeout = timeout or cls.timeout
+        exist = None
+        with cls.lock:
+            try:
+                limiter = cls.limiters[key]
+                exist = True
+            except KeyError:
+                if cls._limiters_cache:
+                    limiter = cls._limiters_cache.pop()
+                    limiter.maxsize = max_per_key
+                else:
+                    limiter = Limiter(max_per_key)
+                #确保正确计数，及避免在 lock 释放后 limiter 可能被 clearup 删除
+                limiter._Limiter__qsize = 1
+                cls.limiters[key] = limiter
+        if exist:
+            limiter.push(timeout=timeout, maxsize=max_per_key)
+        return True
+
+    @classmethod
+    def pop(cls, key):
+        try:
+            cls.limiters[key].pop(block=False)
+            if cls.limiters[key].empty():
+                cls.clearup(key)
+        except:
+            cls.clearup(key)
+
+    @classmethod
+    def full(cls, key):
+        try:
+            return cls.limiters[key].full()
+        except KeyError:
+            return False
+
+    @classmethod
     def clearup(cls, key):
+        start_new_thread(cls._clearup, (key,))
+
+    @classmethod
+    def _clearup(cls, key):
         sleep(timeout_interval)
         try:
             with cls.lock:

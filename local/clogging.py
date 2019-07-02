@@ -7,7 +7,7 @@ Similar, but not fully compatible with official 'logging.__init__' module.
 import sys, os, time, traceback
 from encodings import search_function as searchCodecInfo
 from codecs import CodecInfo
-from .common.util import make_lock_decorator
+from .common.decorator import make_lock_decorator
 
 __all__ = ['CRITICAL', 'FATAL', 'ERROR', 'WARNING', 'WARN', 'INFO', 'DEBUG',
            'NOTSET', 'NULL_STREAM', 'COLORS', 'addLevelName', 'getLevelName',
@@ -213,23 +213,27 @@ def _checkOrigLevel(level):
 def _write(msg, file=None, onerr=None, color=None, reset=None):
     if file is NULL_STREAM:
         return
-    stdout_isatty = hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
-    stderr_isatty = hasattr(sys.stderr, 'isatty') and sys.stderr.isatty()
+    stdout = sys.stdout
+    stderr = sys.stderr
+    stdout_isatty = hasattr(stdout, 'isatty') and stdout.isatty()
+    stderr_isatty = hasattr(stderr, 'isatty') and stderr.isatty()
     if file is None:
-        file = sys.stderr if onerr else sys.stdout
+        file = stderr if onerr else stdout
         if onerr and not (stdout_isatty and stderr_isatty):
-            _write(msg, file=sys.stdout, color=color, reset=reset)
+            _write(msg, file=stdout, color=color, reset=reset)
     fd = file.fileno()
-    stdout_fd = sys.stdout.fileno()
-    stderr_fd = sys.stderr.fileno()
+    stdout_fd = stdout.fileno()
+    stderr_fd = stderr.fileno()
     if onerr:
         if stderr_isatty and fd == stderr_fd or \
                 stdout_isatty and fd == stdout_fd:
             pass
         elif stderr_isatty and fd != stderr_fd:
-            _write(msg, file=sys.stderr, color=color, reset=reset)
+            _write(msg, file=stderr, color=color, reset=reset)
         elif stdout_isatty and fd != stdout_fd:
-            _write(msg, file=sys.stdout, color=color, reset=reset)
+            _write(msg, file=stdout, color=color, reset=reset)
+    if not hasattr(file, 'writable') or not file.writable():
+        return
     if fd == stdout_fd:
         isatty = stdout_isatty
         handle = _StdoutHandle
@@ -344,6 +348,9 @@ class LogFile(object):
             finally:
                 if hasattr(stream, 'close'):
                     stream.close()
+
+    def writable(self):
+        return hasattr(self.stream, 'writable') and self.stream.writable()
 
     def encode(self, s, errors):
         return self.codecInfo.encode(s, errors)
