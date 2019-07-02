@@ -1349,11 +1349,10 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         except KeyError:
             certfile = cert.get_cert(host, ip)
             self.context_cache[host] = context = SSL.Context(GC.LINK_LOCALSSL)
-            #兼容模式 TLS 禁用 TLSv1 及以下版本
+            #兼容模式 TLS 禁用 SSLv3 及以下版本
             if GC.LINK_LOCALSSL == SSL.SSLv23_METHOD:
                 context.set_options(SSL.OP_NO_SSLv2)
                 context.set_options(SSL.OP_NO_SSLv3)
-                context.set_options(SSL.OP_NO_TLSv1)
             #不使用压缩
             context.set_options(SSL.OP_NO_COMPRESSION)
             #通用问题修复
