@@ -19,15 +19,52 @@ refresh_proxy = os.path.join(app_root, 'launcher', 'refresh_proxy_win.py')
 
 
 import winreg
+import ctypes
 from subprocess import Popen
 from local import __version__ as gotoxver
 
 SET_PATH = r'Software\Microsoft\Windows\CurrentVersion\Internet Settings'
-SETTINGS = winreg.OpenKey(winreg.HKEY_CURRENT_USER, SET_PATH, 0, winreg.KEY_ALL_ACCESS)
 ProxyOverride = ';'.join(
     ['localhost', '127.*', '192.168.*', '10.*'] +
     ['100.%d.*' % (64 + n) for n in range(1 << 6)] +
     ['172.%d.*' % (16 + n) for n in range(1 << 4)])
+
+hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+
+def reg_notify():
+    assert RegNotifyChangeKeyValue(
+        SETTINGS.handle,                   # hKey
+        False,                             # bWatchSubtree
+        winreg.REG_NOTIFY_CHANGE_LAST_SET, # dwNotifyFilter
+        notifyHandle,                      # hEvent
+        True                               # fAsynchronous
+    ) == 0, 'RegNotifyChangeKeyValue 失败'
+
+try:
+    ACCESS = winreg.KEY_QUERY_VALUE | winreg.KEY_NOTIFY | winreg.KEY_SET_VALUE
+    SETTINGS = winreg.OpenKey(winreg.HKEY_CURRENT_USER, SET_PATH, access=ACCESS)
+    CreateEvent = ctypes.windll.kernel32.CreateEventA
+    SetEvent = ctypes.windll.kernel32.SetEvent
+    RegNotifyChangeKeyValue = ctypes.windll.advapi32.RegNotifyChangeKeyValue
+    WaitForSingleObject = ctypes.windll.kernel32.WaitForSingleObject
+    INFINITE = -1
+
+    notifyHandle = CreateEvent(
+        None,                      # lpEventAttributes
+        False,                     # bManualReset
+        False,                     # bInitialState
+        'pyInternetSettingsNotify' # lpName
+    )
+    assert notifyHandle != 0, 'CreateEvent 失败'
+    reg_notify()
+except Exception as e:
+    reg_notify = None
+    if notifyHandle:
+        CloseHandle(notifyHandle)
+        notifyHandle = None
+    logging.warning('发生错误：%s，采用轮询方式替代注册表监视。', e)
+    ACCESS = winreg.KEY_QUERY_VALUE | winreg.KEY_SET_VALUE
+    SETTINGS = winreg.OpenKey(winreg.HKEY_CURRENT_USER, SET_PATH, access=ACCESS)
 
 class proxy_server:
     __slots__ = 'type', 'pac', 'http', 'https', 'ftp', 'socks'
@@ -154,9 +191,6 @@ def stop_GotoX():
         else:
             logging.warning('GotoX 进程已经结束，code：%s。', retcode)
 
-import ctypes
-hwnd = ctypes.windll.kernel32.GetConsoleWindow()
-
 def on_show(systray):
     ctypes.windll.user32.ShowWindow(hwnd, 1)
 
@@ -189,6 +223,8 @@ def on_quit(systray):
     winreg.CloseKey(SETTINGS)
     global running
     running = False
+    if reg_notify and SetEvent(notifyHandle) == 0:
+        sys.exit(0)
 
 def on_disable_proxy(systray):
     proxy_state = proxy_state_menu
@@ -358,6 +394,14 @@ def balloons_warning(text, title='注意'):
         balloons=(text, title, 2 | 32, 15)
         )
 
+def notify_proxy_changed():
+    global proxy_state
+    now_proxy_state = get_proxy_state()
+    if proxy_state.str != now_proxy_state.str:
+        text = '设置由：\n%s\n变更为：\n%s' % (proxy_state, now_proxy_state)
+        proxy_state = now_proxy_state
+        balloons_warning(text, '系统代理改变')
+
 proxy_state = get_proxy_state()
 sleep(1)
 balloons_info('\nGotoX 已经启动。        \n\n'
@@ -366,15 +410,20 @@ balloons_info('\nGotoX 已经启动。        \n\n'
               '右键单击：隐显窗口\n\n'
               '当前系统代理设置为：\n'
               '%s' % proxy_state)
+
 running = True
-while running:
-    now_proxy_state = get_proxy_state()
-    if proxy_state.str != now_proxy_state.str:
-        text = '设置由：\n%s\n变更为：\n%s' % (proxy_state, now_proxy_state)
-        proxy_state = now_proxy_state
-        balloons_warning(text, '系统代理改变')
-    for _ in range(50):
-        if running:
-            sleep(0.1)
-        else:
+if reg_notify is None:
+    while running:
+        for _ in range(50):
+            if running:
+                sleep(0.1)
+            else:
+                break
+        notify_proxy_changed()
+else:
+    while running:
+        WaitForSingleObject(notifyHandle, INFINITE)
+        if not running:
             break
+        notify_proxy_changed()
+        reg_notify()
