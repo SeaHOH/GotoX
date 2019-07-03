@@ -219,10 +219,9 @@ def on_about(systray):
     ctypes.windll.user32.MessageBoxW(None, about, '关于', 0)
 
 def on_quit(systray):
-    stop_GotoX()
-    winreg.CloseKey(SETTINGS)
     global running
     running = False
+    stop_GotoX()
     if reg_notify and SetEvent(notifyHandle) == 0:
         sys.exit(0)
 

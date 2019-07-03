@@ -309,10 +309,17 @@ class LimitBase:
         self.close()
 
     def close(self):
-        self._key, key = None, self._key
+        with self.lock:
+            self._key, key = None, self._key
         if key:
             self.pop(key)
             return True
+
+    def get_limite_lock(self):
+        try:
+            return self.limiters[self._key].lock
+        except KeyError:
+            return self.lock
 
     @classmethod
     def push(cls, key, max_per_key=None, timeout=None):

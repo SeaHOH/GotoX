@@ -67,14 +67,15 @@ class SSLConnection:
         return SSL._lib.SSL_session_reused(self._ssl) == 1
 
     def do_handshake(self):
-        with self._sock.lock:
-            name = '_session' + (':' in self._sock._key and '6' or '4')
-            session = getattr(self._context, name, None)
-            if session is not None:
-                self.set_session(session)
-            self.__iowait(self._connection.do_handshake)
-            if session is None or not self.session_reused():
-                setattr(self._context, name, self.get_session())
+        with self._context.lock:
+            with self._sock.get_limite_lock():
+                name = '_session' + (':' in self._sock._key and '6' or '4')
+                session = getattr(self._context, name, None)
+                if session is not None:
+                    self.set_session(session)
+                self.__iowait(self._connection.do_handshake)
+                if session is None or not self.session_reused():
+                    setattr(self._context, name, self.get_session())
 
     def do_handshake_server_side(self):
         self.set_accept_state()

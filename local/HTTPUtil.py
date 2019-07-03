@@ -171,6 +171,7 @@ class BaseHTTPUtil:
         context.set_options(SSL.OP_ALL)
         #会话重用
         context.set_session_cache_mode(SSL.SESS_CACHE_CLIENT)
+        context.lock = threading.Lock()
         #证书验证
         OpenSSL._util.lib.SSL_CTX_set_cert_store(context._context, self._cert_store)
         context.set_verify(SSL.VERIFY_PEER, self._verify_callback)
