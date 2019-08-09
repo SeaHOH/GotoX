@@ -37,8 +37,6 @@ class LimitGAE(LimitBase):
 
 LimitGAE.init()
 
-LimitGAE.count()
-
 timezone_PST = timezone - 3600 * 8 # UTC-8
 timezone_PDT = timezone - 3600 * 7 # UTC-7
 def get_refreshtime():

@@ -36,6 +36,8 @@ def pkgdll_get_path(loader, path, name):
 
 def set_path():
     global eggs_cache
+    os.environ.pop('PYTHONPATH', None)
+    os.environ.pop('PYTHONHOME', None)
     py_dir = os.path.dirname(sys.executable)
     sp_dir = os.path.join(py_dir, 'site-packages')
     del sys.path[1:]
