@@ -99,7 +99,7 @@ def init():
             import gevent
         except ImportError:
             wait_exit('无法找到 gevent 或者与 Python 版本不匹配，'
-                      '请安装 gevent-1.0.0 以上版本，'
+                      '请安装 gevent-1.3.0 以上版本，'
                       '或将相应 .egg 放到 %r 文件夹！\n'
                       '或者使用 nogevent 参数重新启动。', packages, exc_info=True)
         if looptype:
