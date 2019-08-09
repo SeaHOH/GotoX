@@ -31,31 +31,26 @@ class SSLConnection:
             try:
                 return io_func(*args, **kwargs)
             except (SSL.WantReadError, SSL.WantX509LookupError):
-                #exc_clear()
                 rd, _, ed = select([fd], [], [fd], timeout)
                 if ed:
                     raise socket.error(ed)
                 if not rd:
                     raise socket.timeout('The read operation timed out')
             except SSL.WantWriteError:
-                #exc_clear()
                 _, wd, ed = select([], [fd], [fd], timeout)
                 if ed:
                     raise socket.error(ed)
                 if not wd:
                     raise socket.timeout('The write operation timed out')
             except SSL.SysCallError as e:
-                if e.args[0] == errno.EWOULDBLOCK:
-                    #exc_clear()
+                if e.args[0] in socket._blocking_errnos:
                     rd, wd, ed = select([fd], [fd], [fd], timeout)
                     if ed:
                         raise socket.error(ed)
                     if not rd and not wd:
                         raise socket.timeout('The socket operation timed out')
-                elif e.args[0] == errno.EAGAIN:
-                    continue
                 else:
-                    raise e
+                    raise
 
     def accept(self):
         sock, addr = self._sock.accept()
@@ -66,9 +61,17 @@ class SSLConnection:
     def session_reused(self):
         return SSL._lib.SSL_session_reused(self._ssl) == 1
 
+    def get_session(self):
+        session = SSL._lib.SSL_get1_session(self._ssl)
+        if session != SSL._ffi.NULL:
+            return SSL._ffi.gc(session, SSL._lib.SSL_SESSION_free)
+
+    def set_session(self, session):
+        SSL._lib.SSL_set_session(self._ssl, session)
+
     def do_handshake(self):
         with self._context.lock:
-            with self._sock.get_limite_lock():
+            with self._sock.get_iplock():
                 name = '_session' + (':' in self._sock._key and '6' or '4')
                 session = getattr(self._context, name, None)
                 if session is not None:
@@ -86,7 +89,13 @@ class SSLConnection:
 
     def send(self, data, flags=0):
         if data:
-            return self.__iowait(self._connection.send, data)
+            try:
+                return self.__iowait(self._connection.send, data)
+            except SSL.ZeroReturnError as e:
+                if self._connection.get_shutdown():
+                    raise ConnectionAbortedError(errno.ECONNABORTED, 'Software caused connection abort')
+                else:
+                    return 0
         else:
             return 0
 
@@ -107,16 +116,14 @@ class SSLConnection:
             return self._connection.recv(min(pending, bufsiz))
         try:
             return self.__iowait(self._connection.recv, bufsiz, flags)
-        except SSL.ZeroReturnError as e:
-            if self._connection.get_shutdown() == SSL.RECEIVED_SHUTDOWN:
+        except SSL.ZeroReturnError:
+            if self._connection.get_shutdown() | SSL.RECEIVED_SHUTDOWN:
                 return b''
-            raise e
+            raise
         except SSL.SysCallError as e:
-            if e.args == zero_EOF_error:
+            if e.args == zero_EOF_error or e.args[0] in zero_errno:
                 return b''
-            elif e.args[0] in zero_errno:
-                return b''
-            raise e
+            raise
 
     read = recv
 
@@ -126,16 +133,14 @@ class SSLConnection:
             return self._connection.recv_into(buffer)
         try:
             return self.__iowait(self._connection.recv_into, buffer, nbytes, flags)
-        except SSL.ZeroReturnError as e:
-            if self._connection.get_shutdown() == SSL.RECEIVED_SHUTDOWN:
+        except SSL.ZeroReturnError:
+            if self._connection.get_shutdown() | SSL.RECEIVED_SHUTDOWN:
                 return 0
-            raise e
+            raise
         except SSL.SysCallError as e:
-            if e.args == zero_EOF_error:
+            if e.args == zero_EOF_error or e.args[0] in zero_errno:
                 return 0
-            elif e.args[0] in zero_errno:
-                return 0
-            raise e
+            raise
 
     readinto = recv_into
 
@@ -150,9 +155,11 @@ class SSLConnection:
 class CertificateError(SSL.Error):
     pass
 
+# https://www.openssl.org/docs/manmaster/man3/X509_verify_cert_error_string.html
 CertificateErrorTab = {
     10: lambda cert: 'time expired: %s' % cert.get_notAfter().decode(),
     18: lambda cert: 'self signed, issuer: %s' % str(cert.get_issuer())[18:-2],
+    19: lambda cert: 'self signed, issuer: %s' % str(cert.get_issuer())[18:-2],
     20: lambda cert: 'untrusted CA, issuer: %s' % str(cert.get_issuer())[18:-2]
 }
 

@@ -14,7 +14,6 @@ def get_dirname(path):
 file_dir = get_dirname(__file__)
 root_dir = os.path.dirname(file_dir)
 py_dir = os.path.join(root_dir, 'python')
-app_start = os.path.join(root_dir, 'start.py')
 icon_gotox = os.path.join(root_dir, 'gotox.ico')
 config_dir = os.path.join(root_dir, 'config')
 direct_ipdb = os.path.join(root_dir, 'data', 'directip.db')
@@ -34,6 +33,8 @@ if root_dir not in sys.path:
     sys.path.insert(0, root_dir)
 
 from local.compat import replace_logging, patch_configparser
+from local.common.cconfig import cconfig
+from local.common.decorator import propertyb
 
 def load_config():
     patch_configparser()
@@ -100,145 +101,59 @@ class DataSource:
     def __init__(self, manager, name, url, parser, fullname=None):
         if isinstance(manager, DataSourceManager):
             self.parent = None
-            self.__generations = 1
-            self.__sign = 1 << manager.sign_bit
+            self._generations = 1
+            self._sign = 1 << manager.sign_bit
+            self._cconfig = cconfig(name.lower(), conf=manager.ext_conf)
         elif isinstance(manager, self.__class__):
             parent = manager
             manager = parent.manager
-            generations = parent.__generations + 1
+            generations = parent._generations + 1
             if generations > manager.max_generations:
                 raise ValueError(
                         'DataSource.__init__ "generations=%d" 超过最大值：%d'
                         % (generations, manager.max_generations))
-            self.__generations = generations
-            self.parent = parent
-            parent.add_ext(name)
-            parent.__children[name.lower()] = self
-            self.__sign = 0
+            self._generations = generations
+            self._sign = 0
+            self._cconfig = cconfig(name.lower(), parent)
+            parent._children[name.lower()] = self
             parser = parser or parent.parser
         else:
             raise TypeError('DataSource.__init__ "manager" 类型错误：%s'
                             % manager.__class__)
         self.manager = manager
-        self.__name = name
         self.url = url
         self.parser = parser
         self.fullname = fullname or name
         self.req = None
         self.update = None
         self.itemlist = []
-        self.ext = 0
-        self.__extlist = {}
-        self.__ext_bit = 0
-        self.__children = {}
+
+    def __getattr__(self, name):
+        return getattr(self._cconfig, name)
 
     def add_child(self, name, url, parser=None, fullname=None):
         return self.__class__(self, name, url, parser, fullname)
 
-    def get_child(self, name):
-        return self.__children.get(name.lower())
-
-    def get_children(self):
-        return self.__children.values()
-
-    def add_ext(self, names):
-        if isinstance(names, str):
-            names = [names]
-        for name in names:
-            name = name.lower()
-            if name in self.__extlist:
-                continue
-            self.__extlist[name] = 1 << self.__ext_bit
-            self.__ext_bit += 1
-
-    def check_ext(self, name):
-        return self.ext & self.__extlist.get(name.lower(), 0)
-
-    def set_ext(self, name, sign=1, save=False):
-        if name not in self:
-            self.add_ext(name)
-        _ext = self.__extlist[name]
-        if isinstance(sign, str):
-            sign = sign.lower()
-        if sign in (1, True, '1', 'on', 'yes', 'true'):
-            self.ext |= _ext
-        elif sign in (0, False, '0', 'off', 'no', 'false') and self.ext & _ext:
-            self.ext ^= _ext
-        if save:
-            self.save_ext()
-
-    def switch_ext(self, name, save=False):
-        self.ext ^= self.__extlist[name.lower()]
-        if save:
-            self.save_ext()
-
-    def get_index_name(self):
-        if self.parent is None:
-            return self.name
-        else:
-            return '%s.%s' % (self.parent.get_index_name(), self.name)
-
-    def check_name(self, name):
-        return name.lower() == self.get_index_name().lower()
-
-    def load_ext(self, names=None, filename=None):
-        if names:
-            self.add_ext(names)
-        if not filename:
-            filename = self.ext_conf
-        if os.path.exists(filename):
-            with open(filename, 'r') as fd:
-                for line in fd:
-                    name, _, value = line.partition(':')
-                    dsname, _, name = name.strip().rpartition('.')
-                    if self.check_name(dsname):
-                        self.set_ext(name, value.strip())
-
-    def save_ext(self, filename=None):
-        exts = []
-        if not filename:
-            filename = self.ext_conf
-        if os.path.exists(filename):
-            with open(filename, 'r') as fd:
-                for line in fd:
-                    name, _, _ = line.partition(':')
-                    dsname, _, name = name.strip().rpartition('.')
-                    if not self.check_name(dsname) or name not in self:
-                        exts.append(line)
-        for name in self.__extlist:
-            ext = self.check_ext(name) and 1
-            exts.append('%s.%s: %d\n' % (self.name.lower(), name, ext))
-        with open(filename, 'w') as fd:
-            for ext in exts:
-                fd.write(ext)
-
-    def __contains__(self, name):
-        return name.lower() in self.__extlist
-
     @property
     def sign(self):
-        return self.__sign
+        return self._sign
 
-    @property
-    def ext_conf(self):
-        return self.manager.ext_conf
-
-    @property
-    def name(self):
-        return self.__name
-
-    @property
+    @propertyb
     def update(self):
-        return '%s-%s' % (self.name, self.__update)
+        return '%s-%s' % (self.name, self._update)
+
+    @update.boolgetter
+    def update(self):
+        return self._update
 
     @update.setter
     def update(self, value):
-        self.__update = value
+        self._update = value
 
-    def clear(self):
+    def clear_data(self):
         self.itemlist.clear()
         for child_ds in self.get_children():
-            child_ds.clear()
+            child_ds.clear_data()
 
     def __get_other_sign(self, other):
         if isinstance(other, self.__class__):
@@ -264,62 +179,62 @@ class DataSource:
     __iand__ = __ixor__ = __ior__ = __raise_noit_err
 
 class DataSourceManager:
-    ext_conf = os.path.join(root_dir, 'config', 'dsext.conf')
+    ext_conf = os.path.join(config_dir, 'dsext.conf')
     max_generations = 2
 
     def __init__(self):
-        self.__sign_all = 0
-        self.__sign_bit = 0
-        self.__valid = {}
+        self._sign_all = 0
+        self._sign_bit = 0
+        self._valid = {}
 
     def add(self, name, url, parser, fullname=None):
         ds = DataSource(self, name, url, parser, fullname)
-        self.__valid['--' + name.lower()] = ds
-        self.__sign_all |= ds.sign
-        self.__sign_bit += 1
+        self._valid['--' + name.lower()] = ds
+        self._sign_all |= ds.sign
+        self._sign_bit += 1
         return ds
 
     def get(self, name):
-        return self.__valid.get('--' + name.lower())
+        return self._valid.get('--' + name.lower())
 
     @property
     def sign_bit(self):
-        return self.__sign_bit
+        return self._sign_bit
 
     @property
     def sign_all(self):
-        return self.__sign_all
+        return self._sign_all
 
-    def load_ext(self, filename=None):
+    def load(self, filename=None):
         if filename:
             self.ext_conf = filename
         for ds in self.sources():
-            ds.load_ext()
+            ds.load()
 
-    def save_ext(self, filename=None):
+    def save(self, filename=None):
         if filename:
             self.ext_conf = filename
         for ds in self.sources():
-            ds.save_ext()
+            ds.save()
 
     def get_source(self, *args):
         kwargs = parse_cmds(*args)
         data_source = 0
         if '--all' in kwargs:
-            data_source = self.__sign_all
-        for par in self.__valid:
+            data_source = self._sign_all
+        for par in self._valid:
             if par in kwargs:
-                data_source |= self.__valid[par].sign
+                data_source |= self._valid[par].sign
                 for name in kwargs[par]:
-                    self.__valid[par].set_ext(name)
+                    self._valid[par].set(name)
         return data_source
 
     def clear_source_data(self):
         for ds in self.sources():
-            ds.clear()
+            ds.clear_data()
 
     def sources(self):
-        return self.__valid.values()
+        return self._valid.values()
 
 def parse_cmds(*args):
     args = list(args)

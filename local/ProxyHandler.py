@@ -23,7 +23,7 @@ from .common.decorator import make_lock_decorator
 from .common.dns import reset_dns, set_dns, dns_resolve, dns
 from .common.net import (
     NetWorkIOError, reset_errno, closed_errno, bypass_errno,
-    isip, isipv4, isipv6)
+    isip, isipv4, isipv6, forward_socket)
 from .common.path import web_dir
 from .common.proxy import parse_proxy, proxy_no_rdns
 from .common.region import isdirect
@@ -32,9 +32,7 @@ from .GlobalConfig import GC
 from .HTTPUtil import LimitRequest, http_gws, http_nor
 from .RangeFetch import RangeFetchs
 from .GAEFetch import (
-    qGAE, check_appid_exists, get_appid, mark_badappid,
-    make_errinfo, gae_urlfetch
-    )
+    check_appid_exists, get_appid, mark_badappid, make_errinfo, gae_urlfetch)
 from .FilterUtil import (
     set_temp_action,
     set_temp_connect_action,
@@ -162,7 +160,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         if not isinstance(d, bytes):
             d = d.encode()
         try:
-            self.wfile.write(d)
+            return self.wfile.write(d)
         except Exception as e:
             self.conaborted = True
             if logerror:
@@ -222,7 +220,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                     self.do_FAKECERT()
                 else:
                     logging.error('%s 无法解析主机：%r，路径：%r，请检查是否输入正确！', self.address_string(), self.host, self.path)
-                    c = message_html('504 解析失败', '504 解析失败<p>主机名 %s 无法解析，请检查是否输入正确！' % self.host).encode()
+                    c = message_html('504 解析失败', '解析失败', '主机名 %s 无法解析，请检查是否输入正确！' % self.host).encode()
                     self.write(b'HTTP/1.1 504 Resolve Failed\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
                     self.write(c)
                 return
@@ -332,11 +330,11 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             while ndata:
                 if need_chunked:
                     self.write(b'%x\r\n' % ndata, True)
-                    self.write(buf[:ndata].tobytes(), True)
+                    assert ndata == self.write(buf[:ndata].tobytes(), True), '未完整写入数据'
                     self.write(b'\r\n', True)
                     wrote += ndata
                 else:
-                    self.write(buf[:ndata].tobytes(), True)
+                    assert ndata == self.write(buf[:ndata].tobytes(), True), '未完整写入数据'
                     wrote += ndata
                     if wrote >= length:
                         break
@@ -510,7 +508,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 logging.warning('%s do_DIRECT 由于有上传数据 "%s %s" 终止重试', self.address_string(), self.command, self.url)
                 self.close_connection = True
                 if not headers_sent:
-                    c = message_html('504 响应超时', '获取 %s 超时，请稍后重试。' % self.url, '').encode()
+                    c = message_html('504 响应超时', '响应超时', '获取 %s 超时，请稍后重试。' % self.url).encode()
                     self.write(b'HTTP/1.1 504 Gateway Timeout\r\n'
                                b'Content-Type: text/html\r\n'
                                b'Content-Length: %d\r\n\r\n' % len(c))
@@ -751,9 +749,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                     if check_appid_exists(appid):
                         continue
                     elif len(GC.GAE_APPIDS) > 1:
-                        GC.GAE_APPIDS.remove(appid)
-                        for _ in range(GC.GAE_MAXREQUESTS):
-                            qGAE.get()
+                        mark_badappid(appid, remove=True)
                         logging.error('APPID %r 不存在，将被移除', appid)
                         self.do_GAE()
                     else:
@@ -871,7 +867,6 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                                    b'Content-Type: text/html\r\n'
                                    b'Content-Length: %d\r\n\r\n' % len(c))
                     self.write(c)
-                qGAE.put(True)
                 if response:
                     response.close()
                     if noerror and GC.GAE_KEEPALIVE:
@@ -904,23 +899,23 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         else:
             create_connection = http_util.create_connection
         for _ in range(2):
-            limiter_pushed = None
+            needpop = None
             limited = None
             try:
-                limiter_pushed = LimitRequest.push(connection_cache_key)
+                needpop = LimitRequest.push(connection_cache_key)
                 if not GC.PROXY_ENABLE:
                     remote = create_connection((host, port), hostname, connection_cache_key, ssl=self.ssl, forward=self.fwd_timeout)
                 else:
                     hostip = random.choice(dns_resolve(host))
                     remote = create_connection((hostip, port), self.ssl, self.fwd_timeout)
                 break
-            except LimiterFull:
+            except LimiterFull as e:
                 limited = True
                 logging.warning('%s 转发到 %r 失败：%r', self.address_string(), self.url or host, e)
             except NetWorkIOError as e:
                 logging.warning('%s 转发到 %r 失败：%r', self.address_string(e), self.url or host, e)
             finally:
-                if limiter_pushed:
+                if needpop:
                     LimitRequest.pop(connection_cache_key)
         if remote is None:
             if not limited and not isdirect(host):
@@ -956,13 +951,14 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         proxyport = int(proxyport)
         while ips:
             proxyip = ips.pop(0)
-            host = dns_resolve(self.host)[0] if self.target in proxy_no_rdns else self.host
+            rdns = self.target not in proxy_no_rdns
+            host = self.host if rdns else dns_resolve(self.host)[0]
             if proxytype:
                 proxytype = proxytype.upper()
             if proxytype not in socks.PROXY_TYPES:
                 proxytype = 'HTTP'
             proxy_sock = http_nor.get_proxy_socket(proxyip, 8)
-            proxy_sock.set_proxy(socks.PROXY_TYPES[proxytype], proxyip, proxyport, True, proxyuser, proxypass)
+            proxy_sock.set_proxy(socks.PROXY_TYPES[proxytype], proxyip, proxyport, rdns, proxyuser, proxypass)
             if ipcnt > 1:
                 start_time = time()
             try:
@@ -972,7 +968,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 if self.fakecert:
                     proxy_sock.do_handshake()
             except Exception as e:
-                if '0x5b' in e.msg and not isip(host):
+                if rdns and '0x5b' in str(e) and not isip(host):
                     proxy_no_rdns.add(self.target)
                     ips.insert(0, proxyip)
                 else:
@@ -1046,7 +1042,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             #再次握手无法读取到数据，故使用套接字对进行串接
             p1, p2 = socket.socketpair()
             payload = self.connection.recv(65536)
-            start_new_thread(self.forward_socket, (self.connection, p1, payload))
+            start_new_thread(forward_socket, (self.connection, p1, payload))
             self.connection = p2
             self.disable_nagle_algorithm = False
             logging.warning('%s 正在使用 https 代理协议代理 https 连接，host=%r，建议将 https 连接的代理协议单独设置为 http', self.address_string(), self.host)
@@ -1221,8 +1217,8 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             if f == 0:
                 self.badhost[host] |= 4
             elif f == 4:
-                set_temp_action(host)
-                logging.warning('将 %r 加入 "GAE" 规则%s。', host, GC.LINK_TEMPTIME_S)
+                if set_temp_action(host):
+                    logging.warning('将 %r 加入 "GAE" 规则%s。', host, GC.LINK_TEMPTIME_S)
                 self.badhost[host] |= 8
         except KeyError:
             self.badhost[host] = 4
@@ -1235,8 +1231,8 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             if f == 0:
                 self.badhost[host] |= 1
             elif f == 1:
-                set_temp_connect_action(host)
-                logging.warning('将 %r 加入 "FAKECERT" 规则%s。', host, GC.LINK_TEMPTIME_S)
+                if set_temp_connect_action(host):
+                    logging.warning('将 %r 加入 "FAKECERT" 规则%s。', host, GC.LINK_TEMPTIME_S)
                 self.badhost[host] |= 2
         except KeyError:
             self.badhost[host] = 1
@@ -1262,43 +1258,9 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
     def go_BAD(self):
         self.close_connection = False
         logging.warn('%s request "%s %s" 失败, 返回 404', self.address_string(), self.command, self.url)
-        c = message_html('404 无法访问', '不能 "%s %s"' % (self.command, self.url), '无论是通过 GAE 还是 DIRECT 都无法访问成功').encode()
+        c = message_html('404 无法访问', '无法访问', '不能 "%s %s"<p>无论是通过 GAE 还是 DIRECT 都无法访问成功' % (self.command, self.url)).encode()
         self.write(b'HTTP/1.0 404\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
         self.write(c)
-
-    def forward_socket(self, local, remote, payload=None, timeout=60, tick=4, bufsize=8192, maxping=None, maxpong=None):
-        if payload:
-            remote.sendall(payload)
-        buf = memoryview(bytearray(bufsize))
-        maxpong = maxpong or timeout
-        allins = [local, remote]
-        timecount = timeout
-        remote_silence_time = 0
-        try:
-            while allins and timecount > 0:
-                start_time = time()
-                ins, _, err = select(allins, [], allins, tick)
-                t = time() - start_time
-                timecount -= int(t)
-                if err:
-                    raise socket.error(err)
-                for sock in ins:
-                    ndata = sock.recv_into(buf)
-                    if ndata:
-                        other = local if sock is remote else remote
-                        other.sendall(buf[:ndata])
-                    else:
-                        allins.remove(sock)
-                if remote in allins and remote in ins:
-                    remote_silence_time = 0
-                else:
-                    remote_silence_time += t
-                    if remote_silence_time > maxpong:
-                        break
-                if ins and len(allins) == 2:
-                    timecount = min(timecount*2, maxpong)
-        finally:
-            remote.close()
 
     def forward_connect(self, remote, timeout=0, tick=4, bufsize=32768, maxping=None, maxpong=None):
         #在本地与远程连接间进行数据转发
@@ -1323,7 +1285,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             # select 无法获取这次的可读状态，故先读取出来
             payload = self.connection.recv(65536)
         try:
-            self.forward_socket(self.connection, remote, payload, timeout or self.fwd_keeptime, tick, bufsize, maxping, maxpong)
+            forward_socket(self.connection, remote, payload, timeout or self.fwd_keeptime, tick, bufsize, maxping, maxpong)
         except NetWorkIOError as e:
             if e.args[0] not in bypass_errno:
                 logging.warning('%s 转发 "%s" 失败：%r', self.address_string(remote), self.url or self.host, e)

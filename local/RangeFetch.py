@@ -10,7 +10,7 @@ import threading
 from time import time, sleep
 from urllib.parse import urljoin
 from .common.util import LimiterFull, spawn_later
-from .GAEFetch import qGAE, get_appid, mark_badappid, gae_urlfetch
+from .GAEFetch import get_appid, mark_badappid, gae_urlfetch
 from .GlobalConfig import GC
 from .HTTPUtil import http_gws
 from .GIPManager import ip_manager_gae
@@ -256,8 +256,6 @@ class RangeFetch:
                 noerror = False
                 raise
             finally:
-                if appid:
-                    qGAE.put(True)
                 if response:
                     response.close()
                     if noerror:

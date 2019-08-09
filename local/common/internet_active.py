@@ -229,7 +229,6 @@ class InternetActiveCheck:
                     if not keep_on:
                         ok = False
                         break
-                    self.last_stat = 0
                     haserr = True
                     try:
                         keep_on = abs(int(keep_on))

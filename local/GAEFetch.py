@@ -13,7 +13,31 @@ from .GIPManager import test_ip_gae
 from .HTTPUtil import http_gws
 from .common.decompress import GzipSock
 from .common.decorator import make_lock_decorator
-from .common.util import LRUCache
+from .common.util import LRUCache, LimitBase
+
+class LimitGAE(LimitBase):
+    'A response limiter wrapper for GAE.'
+
+    maxsize = GC.GAE_MAXREQUESTS * len(GC.GAE_APPIDS)
+    _response = None
+
+    def __getattr__(self, attr):
+        return getattr(self._response, attr)
+
+    def __call__(self, response):
+        if response:
+            self._response = response
+            return self
+        self.close()
+
+    def close(self):
+        if super().close():
+            if hasattr(self._response, 'close'):
+                self._response.close()
+
+LimitGAE.init()
+
+LimitGAE.count()
 
 timezone_PST = timezone - 3600 * 8 # UTC-8
 timezone_PDT = timezone - 3600 * 7 # UTC-7
@@ -26,11 +50,8 @@ def get_refreshtime():
     return refreshtime - now
 
 nappid = 0
-_lock_nappid = make_lock_decorator()
+_lock_appid = make_lock_decorator()
 badappids = LRUCache(len(GC.GAE_APPIDS))
-qGAE = queue.LifoQueue()
-for _ in range(GC.GAE_MAXREQUESTS * len(GC.GAE_APPIDS)):
-    qGAE.put(True)
 
 def check_appid_exists(appid):
     host = '%s.appspot.com' % appid
@@ -55,7 +76,7 @@ def check_appid_exists(appid):
                         http_gws.ssl_connection_cache['google_gae|:443'].append((time(), sock))
                     return exists
 
-@_lock_nappid
+@_lock_appid
 def get_appid():
     global nappid
     while True:
@@ -65,13 +86,26 @@ def get_appid():
         appid = GC.GAE_APPIDS[nappid]
         contains, expired, _ = badappids.getstate(appid)
         if contains and expired:
-            for _ in range(GC.GAE_MAXREQUESTS):
-                qGAE.put(True)
+            LimitGAE.maxsize += GC.GAE_MAXREQUESTS
         if not contains or expired:
             break
     return appid
 
-def mark_badappid(appid, time=None):
+@_lock_appid
+def mark_badappid(appid, time=None, remove=None):
+    if remove:
+        try:
+            GC.GAE_APPIDS.remove(appid)
+        except ValueError:
+            pass
+        else:
+            LimitGAE.maxsize -= GC.GAE_MAXREQUESTS
+            try:
+                del badappids[appid]
+            except KeyError:
+                pass
+        return
+
     if appid not in badappids:
         if time is None:
             time = get_refreshtime()
@@ -80,8 +114,7 @@ def mark_badappid(appid, time=None):
             else:
                 logging.warning('当前 AppID[%s] 流量使用完毕，切换下一个…', appid)
         badappids.set(appid, True, time)
-        for _ in range(GC.GAE_MAXREQUESTS):
-            qGAE.get()
+        LimitGAE.maxsize -= GC.GAE_MAXREQUESTS
 
 gae_options = []
 if GC.GAE_DEBUG:
@@ -146,7 +179,11 @@ def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
         }
     request_params = gae_params_dict[appid]
     realurl = 'GAE-' + url
-    qGAE.get() # get start from Queue
+    response = LimitGAE()
+    _response = _gae_urlfetch(request_params, payload, request_headers, getfast, method, realurl)
+    return response(_response)
+
+def _gae_urlfetch(request_params, payload, request_headers, getfast, method, realurl):
     while True:
         response = http_gws.request(request_params, payload, request_headers, connection_cache_key='google_gae|:443', getfast=getfast, realmethod=method, realurl=realurl)
         if response is None:

@@ -4,6 +4,7 @@
 import sys
 import os
 import re
+import errno
 import socket
 import ssl
 import struct
@@ -20,20 +21,22 @@ from threading import _start_new_thread as start_new_thread
 from http.client import HTTPResponse
 from .GlobalConfig import GC
 from .compat.openssl import (
-    zero_EOF_error, res_ciphers, SSL, SSLConnection,
+    zero_errno, zero_EOF_error, res_ciphers, SSL, SSLConnection,
     CertificateError, CertificateErrorTab, match_hostname
     )
 from .common.dns import dns, dns_resolve
 from .common.internet_active import internet_v4, internet_v6
-from .common.net import NetWorkIOError, random_hostname, bypass_errno, isip
+from .common.net import (
+    NetWorkIOError, random_hostname, bypass_errno, isip, check_connection_dead)
 from .common.decorator import make_lock_decorator
 from .common.path import cert_dir
 from .common.proxy import parse_proxy, proxy_no_rdns
-from .common.util import LRUCache, LimiterFull, LimitBase, wait_exit
+from .common.util import LRUCache, LimiterFull, LimitDictBase, wait_exit
 from .FilterUtil import reset_method_list, get_fake_sni
 
 GoogleG23PKP = {
 # https://pki.google.com/GIAG2.crt 已过期
+
 # https://pki.goog/gsr2/GIAG3.crt
 # https://pki.goog/gsr2/GTSGIAG3.crt
 b'''\
@@ -53,7 +56,7 @@ b'''\
 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEG4ANKJrwlpAPXThRcA3Z4XbkwQvW
 hj5J/kicXpbBQclS4uyuQ5iSOGKcuCRt8ralqREJXuRsnLZo0sIT680+VQ==
 -----END PUBLIC KEY-----
-'''
+''',
 # https://pki.goog/gsr2/giag4.crt
 b'''\
 -----BEGIN PUBLIC KEY-----
@@ -65,12 +68,36 @@ udZQlBDHJzCFwrhXLtXLlmuSA5/9pOuWJ+U3rSgS7ICSfa83vkBe00ymjIZT6ogD
 XWuFsu4edue27nG8g9gO1YozIUCV7+zExG0G5kxTovis+FJpy9hIIxSFrRIKM4DX
 aQIDAQAB
 -----END PUBLIC KEY-----
-'''
+''',
 # https://pki.goog/gsr4/giag4ecc.crt
 b'''\
 -----BEGIN PUBLIC KEY-----
 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEWgDxDsTP7Od9rB8TPUltMacYCHYI
 NthcDjlPu3wP0Csmy6Drit3ghqaTqFecqcgks5RwcKQkT9rbY3e8lHuuAw==
+-----END PUBLIC KEY-----
+''',
+# https://pki.goog/gsr2/GTS1O1.crt
+b'''\
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0BjPRdSLzdOc5EDvfrTd
+aSEbyc88jkx1uQ8xGYQ9njwp71ANEJNvBYCAnyqgvRJLAuE9n1gWJP4wnwt0d1WT
+HUv3TeGSghD2UawMw7IilA80a5gQSecLnYM53SDGHC3v0RhhZecjgyCoIxL/0iR/
+1C/nRGpbTddQZrCvnkJjBfvgHMRjYa+fajP/Ype9SNnTfBRn3HXcLmno+G14adC3
+EAW48THCOyT9GjN0+CPg7GsZihbG482kzQvbs6RZYDiIO60ducaMp1Mb/LzZpKu8
+3Txh15MVmO6BvY/iZEcgQAZO16yX6LnAWRKhSSUj5O1wNCyltGN8+aM9g9HNbSSs
+BwIDAQAB
+-----END PUBLIC KEY-----
+''',
+# https://pki.goog/gsr2/GTS1D2.crt
+b'''\
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAstl74eHXPxyRcv/5EM2H
+FXl0tz5Hi7JhVf0MNsZ+d0I6svpSWwtxgdZN1ekrJE0jXosrcl8hVbUp70TL64JS
+qz4npJJJQUreqN0x4DzfbXpNLdZtCbAO42Hysv6QbFp7EGRJtAs8CPLqeQxsphqJ
+alYyoCmiMIKPgVEM86K52XW5Ip4nFLpKLyxjWIfxXRDmX5G7uVvMR+IedbaMj8x1
+XVcF54LGhA50cirLO1X1bnDrZmnDJLs4kzWbaGEvm9aupndyfHFIWDMQr+mAgh21
+B0Ab9j3soq1HnbSUKTSzjC/NJQNYNcAlpFVf4bMHVj3I0GO4IPuMHUMs+Pmp1exv
+lwIDAQAB
 -----END PUBLIC KEY-----
 '''}
 
@@ -79,16 +106,20 @@ gae_testgwsiplist = GC.GAE_TESTGWSIPLIST
 autorange_threads = GC.AUTORANGE_FAST_THREADS
 _lock_context = make_lock_decorator()
 
-class LimitConnection(LimitBase):
+class LimitConnection(LimitDictBase):
     'A connection limiter wrapper for remote IP.'
 
-    limiters = {}
-    max_per_key = GC.LINK_MAXPERIP
+    maxsize = GC.LINK_MAXPERIP
     timeout = 3
-    lock = threading.Lock()
 
-    def __init__(self, sock, ip, max_per_ip=None, timeout=None):
-        super().__init__(ip, max_per_ip, timeout)
+    @classmethod
+    def _limiterFactory(cls):
+        limiter = super()._limiterFactory()
+        limiter.iplock = threading.Lock()
+        return limiter
+
+    def __init__(self, sock, ip, maxsize=None, timeout=None):
+        super().__init__(ip, maxsize, timeout)
         self._sock = sock
 
     def __getattr__(self, attr):
@@ -96,15 +127,29 @@ class LimitConnection(LimitBase):
 
     def close(self):
         if super().close():
+            try:
+                self._sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
             self._sock.close()
 
-class LimitRequest(LimitBase):
+    def get_iplock(self):
+        limiter = self._limiters.get(self._key)
+        if limiter is None:
+            logging.debug('%s.get_iplock lost reference: %r', self.__class__, self._key)
+            with self.lock:
+                limiter = self._limiters[self._key]
+        return limiter.iplock
+
+class LimitRequest(LimitDictBase):
     'A request limiter for host cache key.'
 
-    limiters = {}
-    max_per_key = 2
+    maxsize = 2
     timeout = 8
-    lock = threading.Lock()
+
+LimitConnection.init()
+LimitRequest.init()
+
 
 class BaseHTTPUtil:
     '''Basic HTTP Request Class'''
@@ -308,16 +353,7 @@ class BaseHTTPUtil:
         if time() - ctime > keeptime:
             sock.close()
             return
-        try:
-            fd = sock.fileno()
-            rd, _, ed = select([fd], [], [fd], 0)
-            if rd or ed:
-                sock.close()
-                return
-        except OSError:
-            sock.close()
-            return
-        return True
+        return not check_connection_dead(sock)
 
     def check_connection_cache(self, type='tcp'):
         check_connection_alive = self.check_connection_alive
@@ -439,7 +475,9 @@ class HTTPUtil(BaseHTTPUtil):
                     sock.close()
 
     def create_connection(self, address, hostname, cache_key, ssl=None, forward=None, **kwargs):
-        def get_cache_sock():
+        def get_cache_sock(cache=None):
+            if cache is None:
+                cache = self.tcp_connection_cache.get(cache_key)
             used_sock = []
             try:
                 while cache:
@@ -456,7 +494,34 @@ class HTTPUtil(BaseHTTPUtil):
                     used_sock.reverse()
                     cache.extend(used_sock)
 
-        cache = self.tcp_connection_cache[cache_key]
+        def get_cache_sock_ex():
+            if '|' in hostname:
+                return
+            names = hostname.split('.')
+            if len(names[-1]) == 2 and len(names[-2]) <= 3:
+                if len(names) > 3:
+                    del names[0]
+            elif len(names) > 2:
+                del names[0]
+            chost = '.'.join(names)
+            ckey = '%s:%s' % (chost, cache_key.partition(':')[-1])
+            keys = tuple(self.tcp_connection_cache.keys())
+            for key in keys:
+                if key not in self.tcp_connection_cache or\
+                         '|' in key or not key.endswith(ckey):
+                    continue
+                cache = self.tcp_connection_cache[key]
+                sock = get_cache_sock(cache)
+                if sock:
+                    if key != cache_key:
+                        logging.warning(
+                            '%s create_connection %r 尝试复用 %r 连接，'
+                            '站点 %r 可能配置了多个子域名和较少的 IP。\n'
+                            '可以尝试在 iplist 配置列表：\tcdn_%s = %s\n'
+                            '然后在自动规则中使用此列表：\t%s$ = cdn_%s',
+                            sock.xip[0], hostname, key, chost, chost, chost, chost, chost)
+                    return sock
+
         newconn = forward and ssl
         sock = get_cache_sock()
         if sock:
@@ -492,11 +557,17 @@ class HTTPUtil(BaseHTTPUtil):
                             addresseslen -= 1
                         except ValueError:
                             pass
-                    if i == n == 0 and not isinstance(result, LimiterFull):
-                        #only output first error
-                        logging.warning('%s _create_connection %r 返回 %r，重试', addr[0], host, result)
+                    if i == n == 0:
+                        if isinstance(result, LimiterFull):
+                            sock = get_cache_sock_ex()
+                            if sock:
+                                return sock
+                        else:
+                            #only output first error
+                            logging.warning('%s _create_connection %r 返回 %r，重试', addr[0], host, result)
                 else:
                     if addrslen - n > 1:
+                        cache = self.tcp_connection_cache[cache_key]
                         start_new_thread(self._close_connection, (cache, addrslen-n-1, queobj, result.tcp_time))
                     return result
         if result:
@@ -548,7 +619,7 @@ class HTTPUtil(BaseHTTPUtil):
                 # any socket.error, put Excpetions to output queobj.
                 e.xip = ipaddr
                 if callback:
-                    if not retry and e.args == zero_EOF_error:
+                    if not retry and (e.args == zero_EOF_error or e.args[0] in zero_errno):
                         retry = True
                         continue
                     else:
@@ -571,7 +642,9 @@ class HTTPUtil(BaseHTTPUtil):
                     ssl_sock.close()
 
     def create_ssl_connection(self, address, hostname, cache_key, getfast=None, forward=None, **kwargs):
-        def get_cache_sock():
+        def get_cache_sock(cache=None):
+            if cache is None:
+                cache = self.ssl_connection_cache.get(cache_key)
             try:
                 while cache:
                     ctime, ssl_sock = cache.pop()
@@ -580,7 +653,34 @@ class HTTPUtil(BaseHTTPUtil):
             except IndexError:
                 pass
 
-        cache = self.ssl_connection_cache[cache_key]
+        def get_cache_sock_ex():
+            if '|' in hostname:
+                return
+            names = hostname.split('.')
+            if len(names[-1]) == 2 and len(names[-2]) <= 3:
+                if len(names) > 3:
+                    del names[0]
+            elif len(names) > 2:
+                del names[0]
+            chost = '.'.join(names)
+            ckey = '%s:%s' % (chost, cache_key.partition(':')[-1])
+            keys = tuple(self.ssl_connection_cache.keys())
+            for key in keys:
+                if key not in self.ssl_connection_cache or\
+                         '|' in key or not key.endswith(ckey):
+                    continue
+                cache = self.ssl_connection_cache[key]
+                sock = get_cache_sock(cache)
+                if sock:
+                    if key != cache_key:
+                        logging.warning(
+                            '%s create_ssl_connection %r 尝试复用 %r 连接，'
+                            '站点 %r 可能配置了多个子域名和较少的 IP。\n'
+                            '可以尝试在 iplist 配置列表：\tcdn_%s = %s\n'
+                            '然后在自动规则中使用此列表：\t%s$ = cdn_%s',
+                            sock.xip[0], hostname, key, chost, chost, chost, chost, chost)
+                    return sock
+
         sock = get_cache_sock()
         if sock:
             return sock
@@ -616,11 +716,17 @@ class HTTPUtil(BaseHTTPUtil):
                             addresseslen -= 1
                         except ValueError:
                             pass
-                    if i == n == 0 and not isinstance(result, LimiterFull):
-                        #only output first error
-                        logging.warning('%s _create_ssl_connection %r 返回 %r，重试', addr[0], host, result)
+                    if i == n == 0:
+                        if isinstance(result, LimiterFull):
+                            sock = get_cache_sock_ex()
+                            if sock:
+                                return sock
+                        else:
+                            #only output first error
+                            logging.warning('%s _create_ssl_connection %r 返回 %r，重试', addr[0], host, result)
                 else:
                     if addrslen - n > 1:
+                        cache = self.ssl_connection_cache[cache_key]
                         start_new_thread(self._close_ssl_connection, (cache, addrslen-n-1, queobj, result.ssl_time))
                     return result
         if result:
@@ -835,27 +941,29 @@ class HTTPUtil(BaseHTTPUtil):
                 headers['Content-Length'] = str(len(payload))
 
         for i in range(self.max_retry):
-            limiter_pushed = True
+            needpop = None
             sock = None
             ssl_sock = None
             ip = ''
             try:
-                limiter_pushed = LimitRequest.push(connection_cache_key)
+                needpop = LimitRequest.push(connection_cache_key)
+                if hasattr(request_params, 'connection') and check_connection_dead(request_params.connection):
+                    raise socket.error(errno.ECONNABORTED, '本地连接已断开')
                 if ssl:
                     ssl_sock = self.create_ssl_connection(address, hostname, connection_cache_key, getfast=bool(getfast))
                 else:
                     sock = self.create_connection(address, hostname, connection_cache_key)
-                limiter_pushed = LimitRequest.pop(connection_cache_key)
+                needpop = LimitRequest.pop(connection_cache_key)
                 result = ssl_sock or sock
                 if result:
                     result.settimeout(timeout)
                     response =  self._request(result, method, request_params.path, self.protocol_version, headers, payload, bufsize=bufsize)
                     return response
             except Exception as e:
+                if e.args == (errno.ECONNABORTED, '本地连接已断开'):
+                    raise
                 if i < self.max_retry - 1 and isinstance(e, LimiterFull):
                     continue
-                if 'timed out' in str(e):
-                    timeout += 10
                 if ssl_sock:
                     ip = ssl_sock.xip
                     ssl_sock.close()
@@ -874,12 +982,14 @@ class HTTPUtil(BaseHTTPUtil):
                 if not realurl and e.args[0] in bypass_errno or i == self.max_retry - 1 and isinstance(e, LimiterFull):
                     if ip:
                         e.xip = ip
-                    raise e
+                    raise
                 #确保不重复上传数据
                 if has_content and (sock or ssl_sock):
                     return
+                if 'timed out' in str(e):
+                    timeout += 10
             finally:
-                if limiter_pushed:
+                if needpop:
                     LimitRequest.pop(connection_cache_key)
 
 # Google video ip can act as Google Web Server if cipher suits not include

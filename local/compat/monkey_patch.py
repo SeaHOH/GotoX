@@ -13,11 +13,50 @@ def replace_logging():
 def patch_stdout():
     import io
     import sys
-    if sys.version_info[1] < 6:
-        sys.stdout = io.TextIOWrapper(sys.stdout.detach(),
-                                      encoding=sys.stdout.encoding,
-                                      errors='backslashreplace',
-                                      line_buffering=True)
+    sys.stdout = io.TextIOWrapper(sys.stdout.detach(),
+                                  encoding=sys.stdout.encoding,
+                                  errors='backslashreplace',
+                                  line_buffering=True)
+
+def patch_gevent_socket():
+    #使用 libuv-cffi 事件循环时，重复 gevent.socket.send 操作可能会被阻塞
+    #没找到真正的原因，暂时这么处理，CPU 使用会增加 50-100%
+    from gevent.socket import socket
+    from .openssl import SSLConnection
+
+    def send(self, *args, **kwargs):
+        sent = self._send(*args, **kwargs)
+        self._wait(self._write_event)
+        return sent
+
+    if not hasattr(socket, '_send'):
+        socket._send = socket.send
+        socket.send = send
+
+    if not hasattr(SSLConnection, '_send'):
+        SSLConnection._send = SSLConnection.send
+        SSLConnection.send = send
+
+def revert_gevent_socket_patch():
+    #如果 gevent.socket.send 操作不会阻塞，可撤销补丁
+    from gevent.socket import socket
+    from .openssl import SSLConnection
+
+    if hasattr(socket, '_send'):
+        socket.send = socket._send
+        del socket._send
+
+    if hasattr(SSLConnection, '_send'):
+        SSLConnection.send = SSLConnection._send
+        del SSLConnection._send
+
+@clean_after_invoked
+def patch_time():
+    import time
+    if hasattr(time, 'clock_gettime') and hasattr(time, 'CLOCK_BOOTTIME'):
+        time.mtime = lambda: time.clock_gettime(time.CLOCK_BOOTTIME)
+    else:
+        time.mtime = time.monotonic
 
 @clean_after_invoked
 def patch_builtins():

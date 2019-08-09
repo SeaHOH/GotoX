@@ -36,7 +36,7 @@ def set_dns(host, iporname):
         else:
             return
     #尝试解析可能的域名
-    if isinstance(iporname, str) and iporname.find('.') > 0:
+    if isinstance(iporname, str) and iporname.find('.') > 0 and not iporname.startswith('cdn_'):
         _host = iporname.lower()
         if dns_resolve(_host):
             return _host

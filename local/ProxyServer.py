@@ -5,6 +5,7 @@ import socket
 import logging
 import socketserver
 from threading import _start_new_thread as start_new_thread
+from .common.decorator import sole_no_block
 from .common.dns import reset_dns, update_dns_params
 from .common.internet_active import is_active, internet_v4, internet_v6
 from .common.net import NetWorkIOError, bypass_errno
@@ -14,6 +15,7 @@ from .GlobalConfig import GC
 
 localhosts = ['127.0.0.1', '::1', 'localhost', 'gotox.go']
 
+@sole_no_block
 def network_test(first=None):
     type = GC.LINK_PROFILE
     stop_server = None
@@ -105,12 +107,6 @@ class LocalProxyServer(socketserver.ThreadingTCPServer):
         self.is_offline = True
         self.shutdown()
         self.socket.close()
-
-    def close_request(self, request):
-        try:
-            request.close()
-        except Exception:
-            pass
 
     def finish_request(self, request, client_address):
         try:

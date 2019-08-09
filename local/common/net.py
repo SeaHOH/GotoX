@@ -8,6 +8,8 @@ import ipaddress
 import logging
 import OpenSSL
 import urllib.request
+from time import mtime
+from select import select
 from local.GlobalConfig import GC
 
 NetWorkIOError = socket.error, ssl.SSLError, ssl.CertificateError, OSError
@@ -17,7 +19,7 @@ reset_errno = errno.ECONNRESET, errno.ENAMETOOLONG
 if hasattr(errno, 'WSAENAMETOOLONG'):
     reset_errno += errno.WSAENAMETOOLONG,
 closed_errno = errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE
-bypass_errno = -1, *closed_errno
+bypass_errno = -1, 'timed out', *closed_errno
 
 dchars = ['bcdfghjklmnpqrstvwxyz', 'aeiou', '0123456789']
 pchars = [*(0,) * 8, *(1,) * 6, *(2,) * 1]
@@ -90,10 +92,10 @@ def random_hostname(wildcard_host=None):
         return '.'.join((subd, sld, gtld))
 
 def isip(ip):
-    if '.' in ip:
-        return isipv4(ip)
-    elif ':' in ip:
+    if ':' in ip:
         return isipv6(ip)
+    elif '.' in ip:
+        return isipv4(ip)
     else:
         return False
 
@@ -162,7 +164,7 @@ def get_wan_ipv4():
             try:
                 response = direct_opener.open(url, timeout=10)
                 content = response.read().decode().strip()
-                if isip(content):
+                if isipv4(content):
                     logging.test('当前 IPv4 公网出口 IP 是：%s', content)
                     return content
             except:
@@ -185,3 +187,48 @@ def get_wan_ipv6():
     finally:
         if sock:
             sock.close()
+
+def check_connection_dead(sock):
+    dead = True
+    try:
+        fd = sock.fileno()
+        if fd >= 0:
+            rd, _, ed = select([fd], [], [fd], 0)
+            dead = bool(rd or ed)
+    except OSError:
+        pass
+    if dead:
+        sock.close()
+    return dead
+
+def forward_socket(local, remote, payload=None, timeout=60, tick=4, bufsize=8192, maxping=None, maxpong=None):
+    if payload:
+        remote.sendall(payload)
+    buf = memoryview(bytearray(bufsize))
+    maxpong = maxpong or timeout
+    allins = [local, remote]
+    timecount = timeout
+    try:
+        while allins and timecount > 0:
+            start_time = mtime()
+            ins, _, err = select(allins, [], allins, tick)
+            t = mtime() - start_time
+            timecount -= int(t)
+            if err:
+                raise socket.error(err)
+            for sock in ins:
+                ndata = sock.recv_into(buf)
+                if ndata:
+                    other = local if sock is remote else remote
+                    other.sendall(buf[:ndata])
+                elif sock is remote:
+                    return
+                else:
+                    allins.remove(sock)
+            if ins and len(allins) == 2:
+                timecount = max(min(timecount * 2, maxpong), tick)
+    except Exception as e:
+        logging.debug('forward_socket except: %s %r', ins, e)
+        raise
+    finally:
+        remote.close()

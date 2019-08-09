@@ -48,6 +48,8 @@ CONFIG._optcre = re.compile(r'(?P<option>[^=\s]+)\s*(?P<vi>=?)\s*(?P<value>.*)')
 
 class GC:
 
+    GEVENT_LOOP = None
+
     CONFIG_FILENAME = os.path.join(config_dir, 'Config.ini')
     CONFIG_USER_FILENAME = os.path.join(config_dir, 'Config.user.ini')
     CONFIG_IPDB = os.path.join(data_dir, 'ip.use')
@@ -61,6 +63,8 @@ class GC:
 
     MISC_CHECKPROCESS = CONFIG.getboolean('misc', 'checkprocess', fallback=True)
     MISC_CHECKSYSCA = CONFIG.getboolean('misc', 'checksysca', fallback=True)
+    MISC_GEVENTPATCH = CONFIG.getboolean('misc', 'geventpatch', fallback=False)
+    MISC_REVERTGEVENTPATCH = CONFIG.getboolean('misc', 'revertgeventpatch', fallback=False)
 
     LISTEN_IP = CONFIG.get('listen', 'ip')
     LISTEN_IPHOST = CONFIG.get('listen', 'iphost')

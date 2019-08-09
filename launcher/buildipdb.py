@@ -142,9 +142,9 @@ def parse_apnic_iplist(fd, ds):
             linesp = line.decode().split('|')
             if len(linesp) != 7:
                 continue
-            if linesp[2] == 'ipv4' and (linesp[1] == 'CN' or ds.check_ext(linesp[1])):
+            if linesp[2] == 'ipv4' and (linesp[1] == 'CN' or ds.check(linesp[1])):
                 ds.itemlist.append((ip2int(linesp[3]), mask_dict[linesp[4]]))
-            elif linesp[0] is '2' and ds.update.endswith('-None'):
+            elif linesp[0] is '2' and not ds.update:
                 ds.update = '%s/%s' % (linesp[2], linesp[5])
             elif linesp[2] == 'ipv6':
                 #不需要 IPv6 数据，提前结束
@@ -168,7 +168,7 @@ def parse_cidr_iplist(fd, ds):
 def download_cniplist_as_db(ipdb, p=1):
     global downloading, update
     if downloading:
-        msg = '已经有更新直连 IP 库任务正在进行中，请稍后再试'
+        msg = '已经有更新直连 IP 库的任务正在进行中，请稍后再试'
         logging.warning(msg)
         return msg
     downloading = True
@@ -204,7 +204,7 @@ data_source_manager = DataSourceManager()
 ds_APNIC = data_source_manager.add('APNIC', Url_APNIC, parse_apnic_iplist)
 ds_17MON = data_source_manager.add('17mon', Url_17MON, parse_cidr_iplist)
 ds_GAOYIFAN = data_source_manager.add('GaoYiFan', Url_GAOYIFAN, parse_cidr_iplist)
-ds_APNIC.add_ext(['mo', 'hk'])
+ds_APNIC.add(['mo', 'hk'])
 #更新一般在月初几天，由于内容不包含日期信息，故记录为获取时的日期信息
 ds_17MON.datefmt = '%Y%m%d'
 #每日 3:00 之后更新
@@ -295,9 +295,9 @@ if is_main:
             if 3 in ns:
                 data_source |= ds_GAOYIFAN
             if 7 in ns:
-                ds_APNIC.set_ext('mo')
+                ds_APNIC.set('mo')
             if 8 in ns:
-                ds_APNIC.set_ext('hk')
+                ds_APNIC.set('hk')
         if data_source == 0:
             print('输入错误！')
             continue

@@ -2,7 +2,7 @@
 
 import threading
 import logging
-from time import time, sleep
+from time import mtime, sleep
 from functools import partial
 from urllib import parse
 from .common.dns import reset_dns
@@ -106,11 +106,15 @@ ssl_filter_DEF = numToSSLAct[GC.FILTER_SSLACTION], None
 
 def set_temp_action(host):
     #将临时规则插入缓存规则中第一个位置
-    filters = filters_cache[host]
+    try:
+        filters = filters_cache[host]
+    except KeyError:
+        filters_cache[host] = filters = [filter_DEF]
     action = filters[0][1]
     if action != 'TEMPGAE':
-        filter = '', 'TEMPGAE', time() + GC.LINK_TEMPTIME
+        filter = '', 'TEMPGAE', mtime() + GC.LINK_TEMPTIME
         filters.insert(0, filter)
+        return True
 
 def set_temp_connect_action(host):
     #将缓存规则替换为临时规则
@@ -118,6 +122,7 @@ def set_temp_connect_action(host):
     action = filter[0]
     if action != 'do_FAKECERT':
         ssl_filters_cache.set(host, ('do_FAKECERT', filter), GC.LINK_TEMPTIME)
+        return True
 
 def get_action(scheme, host, path, url):
     check_reset()
@@ -128,7 +133,7 @@ def get_action(scheme, host, path, url):
         #是否临时规则
         _, action, expire = filters[0]
         if action is 'TEMPGAE':
-            if time() > expire:
+            if mtime() > expire:
                 del filters[0]
                 logging.warning('%r 的临时 "GAE" 规则已经失效。', key)
             #符合自动多线程时不使用临时 GAE 规则，仍尝试默认规则

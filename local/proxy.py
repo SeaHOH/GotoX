@@ -53,6 +53,18 @@ compat.init()
 import logging
 from .GlobalConfig import GC
 
+try:
+    from gevent import __version__ as geventver
+except ImportError:
+    geventver = None
+else:
+    GC.GEVENT_LOOP = compat.get_looptype()
+    if GC.GEVENT_LOOP != 'none':
+        if GC.MISC_REVERTGEVENTPATCH:
+            compat.monkey_patch.revert_gevent_socket_patch()
+        elif GC.MISC_GEVENTPATCH:
+            compat.monkey_patch.patch_gevent_socket()
+
 log_config = {'level': GC.LOG_LEVEL}
 if not GC.LOG_PRINT:
     log_config['stream'] = logging.NULL_STREAM
@@ -69,7 +81,6 @@ import ssl
 import re
 from time import sleep
 from threading import _start_new_thread as start_new_thread
-from gevent import __version__ as geventver
 from OpenSSL import __version__ as opensslver
 from .common.cert import check_ca
 from .common.dns import _dns_resolve as dns_resolve
@@ -241,7 +252,7 @@ def main():
             resolve_iplist()
 
     info = ['=' * 80]
-    info.append(' GotoX  版 本 : %s (python/%s gevent/%s pyOpenSSL/%s)' % (__version__, sys.version.split(' ')[0], geventver, opensslver))
+    info.append(' GotoX  版 本 : %s (python/%s gevent(%s)/%s pyOpenSSL/%s)' % (__version__, sys.version.split(' ')[0], GC.GEVENT_LOOP, geventver, opensslver))
     info.append('\n GAE    AppID : %s' % ('|'.join(GC.GAE_APPIDS) or '请填入 AppID'))
     info.append('\n GAE 远程验证 : %s启用' % '已' if GC.GAE_SSLVERIFY else '未')
     info.append('\n  监 听 地 址 : 自动代理 - %s:%d' % (GC.LISTEN_IP, GC.LISTEN_AUTO_PORT))

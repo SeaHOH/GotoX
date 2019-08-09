@@ -7,9 +7,9 @@ import sys
 sys.dont_write_bytecode = True
 
 from common import (
-    root_dir as app_root, app_start, icon_gotox, direct_ipdb, direct_domains,
+    root_dir as app_root, config_dir, icon_gotox, direct_ipdb, direct_domains,
     config_filename, config_user_filename, config_auto_filename,
-    get_dirname, getlogger, startfile, load_config as _load_config)
+    get_dirname, getlogger, startfile, load_config as _load_config, cconfig)
 
 logging = getlogger()
 
@@ -289,10 +289,16 @@ from winsystray import SysTrayIcon, win32_adapter
 import buildipdb
 import builddomains
 
-buildipdb.ds_APNIC.load_ext()
-builddomains.ds_FELIX.load_ext()
+gloop_conf = os.path.join(config_dir, 'gloop.conf')
+
+buildipdb.ds_APNIC.load()
+builddomains.ds_FELIX.load()
+gloop = cconfig('gloop', conf=gloop_conf)
+gloop.add(['libuv-cffi', 'libev-cext', 'libev-cffi', 'nogevent'])
+gloop.load()
 
 MFS_CHECKED = win32_adapter.MFS_CHECKED
+MFS_ENABLED = win32_adapter.MFS_ENABLED
 MFS_DISABLED = win32_adapter.MFS_DISABLED
 MFS_DEFAULT = win32_adapter.MFS_DEFAULT
 MFT_RADIOCHECK = win32_adapter.MFT_RADIOCHECK
@@ -309,39 +315,52 @@ def download_domains(p):
         balloons_warning(msg)
 
 last_main_menu = None
-sub_menu1 = (('打开默认配置', lambda x: startfile(config_filename)), #双击打开第一个有效命令
-             ('打开用户配置', lambda x: startfile(config_user_filename)),
-             ('打开自动规则配置', lambda x: startfile(config_auto_filename)))
 
 def build_menu(systray):
-    mo_state = buildipdb.ds_APNIC.check_ext('mo') and MFS_CHECKED
-    hk_state = buildipdb.ds_APNIC.check_ext('hk') and MFS_CHECKED
+    libuv_cffi_state = gloop.check('libuv-cffi') and fixed_fState or MFS_ENABLED
+    libev_cext_state = gloop.check('libev-cext') and fixed_fState or MFS_ENABLED
+    libev_cffi_state = gloop.check('libev-cffi') and fixed_fState or MFS_ENABLED
+    nogevent_state = gloop.check('nogevent') and fixed_fState or MFS_ENABLED
+    default_loop_state = not (libuv_cffi_state or libev_cext_state or libev_cffi_state or nogevent_state) and fixed_fState or MFS_ENABLED
+    sub_menu1 = (('打开默认配置', lambda x: startfile(config_filename)), #双击打开第一个有效命令
+                 ('打开用户配置', lambda x: startfile(config_user_filename)),
+                 ('打开自动规则配置', lambda x: startfile(config_auto_filename)),
+                 (None, '-'),
+                 ('选择 gevent 优先使用的事件循环', 'pass', MFS_DISABLED),
+                 ('以下名称同时也是等价命令行参数', 'pass', MFS_DISABLED),
+                 ('    ├─ libuv-cffi', lambda x: gloop.checked('libuv-cffi', True), libuv_cffi_state, MFT_RADIOCHECK),
+                 ('    ├─ libev-cext', lambda x: gloop.checked('libev-cext', True), libev_cext_state, MFT_RADIOCHECK),
+                 ('    ├─ libev-cffi', lambda x: gloop.checked('libev-cffi', True), libev_cffi_state, MFT_RADIOCHECK),
+                 ('    ├─ nogevent (禁用)', lambda x: gloop.checked('nogevent', True), nogevent_state, MFT_RADIOCHECK),
+                 ('    └─ 默认', lambda x: gloop.clear(True), default_loop_state, MFT_RADIOCHECK))
+    mo_state = buildipdb.ds_APNIC.check('mo') and MFS_CHECKED or MFS_ENABLED
+    hk_state = buildipdb.ds_APNIC.check('hk') and MFS_CHECKED or MFS_ENABLED
     sub_menu2 = (('建议更新频率：10～30 天一次', 'pass', MFS_DISABLED),
                  (None, '-'),
                  ('Ⅰ 从 APNIC 下载（每日更新）', lambda x: download_cniplist(buildipdb.ds_APNIC)),
-                 ('    ├─ 包含澳门', lambda x: buildipdb.ds_APNIC.switch_ext('mo', save=True), mo_state, MFT_RADIOCHECK),
-                 ('    └─ 包含香港', lambda x: buildipdb.ds_APNIC.switch_ext('hk', save=True), hk_state, MFT_RADIOCHECK),
+                 ('    ├─ 包含澳门', lambda x: buildipdb.ds_APNIC.switch('mo', True), mo_state, MFT_RADIOCHECK),
+                 ('    └─ 包含香港', lambda x: buildipdb.ds_APNIC.switch('hk', True), hk_state, MFT_RADIOCHECK),
                  ('Ⅱ 从 17mon 下载（每月初更新）', lambda x: download_cniplist(buildipdb.ds_17MON)),
                  ('Ⅲ 从 gaoyifan 下载（每日更新）', lambda x: download_cniplist(buildipdb.ds_GAOYIFAN)),
                  ('从 Ⅰ、Ⅱ 下载后合并', lambda x: download_cniplist(buildipdb.ds_APNIC | buildipdb.ds_17MON)),
                  ('从 Ⅰ、Ⅲ 下载后合并', lambda x: download_cniplist(buildipdb.ds_APNIC | buildipdb.ds_GAOYIFAN)),
                  ('从 Ⅱ、Ⅲ 下载后合并', lambda x: download_cniplist(buildipdb.ds_17MON | buildipdb.ds_GAOYIFAN)),
                  ('全部下载后合并', lambda x: download_cniplist(buildipdb.data_source_manager.sign_all)))
-    fapple_state = builddomains.ds_FELIX.check_ext('apple') and MFS_CHECKED
+    fapple_state = builddomains.ds_FELIX.check('apple') and MFS_CHECKED or MFS_ENABLED
     sub_menu3 = (('建议更新频率：1～7 天一次', 'pass', MFS_DISABLED),
                  (None, '-'),
                  ('Ⅰ 从 felixonmars 下载（每日更新）', lambda x: download_domains(builddomains.ds_FELIX)),
-                 ('    └─ 包含 apple', lambda x: builddomains.ds_FELIX.switch_ext('apple', save=True), fapple_state, MFT_RADIOCHECK),
+                 ('    └─ 包含 apple', lambda x: builddomains.ds_FELIX.switch('apple', True), fapple_state, MFT_RADIOCHECK),
                  ('全部下载后合并', lambda x: download_domains(builddomains.data_source_manager.sign_all)))
     global proxy_state_menu, last_main_menu
     proxy_state_menu = proxy_state = get_proxy_state()
-    disable_state = proxy_state.type == 0 and fixed_fState or 0
-    disable_http_state = disable_state or proxy_state.type & 2 and not proxy_state.http and fixed_fState or 0
-    disable_https_state = disable_state or proxy_state.type & 2 and not proxy_state.https and fixed_fState or 0
-    disable_ftp_state = disable_state or proxy_state.type & 2 and not proxy_state.ftp and fixed_fState or 0
-    disable_socks_state = disable_state or proxy_state.type & 2 and not proxy_state.socks and fixed_fState or 0
-    auto_state = proxy_state.type == 2 and LISTEN_AUTO in proxy_state and fixed_fState or 0
-    gae_state = proxy_state.type == 2 and LISTEN_GAE in proxy_state  and fixed_fState or 0
+    disable_state = proxy_state.type == 0 and fixed_fState or MFS_ENABLED
+    disable_http_state = disable_state or proxy_state.type & 2 and not proxy_state.http and fixed_fState or MFS_ENABLED
+    disable_https_state = disable_state or proxy_state.type & 2 and not proxy_state.https and fixed_fState or MFS_ENABLED
+    disable_ftp_state = disable_state or proxy_state.type & 2 and not proxy_state.ftp and fixed_fState or MFS_ENABLED
+    disable_socks_state = disable_state or proxy_state.type & 2 and not proxy_state.socks and fixed_fState or MFS_ENABLED
+    auto_state = proxy_state.type == 2 and LISTEN_AUTO in proxy_state and fixed_fState or MFS_ENABLED
+    gae_state = proxy_state.type == 2 and LISTEN_GAE in proxy_state  and fixed_fState or MFS_ENABLED
     sub_menu4 = (
                  ('使用自动代理', on_enable_auto_proxy, auto_state, MFT_RADIOCHECK),
                  ('使用 GAE 代理', on_enable_gae_proxy, gae_state, MFT_RADIOCHECK),
@@ -352,8 +371,8 @@ def build_menu(systray):
                  ('禁用 FTP 代理', on_disable_ftp_proxy, disable_ftp_state, MFT_RADIOCHECK),
                  ('禁用 SOCKS 代理', on_disable_socks_proxy, disable_socks_state, MFT_RADIOCHECK))
     visible = ctypes.windll.user32.IsWindowVisible(hwnd)
-    show_state = visible and fixed_fState or 0
-    hide_state = not visible and fixed_fState or 0
+    show_state = visible and fixed_fState or MFS_ENABLED
+    hide_state = not visible and fixed_fState or MFS_ENABLED
     main_menu = (('GotoX 设置', sub_menu1, icon_gotox, MFS_DEFAULT),
                  ('更新直连 IP 库', sub_menu2),
                  ('更新直连域名列表', sub_menu3),
@@ -378,6 +397,7 @@ systray_GotoX = SysTrayIcon(icon_gotox, 'GotoX', None, quit_item,
 systray_GotoX.start()
 start_GotoX()
 #load_config()
+#os.environ['HTTPS_PROXY'] = os.environ['HTTP_PROXY'] = LISTEN_AUTO.http
 
 from time import sleep
 

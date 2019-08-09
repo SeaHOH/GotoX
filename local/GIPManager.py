@@ -16,7 +16,7 @@ from .common.net import NetWorkIOError, random_hostname, isip, isipv4, isipv6
 from .common.decorator import make_lock_decorator
 from .common.path import data_dir
 from .common.util import LimiterFull
-from .compat.openssl import zero_EOF_error, CertificateError
+from .compat.openssl import zero_errno, zero_EOF_error, CertificateError
 from .HTTPUtil import http_gws
 from .ProxyServer import network_test
 from .GlobalConfig import GC
@@ -831,7 +831,7 @@ class IPManager:
                 type = callback(ssl_sock, ip)
             except NetWorkIOError as e:
                 self.logger.debug('get_ip_info 发生错误：%s', e)
-                if not retry and e.args == zero_EOF_error:
+                if not retry and (e.args == zero_EOF_error or e.args[0] in zero_errno):
                     retry = True
                     continue
             finally:

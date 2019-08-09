@@ -38,7 +38,7 @@ def parse_dnsmasq_domains(fd, ds):
 def download_domains_as_txt(txt, p=1):
     global downloading
     if downloading:
-        msg = '已经有更新直连域名列表任务正在进行中，请稍后再试'
+        msg = '已经有更新直连域名列表的任务正在进行中，请稍后再试'
         logging.warning(msg)
         return msg
     downloading = True
@@ -61,7 +61,7 @@ def download_domains_as_txt(txt, p=1):
         for ds in data_source_manager.sources():
             if p & ds:
                 for child_ds in ds.get_children():
-                    if ds.check_ext(child_ds.name):
+                    if ds.check(child_ds.name):
                         add(child_ds)
                 add(ds)
 
@@ -158,7 +158,7 @@ if is_main:
             if 1 in ns:
                 data_source |= ds_FELIX
             if 7 in ns:
-                ds_FELIX.set_ext('apple')
+                ds_FELIX.set('apple')
         if data_source == 0:
             print('输入错误！')
             continue

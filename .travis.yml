@@ -14,16 +14,17 @@ addons:
       - p7zip-full
 
 script:
-  - export PYTHON_VERSION=cp35
+  - export PYTHON_VERSION=3.6.8
+  - export PYTHON_IMPL_VERSION=cp36
   - export RELEASE_VERSION=$(grep -oP '[0-9\.]+' local/__init__.py)
 
 before_deploy:
-  - curl -kL -o cert/cacerts/mozilla.pem https://curl.haxx.se/ca/cacert.pem
-  - curl -kL -o cert/cacerts/google.pem https://pki.google.com/roots.pem
+  - pip install pycurl
+
+  - curl -L -o cert/cacerts/mozilla.pem https://curl.haxx.se/ca/cacert.pem
+  - curl -L -o cert/cacerts/google.pem https://pki.google.com/roots.pem
   - python launcher/buildipdb.py -u -d --17mon
   - python launcher/builddomains.py -u -d --felix
-
-  - git clone --depth=1 --branch=win_py_portable https://github.com/SeaHOH/GotoX.git ../win_py_portable
 
   - rm -rf .git*
   - rm -rf .travis*
@@ -33,20 +34,18 @@ before_deploy:
   - cp -r GotoX GotoX-win32
   - mv GotoX GotoX-win_amd64
 
-  - rm -f GotoX-none-any/*.vbs
-  - cp -rf win_py_portable/${PYTHON_VERSION}-win32/python GotoX-win32
-  - cp -rf win_py_portable/${PYTHON_VERSION}-win_amd64/python GotoX-win_amd64
-
   - cd GotoX-none-any
   - zip -r GotoX-${RELEASE_VERSION}-none-any.zip *
   - mv *.zip ..
 
   - cd ../GotoX-win32
-  - 7za a -r -mx=9 -m0=BCJ2 -m1=LZMA2:mf=bt3 -m2=LZMA:d19 -m3=LZMA:d19 -m4=LZMA:d19 -mb0s0:1 -mb0s1:2 -mb0s2:3 -mb0s3:4 GotoX-${RELEASE_VERSION}-${PYTHON_VERSION}-win32.7z *
+  - python pack_portable.py ${PYTHON_VERSION}-win32
+  - 7za a -r -mx=9 -m0=BCJ2 -m1=LZMA2:mf=bt3 -m2=LZMA:d19 -m3=LZMA:d19 -m4=LZMA:d19 -mb0s0:1 -mb0s1:2 -mb0s2:3 -mb0s3:4 GotoX-${RELEASE_VERSION}-${PYTHON_IMPL_VERSION}-win32.7z *
   - mv *.7z ..
 
   - cd ../GotoX-win_amd64
-  - 7za a -r -mx=9 -m0=BCJ2 -m1=LZMA2:mf=bt3 -m2=LZMA:d19 -m3=LZMA:d19 -m4=LZMA:d19 -mb0s0:1 -mb0s1:2 -mb0s2:3 -mb0s3:4 GotoX-${RELEASE_VERSION}-${PYTHON_VERSION}-win_amd64.7z *
+  - python pack_portable.py ${PYTHON_VERSION}-win_amd64
+  - 7za a -r -mx=9 -m0=BCJ2 -m1=LZMA2:mf=bt3 -m2=LZMA:d19 -m3=LZMA:d19 -m4=LZMA:d19 -mb0s0:1 -mb0s1:2 -mb0s2:3 -mb0s3:4 GotoX-${RELEASE_VERSION}-${PYTHON_IMPL_VERSION}-win_amd64.7z *
   - mv *.7z ..
 
   - cd ..
