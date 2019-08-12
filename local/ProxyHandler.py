@@ -871,7 +871,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                     response.close()
                     if noerror and GC.GAE_KEEPALIVE:
                         #放入套接字缓存
-                        http_gws.ssl_connection_cache['google_gae|:443'].append((time(), response.sock))
+                        response.http_util.ssl_connection_cache[response.connection_cache_key].append((time(), response.sock))
                     else:
                         #干扰严重时考虑不复用
                         response.sock.close()

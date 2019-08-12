@@ -24,8 +24,8 @@ if '6' in GC.LINK_PROFILE:
 def reset_dns():
     dns.clear()
     #保持链接 GAE 列表不过期
-    dns.set('google_gae', GC.IPLIST_MAP['google_gae'], expire=False)
-    dns.set('google_gws', GC.IPLIST_MAP['google_gws'], expire=False)
+    dns.set('google_gae|', GC.IPLIST_MAP['google_gae'], expire=False)
+    dns.set('google_gws|', GC.IPLIST_MAP['google_gws'], expire=False)
     dns.set(dnshostalias, GC.IPLIST_MAP[GC.DNS_OVER_HTTPS_LIST], expire=False)
 
 def set_dns(host, iporname):
@@ -231,7 +231,7 @@ def _dns_remote_resolve(qname, dnsservers, blacklist=[], timeout=2, qtypes=qtype
                 sock_v6.sendto(query_data, dnsserver)
                 query_times += 1
     except socket.error as e:
-        logging.warning('send dns query=%s socket: %r', query, e)
+        logging.warning('send dns query=\n%s \nsocket: %r', query, e)
     while time() < timeout_at and not (v4_resolved and v6_resolved) and query_times:
         try:
             ins, _, _ = select(socks, [], [], 0.1)
@@ -280,7 +280,7 @@ def _dns_remote_resolve(qname, dnsservers, blacklist=[], timeout=2, qtypes=qtype
                 if xip not in xips:
                     xips.append(xip)
         except socket.error as e:
-            logging.warning('receive dns query=%s socket: %r', query, e)
+            logging.warning('receive dns query=\n%s \nsocket: %r', query, e)
     for sock in socks:
         sock.close()
     logging.debug('query qname=%r reply iplist=%s', qname, iplist)
@@ -330,38 +330,36 @@ else:
     logging.warning('读取系统当前 DNS 设置失败')
 
 def dns_system_resolve(host, qtypes=qtypes):
-    now = time()
+    start = time()
     try:
         if local_dnsservers:
             iplist = _dns_remote_resolve(host, local_dnsservers, timeout=2, qtypes=qtypes)
+        # getaddrinfo 在 Windows 下无法并发，其它系统未知
+        elif AAAA not in qtypes:
+            iplist = list(set(socket.gethostbyname_ex(host)[-1]) - GC.DNS_BLACKLIST)
+        elif A in qtypes:
+            iplist = list(set(ipaddr[4][0] for ipaddr in socket.getaddrinfo(host, None)) - GC.DNS_BLACKLIST)
         else:
-            if AAAA in qtypes:
-                # getaddrinfo 在Windows 下无法并发，其它系统未知
-                if A in qtypes:
-                    iplist = list(set(ipaddr[4][0] for ipaddr in socket.getaddrinfo(host, None)) - GC.DNS_BLACKLIST)
-                else:
-                    iplist = list(set(ipaddr[4][0] for ipaddr in socket.getaddrinfo(host, None, socket.AF_INET6)) - GC.DNS_BLACKLIST)
-            else:
-                iplist = list(set(socket.gethostbyname_ex(host)[-1]) - GC.DNS_BLACKLIST)
+            iplist = list(set(ipaddr[4][0] for ipaddr in socket.getaddrinfo(host, None, socket.AF_INET6)) - GC.DNS_BLACKLIST)
     except:
         iplist = None
-    cost = int((time() - now) * 1000)
+    cost = int((time() - start) * 1000)
     logging.test('%sdns_system_resolve 已缓存：%s/%s，耗时：%s 毫秒，%s = %s',
                  address_string(iplist), len(dns), dns.max_items, cost, host, iplist or '查询失败')
     return iplist
 
 def dns_remote_resolve(host, qtypes=qtypes):
-    now = time()
+    start = time()
     iplist = _dns_remote_resolve(host, GC.DNS_SERVERS, GC.DNS_BLACKLIST, timeout=2, qtypes=qtypes)
-    cost = int((time() - now) * 1000)
+    cost = int((time() - start) * 1000)
     logging.test('%sdns_remote_resolve 已缓存：%s/%s，耗时：%s 毫秒，%s = %s',
                  address_string(iplist), len(dns), dns.max_items, cost, host, iplist or '查询失败')
     return iplist
 
 def dns_local_resolve(host, qtypes=qtypes):
-    now = time()
+    start = time()
     iplist = _dns_remote_resolve(host, GC.DNS_LOCAL_SERVERS, timeout=2, qtypes=qtypes)
-    cost = int((time() - now) * 1000)
+    cost = int((time() - start) * 1000)
     logging.test('%sdns_local_resolve 已缓存：%s/%s，耗时：%s 毫秒，%s = %s',
                  address_string(iplist), len(dns), dns.max_items, cost, host, iplist or '查询失败')
     return iplist
@@ -369,9 +367,9 @@ def dns_local_resolve(host, qtypes=qtypes):
 def dns_over_https_resolve(host, qtypes=qtypes):
     if not GC.DNS_OVER_HTTPS:
         return
-    now = time()
+    start = time()
     iplist = _dns_over_https_resolve(host, qtypes=qtypes) 
-    cost = int((time() - now) * 1000)
+    cost = int((time() - start) * 1000)
     logging.test('%sdns_over_https 已缓存：%s/%s，耗时：%s 毫秒，%s = %s',
                  address_string(iplist), len(dns), dns.max_items, cost, host, iplist or '查询失败')
     return iplist

@@ -12,10 +12,8 @@ from urllib.parse import urljoin
 from .common.util import LimiterFull, spawn_later
 from .GAEFetch import get_appid, mark_badappid, gae_urlfetch
 from .GlobalConfig import GC
-from .HTTPUtil import http_gws
 from .GIPManager import ip_manager_gae
 
-ssl_connection_cache = http_gws.ssl_connection_cache
 getrange = re.compile(r'bytes (\d+)-(\d+)/(\d+)').search
 
 class RangeFetch:
@@ -260,7 +258,7 @@ class RangeFetch:
                     response.close()
                     if noerror:
                         #放入套接字缓存
-                        ssl_connection_cache['google_gae|:443'].append((time(), response.sock))
+                        response.http_util.ssl_connection_cache[response.connection_cache_key].append((time(), response.sock))
                     else:
                         response.sock.close()
                         if self.delable:

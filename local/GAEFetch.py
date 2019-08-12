@@ -8,11 +8,13 @@ import logging
 from io import BytesIO
 from time import time, timezone, localtime, strftime, strptime, mktime
 from http.client import HTTPResponse, parse_headers
+from .FilterUtil import get_connect_action
 from .GlobalConfig import GC
 from .GIPManager import test_ip_gae
-from .HTTPUtil import http_gws
+from .HTTPUtil import http_gws, http_nor
 from .common.decompress import GzipSock
 from .common.decorator import make_lock_decorator
+from .common.dns import set_dns
 from .common.util import LRUCache, LimitBase
 
 class LimitGAE(LimitBase):
@@ -52,12 +54,20 @@ _lock_appid = make_lock_decorator()
 badappids = LRUCache(len(GC.GAE_APPIDS))
 
 def check_appid_exists(appid):
-    host = '%s.appspot.com' % appid
+    request_params = gae_params_dict[appid]
+    if isinstance(request_params, gae_params):
+        http_util = http_gws
+    else:
+        if not hasattr(request_params, 'hostname'):
+            _, (iporname, _) = get_connect_action(request_params.ssl, request_params.host)
+            request_params.hostname = set_dns(request_params.host, iporname)
+        http_util = http_nor
+    connection_cache_key = '%s:%d' % (request_params.hostname, request_params.port)
     for _ in range(3):
         err = None
         response = None
         try:
-            sock = http_gws.create_ssl_connection((host, 443), 'google_gae', 'google_gae|:443')
+            sock = http_util.create_ssl_connection((request_params.host, request_params.port), request_params.hostname, connection_cache_key)
             sock.sendall(b'HEAD / HTTP/1.1\r\n'
                          b'Host: %s\r\n'
                          b'Connection: Close\r\n\r\n' % host.encode())
@@ -71,7 +81,7 @@ def check_appid_exists(appid):
                 if err is None:
                     exists = response.status in (200, 503)
                     if exists:
-                        http_gws.ssl_connection_cache['google_gae|:443'].append((time(), sock))
+                        http_util.ssl_connection_cache[connection_cache_key].append((time(), sock))
                     return exists
 
 @_lock_appid
@@ -138,7 +148,7 @@ def make_errinfo(response, htmltxt):
 class gae_params:
     port = 443
     ssl = True
-    hostname = 'google_gae'
+    hostname = 'google_gae|'
     path = GC.GAE_PATH
     command = 'POST'
     fetchhost = '%s.appspot.com'
@@ -150,9 +160,26 @@ class gae_params:
         self.host = self.fetchhost % appid
         self.url = self.fetchserver % appid
 
+class custom_gae_params:
+    port = 443
+    ssl = True
+    path = GC.GAE_PATH
+    command = 'POST'
+    fetchserver = 'https://%s' + path
+
+    __slots__ = 'host', 'url', 'hostname'
+
+    def __init__(self, host):
+        self.host = host
+        self.url = self.fetchserver % host
+        
+
 gae_params_dict = {}
 for appid in GC.GAE_APPIDS:
-    gae_params_dict[appid] = gae_params(appid)
+    if '.' in appid:
+        gae_params_dict[appid] = custom_gae_params(appid)
+    else:
+        gae_params_dict[appid] = gae_params(appid)
 
 def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
     # GAE 代理请求不允许设置 Host 头域
@@ -182,8 +209,15 @@ def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
     return response(_response)
 
 def _gae_urlfetch(request_params, payload, request_headers, getfast, method, realurl):
+    if isinstance(request_params, gae_params):
+        http_util = http_gws
+    else:
+        _, (iporname, _) = get_connect_action(request_params.ssl, request_params.host)
+        request_params.hostname = set_dns(request_params.host, iporname)
+        http_util = http_nor
+    connection_cache_key = '%s:%d' % (request_params.hostname, request_params.port)
     while True:
-        response = http_gws.request(request_params, payload, request_headers, connection_cache_key='google_gae|:443', getfast=getfast, realmethod=method, realurl=realurl)
+        response = http_util.request(request_params, payload, request_headers, connection_cache_key=connection_cache_key, getfast=getfast, realmethod=method, realurl=realurl)
         if response is None:
             return
         if response.status not in (200, 404):
@@ -197,6 +231,8 @@ def _gae_urlfetch(request_params, payload, request_headers, getfast, method, rea
         if test_ip_gae(response.xip[0]):
             break
         logging.warning('发现并移除非 GAE IP：%s，Server：%s', response.xip[0], app_server)
+    response.http_util = http_util
+    response.connection_cache_key = connection_cache_key
     response.app_status = response.status
     if response.status != 200:
         return response
@@ -207,6 +243,8 @@ def _gae_urlfetch(request_params, payload, request_headers, getfast, method, rea
         responseg.app_status = 200
         responseg.xip =  response.xip
         responseg.sock = response.sock
+        responseg.http_util = http_util
+        responseg.connection_cache_key = connection_cache_key
         return responseg
     #读取压缩头部
     data = response.read(2)
