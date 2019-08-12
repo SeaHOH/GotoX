@@ -113,7 +113,9 @@ class actionfilterlist(list):
                         v = None
                     elif '*' not in v:
                         v = v.encode()
-                if filters.action in (FORWARD, DIRECT):
+                elif filters.action in (BLOCK, GAE):
+                    v = None
+                elif filters.action in (FORWARD, DIRECT):
                     if v[:1] == '@':
                         p, _, v = v.partition(' ')
                     else:
