@@ -158,6 +158,8 @@ def parse_cidr_iplist(fd, ds):
     try:
         for line in fd:
             read += len(line)
+            if line[:1] in b'#;':
+                continue
             if b'/' in line:
                 ip, mask = line.decode().strip('\r\n').split('/')
                 ds.itemlist.append((ip2int(ip), 32 - int(mask)))

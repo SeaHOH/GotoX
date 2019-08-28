@@ -28,6 +28,8 @@ def parse_dnsmasq_domains(fd, ds):
     try:
         for line in fd:
             read += len(line)
+            if line[:1] in b'#;':
+                continue
             linesp = line.split(b'/')
             if len(linesp) == 3:
                 ds.itemlist.append(linesp[1])

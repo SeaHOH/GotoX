@@ -111,8 +111,6 @@ class actionfilterlist(list):
                 if filters.action == FAKECERT:
                     if not v:
                         v = None
-                    elif '*' not in v:
-                        v = v.encode()
                 elif filters.action in (BLOCK, GAE):
                     v = None
                 elif filters.action in (FORWARD, DIRECT):

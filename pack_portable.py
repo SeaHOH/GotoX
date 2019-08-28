@@ -19,7 +19,7 @@ import sys
 import builtins
 
 def pkgdll_get_path(loader, path, name):
-    dll_name = '%s.%s.pyd' % (name.split('.')[-1], dll_tag)
+    dll_name = name.split('.')[-1] + dll_tag_ext
     dll_path = os.path.join(os.path.dirname(path), dll_name)
     if 'zipimporter object' in str(loader):
         path = os.path.join(eggs_cache,
@@ -50,10 +50,12 @@ def set_path():
     eggs_cache = os.path.join(py_dir, 'Eggs-Cache')
 
 def main():
-    global dll_tag
-    impl_version = 'cp%d%d' % sys.version_info[:2]
-    arch = 'win_amd64' if 'amd64' in sys.version.lower() else 'win32'
-    dll_tag = '%s-%s' % (impl_version, arch)
+    global dll_tag_ext
+    import _imp
+    for dll_ext in _imp.extension_suffixes():
+        if dll_ext[:3] == '.cp':
+            dll_tag_ext = dll_ext
+            break
     builtins.pkgdll_get_path = pkgdll_get_path
     set_path()
 

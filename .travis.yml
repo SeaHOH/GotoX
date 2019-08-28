@@ -30,12 +30,12 @@ before_deploy:
   - rm -rf .travis*
 
   - cd ..
-  - cp -r GotoX GotoX-none-any
+  - cp -r GotoX GotoX-py3-none-any
   - cp -r GotoX GotoX-win32
   - mv GotoX GotoX-win_amd64
 
-  - cd GotoX-none-any
-  - zip -r GotoX-${RELEASE_VERSION}-none-any.zip *
+  - cd GotoX-py3-none-any
+  - zip -r GotoX-${RELEASE_VERSION}-py3-none-any.zip *
   - mv *.zip ..
 
   - cd ../GotoX-win32

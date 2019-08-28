@@ -253,9 +253,8 @@ class BaseHTTPUtil:
 
     def get_server_hostname(self, host, cache_key):
         servername = get_fake_sni(host)
-        if servername is not False:
-            #同时返回原主机名用于验证，伪造名称只用于 SNI 设置
-            return servername, host
+        if servername:
+            return servername
         if self.gws:
             if cache_key == 'google_gae|:443' or host and host.endswith('.appspot.com'):
                 if gws_servername is None:

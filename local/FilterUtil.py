@@ -42,14 +42,28 @@ def check_reset():
 
 def get_fake_sni(host):
     if not isinstance(host, str):
-        return False
+        return
     action, rule = get_connect_action(True, host)
-    if action == 'do_FAKECERT':
-        if isinstance(rule, bytes):
-            return None if rule == b'@none' else rule
-        elif isinstance(rule, str):
-            return random_hostname(None if rule == '*' else rule).encode()
-    return False
+    if action == 'do_FAKECERT' and isinstance(rule, str):
+        #同时返回原主机名用于验证，伪造名称只用于 SNI 设置
+        _host, _, sni = rule.rpartition('@')
+        if sni == 'none':
+            sni = None
+        elif sni == '':
+            sni = host.encode()
+        elif sni == '*':
+            sni = random_hostname().encode()
+        elif '*' in sni:
+            sni = random_hostname(sni).encode()
+        else:
+            sni = sni.encode()
+        host = _host or host
+        if host == 'none':
+            host = None
+        elif host == 'same':
+            host = sni
+        return sni, host
+    return
 
 def get_redirect(target, url):
     '''Get the redirect target'''
