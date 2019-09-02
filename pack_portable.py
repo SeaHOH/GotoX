@@ -16,6 +16,7 @@ from configparser import ConfigParser
 usercustomize = b'''\
 import os
 import sys
+import _imp
 import builtins
 
 def pkgdll_get_path(loader, path, name):
@@ -51,7 +52,6 @@ def set_path():
 
 def main():
     global dll_tag_ext
-    import _imp
     for dll_ext in _imp.extension_suffixes():
         if dll_ext[:3] == '.cp':
             dll_tag_ext = dll_ext
@@ -93,61 +93,119 @@ else:
 STRING = b'STRING'
 BYTES = b'BYTES'
 JSON = b'JSON'
+ARB = re.compile(b'Accept-Ranges:\s?bytes').search
 
-def _download(url, filepath=None, sum=None):
+def _download(url, f):
+    f.reset_headers()
+    start = f.tell()
+    c = pycurl.Curl()
+    c.setopt(c.CAINFO, ca)
+    c.setopt(c.SSL_VERIFYHOST, 2)
+    c.setopt(c.BUFFERSIZE, 32768)
+    c.setopt(c.TIMEOUT, 60)
+    c.setopt(c.URL, url)
+    c.setopt(c.WRITEFUNCTION, f.write)
+    c.setopt(c.HEADERFUNCTION, f.header_cb)
+    if start:
+        c.setopt(c.RANGE, '%d-' % start)
+    c.perform()
+    ok = c.getinfo(c.RESPONSE_CODE) in (200, 206)
+    c.close()
+    return ok
+
+class file:
+    def __init__(self, filepath, sum):
+        self.f = None
+        self.filepath = filepath
+        if sum:
+            self.algorithm, self.sum = sum.split('|')
+        self.new_file()
+        self.headers = []
+
+    def new_file(self):
+        self.close()
+        if self.filepath in (STRING, BYTES, JSON):
+            self.f = BytesIO()
+        else:
+            self.f = open(self.filepath, 'wb')
+        if hasattr(self, 'algorithm'):
+            self.m = getattr(hashlib, self.algorithm)()
+        else:
+            self.m = None
+
+    def __getattr__(self, name):
+        return getattr(self.f, name)
+
+    def write(self, data):
+        if self.accept_ranges is None:
+            self.accept_ranges = bool(ARB(b''.join(self.headers)))
+            if self.f.tell() and not self.accept_ranges:
+                self.new_file()
+        self.f.write(data)
+        if self.m:
+            self.m.update(data)
+
+    def header_cb(self, data):
+        self.headers.append(data)
+
+    def reset_headers(self):
+        self.headers.clear()
+        self.accept_ranges = None
+
+    def close(self):
+        if hasattr(self.f, 'close'):
+            self.f.close()
+
+    def check_sum(self):
+        if self.m:
+            return self.m.hexdigest() == self.sum
+        else:
+            return True
+
+def download(url, filepath=None, sum=None):
     if not filepath:
         name_parts = url.split('/')[2:]
         filepath = name_parts.pop()
         while not filepath and name_parts:
             filepath = name_parts.pop()
     print('start download %r to %r.' % (url, filepath))
-    c = pycurl.Curl()
-    if filepath in (STRING, BYTES, JSON):
-        f = BytesIO()
-        sum = None
-    else:
-        f = open(filepath, 'wb')
-    c.setopt(c.CAINFO, ca)
-    c.setopt(pycurl.SSL_VERIFYHOST, 2)
-    c.setopt(pycurl.BUFFERSIZE, 32768)
-    c.setopt(pycurl.TIMEOUT, 60)
-    c.setopt(c.URL, url)
-    c.setopt(c.WRITEDATA, f)
-    c.perform()
-    ok = c.getinfo(c.RESPONSE_CODE) == 200
-    c.close()
-    if filepath not in (STRING, BYTES, JSON):
-        f.close()
-    print('download %r to %r over.' % (url, filepath))
-    if sum:
-        algorithm, sum = sum.split('|')
-        m = getattr(hashlib, algorithm)()
-        with open(filepath, 'rb') as f:
-            data = f.read(1024)
-            while data:
-                m.update(data)
-                data = f.read(1024)
-        ok = m.hexdigest() == sum
-    if filepath is STRING:
-        res = f.getvalue().decode()
-    elif filepath is BYTES:
-        res = f.getvalue()
-    elif filepath is JSON:
-        res = json.loads(f.getvalue().decode())
-    else:
-        res = filepath
-    return ok, res
 
-def download(url, filepath=None, sum=None):
+    f = file(filepath, sum)
     ok = False
-    retry = -1
-    while not ok and retry <= 3:
-        ok, res = _download(url, filepath, sum)
+    retry = 0
+    max_retry = 10
+    while not ok and retry <= max_retry:
+        try:
+            ok = _download(url, f)
+        except Exception as e:
+            print('download %r error: %s.' % (url, e), file=sys.stderr)
+            err = e
+        else:
+            if not ok and retry == max_retry:
+                f.new_file()
         retry += 1
+
     if ok:
+        ok = f.check_sum()
+        if ok:
+            if filepath is STRING:
+                res = f.getvalue().decode()
+            elif filepath is BYTES:
+                res = f.getvalue()
+            elif filepath is JSON:
+                res = json.loads(f.getvalue().decode())
+            else:
+                res = filepath
+        else:
+            err = 'hash check failed'
+    else:
+        err = 'response status is wrong'
+    f.close()
+    if ok:
+        print('download %r to %r over.' % (url, filepath))
         return res
     else:
-        print('download %r fail!' % url, file=sys.stderr)
+        print('download %r fail: %s.' % (url, err), file=sys.stderr)
         sys.exit(-1)
 
 
