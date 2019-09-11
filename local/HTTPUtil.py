@@ -34,7 +34,8 @@ from .common.proxy import parse_proxy, proxy_no_rdns
 from .common.util import LRUCache, LimiterFull, LimitDictBase, wait_exit
 from .FilterUtil import reset_method_list, get_fake_sni
 
-GoogleG23PKP = {
+GoogleONames = {'Google Inc', 'Google LLC'}
+GoogleICAPkeys = {
 # https://pki.google.com/GIAG2.crt 已过期
 
 # https://pki.goog/gsr2/GIAG3.crt
@@ -159,8 +160,8 @@ class BaseHTTPUtil:
     new_sock6_cache = collections.deque()
 
     def __init__(self, cacert=None, ssl_ciphers=None):
-        if GC.LINK_VERIFYG2PK:
-            self.google_verify = self.google_verify_g23
+        if GC.LINK_VERIFYGPK:
+            self.google_verify = self.google_verify_pkey
         #建立公用 CA 证书库
         self._context = SSL.Context(SSL.SSLv23_METHOD)
         self.load_cacert(cacert)
@@ -334,16 +335,16 @@ class BaseHTTPUtil:
         if not cert:
             raise ssl.SSLError('没有获取到证书')
         subject = cert.get_subject()
-        if subject.O != 'Google Inc':
-            raise ssl.SSLError('%s 证书的公司名称（%s）不是 "Google Inc"' % (sock.getpeername[0], subject.O))
+        if subject.O not in GoogleONames:
+            raise ssl.SSLError('%s 证书的组织名称（%s）不属于 %s 之一。' % (sock.getpeername[0], subject.O, GoogleONames))
         return cert
 
     @staticmethod
-    def google_verify_g23(sock):
+    def google_verify_pkey(sock):
         certs = sock.get_peer_cert_chain()
         if len(certs) < 2:
             raise ssl.SSLError('谷歌域名没有获取到正确的证书链：缺少 CA。')
-        if OpenSSL.crypto.dump_publickey(OpenSSL.crypto.FILETYPE_PEM, certs[1].get_pubkey()) not in GoogleG23PKP:
+        if OpenSSL.crypto.dump_publickey(OpenSSL.crypto.FILETYPE_PEM, certs[1].get_pubkey()) not in GoogleICAPkeys:
             raise ssl.SSLError('谷歌域名没有获取到正确的证书链：CA 公钥不匹配。')
         return certs[0]
 

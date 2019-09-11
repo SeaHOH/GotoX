@@ -58,7 +58,8 @@ def create_ca():
         crypto.X509Extension(b'basicConstraints', True, b'CA:TRUE, pathlen:0'),
         crypto.X509Extension(b'extendedKeyUsage', True, b'serverAuth,emailProtection,timeStamping'),
         crypto.X509Extension(b'keyUsage', False, b'keyCertSign, cRLSign'),
-        crypto.X509Extension(b'subjectKeyIdentifier', False, b'hash', subject=ca), ])
+        crypto.X509Extension(b'subjectKeyIdentifier', False, b'hash', subject=ca)
+    ])
     ca.sign(pkey, ca_digest)
     return pkey, ca
 
@@ -98,7 +99,7 @@ def create_subcert(certfile, commonname, ip=False):
     if ip:
         sans = 'IP: ' + commonname
     else:
-        sans = 'DNS: %s, DNS: *.%s' % (commonname,  commonname)
+        sans = 'DNS: %s, DNS: *.%s' % (commonname, commonname)
     cert.add_extensions([crypto.X509Extension(b'subjectAltName', True, sans.encode())])
     cert.sign(ca_privatekey, ca_digest)
 
@@ -107,10 +108,10 @@ def create_subcert(certfile, commonname, ip=False):
 
 def get_cert(commonname, ip=False):
     if ip:
-        certfile = os.path.join(sub_certdir, commonname.replace(':', '.') + '.crt')
+        certfilename = commonname.replace(':', '.')
     else:
-        rcommonname = '.'.join(reversed(commonname.split('.')))
-        certfile = os.path.join(sub_certdir, rcommonname + '.crt')
+        certfilename = '.'.join(reversed(commonname.split('.')))
+    certfile = os.path.join(sub_certdir, certfilename + '.crt')
 
     with sub_lock:
         if os.path.exists(certfile):

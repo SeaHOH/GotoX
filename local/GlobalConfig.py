@@ -99,7 +99,7 @@ class GC:
     LINK_WINDOW = max(min(CONFIG.getint('link', 'window', fallback=3), 12), 2)
     LINK_MAXPERIP = max(min(CONFIG.getint('link', 'maxperip', fallback=6), 32), 3)
     LINK_RECVBUFFER = max(min(CONFIG.getint('link', 'recvbuffer', fallback=1024 * 128), 1024 * 1024 *4), 1024 * 32)
-    LINK_VERIFYG2PK = CONFIG.getboolean('link', 'verifyg2pk', fallback=True)
+    LINK_VERIFYGPK = CONFIG.getboolean('link', 'verifygpk', fallback=True)
     LINK_LOCALSSLTXT = CONFIG.get('link', 'localssl', fallback='TLS')
     LINK_REMOTESSLTXT = CONFIG.get('link', 'remotessl', fallback='TLSv1.2')
     LINK_LOCALSSL = _SSLv[LINK_LOCALSSLTXT]
@@ -179,12 +179,12 @@ class GC:
     PICKER_BLOCK = CONFIG.gettuple('picker', 'block')
     PICKER_GAE_ENABLE = CONFIG.getboolean('picker/gae', 'enable', fallback=True)
     PICKER_GAE_MINRECHECKTIME = CONFIG.getint('picker/gae', 'minrechecktime', fallback=40)
-    PICKER_GAE_MINCNT = CONFIG.getint('picker/gae', 'mincnt', fallback=6)
+    PICKER_GAE_MINCNT = CONFIG.getint('picker/gae', 'mincnt', fallback=5)
     PICKER_GAE_MAXTIMEOUT = CONFIG.getint('picker/gae', 'maxtimeout', fallback=3000)
     PICKER_GAE_MAXTHREADS = CONFIG.getint('picker/gae', 'maxthreads', fallback=1)
     PICKER_GWS_ENABLE = CONFIG.getboolean('picker/gws', 'enable', fallback=True)
     PICKER_GWS_MINRECHECKTIME = CONFIG.getint('picker/gws', 'minrechecktime', fallback=30)
-    PICKER_GWS_MINCNT = CONFIG.getint('picker/gws', 'mincnt', fallback=10)
+    PICKER_GWS_MINCNT = CONFIG.getint('picker/gws', 'mincnt', fallback=8)
     PICKER_GWS_MAXTIMEOUT = CONFIG.getint('picker/gws', 'maxtimeout', fallback=1000)
     PICKER_GWS_MAXTHREADS = CONFIG.getint('picker/gws', 'maxthreads', fallback=3)
 

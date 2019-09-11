@@ -638,7 +638,7 @@ class IPManager:
         b'Host: gweb-cloudblog-publish.appspot.com\r\n'
         b'Connection: Close\r\n\r\n'
     )
-    pick_gae_code = b'404', b'405'
+    pick_gae_code = b'404', b'405', b'502'
     pick_gae_verify_code  = b'500', b'302'
     pick_gws_res = (
         b' Found\r\n'
@@ -691,7 +691,7 @@ class IPManager:
         self.enable = enable
         self.min_recheck_time = min_recheck_time
         self.min_cnt = min_cnt
-        self.max_cnt = int(min_cnt * 1.6)
+        self.max_cnt = int(min_cnt * 1.4)
         self.max_timeout = max_timeout
         self.max_threads = max_threads
         self.server_name = GC.PICKER_SERVERNAME
@@ -774,7 +774,12 @@ class IPManager:
             if is_recheck:
                 if isinstance(result, LimiterFull):
                     self.ip_list.append(self.ip_list.popleft())
-                elif self.pick_worker_cnt >= self.max_threads:
+                elif len(self.ip_list) < self.max_cnt and (
+                            self.max_threads == 0 or (
+                            isinstance(result, socket.timeout) and
+                            result.args[-3:] == ' ms' and
+                            self.pick_worker_cnt >= self.max_threads)) or \
+                            len(self.ip_list) <= self.min_cnt:
                     http_gws.ssl_connection_time[result.xip] = http_gws.timeout + 1
                     self.ip_list.append(self.ip_list.popleft())
                     self.logger.warning('%s 测试失败（超时：%d ms）%s，%s',
@@ -788,7 +793,7 @@ class IPManager:
                             self.pick_worker_cnt, timeout, ip, result)
             return
         ssl_time = int(result.ssl_time * 1000)
-        if ssl_time > timeout:
+        if ssl_time > timeout and len(self.ip_list) > self.min_cnt:
             raise socket.timeout('%d ms' % ssl_time)
         self.logger.test('%d 测试连接（超时：%d ms）%s，%d ms',
                 self.pick_worker_cnt, timeout, ip, ssl_time)
@@ -933,7 +938,7 @@ class IPManager:
 
     @_lock_pick_worker
     def check_pick_ip_worker(self):
-        new_worker_cnt = min((self.min_cnt - len(self.ip_list)) * 2,
+        new_worker_cnt = min((self.max_cnt - len(self.ip_list)) * 2,
                              self.max_threads or 1) - self.pick_worker_cnt
         if new_worker_cnt > 0:
             self.pick_worker_cnt += new_worker_cnt

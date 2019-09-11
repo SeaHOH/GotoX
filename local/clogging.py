@@ -215,8 +215,8 @@ def _write(msg, file=None, onerr=None, color=None, reset=None):
         return
     stdout = sys.stdout
     stderr = sys.stderr
-    stdout_isatty = hasattr(stdout, 'isatty') and stdout.isatty()
-    stderr_isatty = hasattr(stderr, 'isatty') and stderr.isatty()
+    stdout_isatty = stdout.isatty()
+    stderr_isatty = stderr.isatty()
     if file is None:
         file = stderr if onerr else stdout
         if onerr and not (stdout_isatty and stderr_isatty):
