@@ -8,13 +8,12 @@ import logging
 from io import BytesIO
 from time import time, timezone, localtime, strftime, strptime, mktime
 from http.client import HTTPResponse, parse_headers
-from .FilterUtil import get_connect_action
 from .GlobalConfig import GC
 from .GIPManager import test_ip_gae
 from .HTTPUtil import http_gws, http_nor
 from .common.decompress import GzipSock
 from .common.decorator import make_lock_decorator
-from .common.dns import set_dns
+from .common.dns import dns, dns_resolve
 from .common.util import LRUCache, LimitBase
 
 class LimitGAE(LimitBase):
@@ -54,20 +53,14 @@ _lock_appid = make_lock_decorator()
 badappids = LRUCache(len(GC.GAE_APPIDS))
 
 def check_appid_exists(appid):
-    request_params = gae_params_dict[appid]
-    if isinstance(request_params, gae_params):
-        http_util = http_gws
-    else:
-        if not hasattr(request_params, 'hostname'):
-            _, (iporname, _) = get_connect_action(request_params.ssl, request_params.host)
-            request_params.hostname = set_dns(request_params.host, iporname)
-        http_util = http_nor
-    connection_cache_key = '%s:%d' % (request_params.hostname, request_params.port)
+    request_params, http_util, connection_cache_key = _get_request_params(appid)
     for _ in range(3):
         err = None
         response = None
         try:
-            sock = http_util.create_ssl_connection((request_params.host, request_params.port), request_params.hostname, connection_cache_key)
+            sock = http_util.create_ssl_connection((request_params.host, request_params.port),
+                                                   request_params.hostname,
+                                                   connection_cache_key)
             sock.sendall(b'HEAD / HTTP/1.1\r\n'
                          b'Host: %s\r\n'
                          b'Connection: Close\r\n\r\n' % host.encode())
@@ -170,7 +163,7 @@ class custom_gae_params:
     __slots__ = 'host', 'url', 'hostname'
 
     def __init__(self, host):
-        self.host = host
+        self.hostname = self.host = host
         self.url = self.fetchserver % host
         
 
@@ -180,6 +173,17 @@ for appid in GC.GAE_APPIDS:
         gae_params_dict[appid] = custom_gae_params(appid)
     else:
         gae_params_dict[appid] = gae_params(appid)
+
+def _get_request_params(appid):
+    request_params = gae_params_dict[appid]
+    if isinstance(request_params, gae_params):
+        http_util = http_gws
+    else:
+        if request_params.hostname not in dns and not dns_resolve(request_params.hostname):
+            raise OSError(11001, '无法解析 GAE 自定义域名：' + request_params.hostname)
+        http_util = http_nor
+    connection_cache_key = '%s:%d' % (request_params.hostname, request_params.port)
+    return request_params, http_util, connection_cache_key
 
 def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
     # GAE 代理请求不允许设置 Host 头域
@@ -202,25 +206,24 @@ def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
         'Accept-Encoding': 'gzip',
         'Content-Length': str(len(payload))
         }
-    request_params = gae_params_dict[appid]
     realurl = 'GAE-' + url
     response = LimitGAE()
-    _response = _gae_urlfetch(request_params, payload, request_headers, getfast, method, realurl)
+    _response = _gae_urlfetch(appid, payload, request_headers, getfast, method, realurl)
     return response(_response)
 
-def _gae_urlfetch(request_params, payload, request_headers, getfast, method, realurl):
-    if isinstance(request_params, gae_params):
-        http_util = http_gws
-    else:
-        _, (iporname, _) = get_connect_action(request_params.ssl, request_params.host)
-        request_params.hostname = set_dns(request_params.host, iporname)
-        http_util = http_nor
-    connection_cache_key = '%s:%d' % (request_params.hostname, request_params.port)
+def _gae_urlfetch(appid, payload, request_headers, getfast, method, realurl):
+    request_params, http_util, connection_cache_key = _get_request_params(appid)
     while True:
-        response = http_util.request(request_params, payload, request_headers, connection_cache_key=connection_cache_key, getfast=getfast, realmethod=method, realurl=realurl)
+        response = http_util.request(request_params, payload, request_headers,
+                                     connection_cache_key=connection_cache_key,
+                                     getfast=getfast,
+                                     realmethod=method,
+                                     realurl=realurl)
         if response is None:
             return
         if response.status not in (200, 404):
+            break
+        if http_util is http_nor:
             break
         app_server = response.headers.get('Server')
         if app_server == 'Google Frontend':
