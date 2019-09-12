@@ -131,7 +131,10 @@ if gae_options:
     gae_options = 'X-UrlFetch-Options: %s\r\n' % gae_options
 
 def make_errinfo(response, htmltxt):
+    if not isinstance(htmltxt, bytes):
+        htmltxt = htmltxt.encode()
     del response.headers['Content-Type']
+    del response.headers['Content-Encoding']
     del response.headers['Connection']
     response.headers['Content-Type'] = 'text/html; charset=utf-8'
     response.headers['Content-Length'] = len(htmltxt)
@@ -253,13 +256,13 @@ def _gae_urlfetch(appid, payload, request_headers, getfast, method, realurl):
     data = response.read(2)
     if len(data) < 2:
         response.status = 502
-        make_errinfo(response, b'connection aborted. too short leadtype data=' + data)
+        make_errinfo(response, 'connection aborted. too short leadtype data=%r' % data)
         return response
     headers_length, = struct.unpack('!h', data)
     data = response.read(headers_length)
     if len(data) < headers_length:
         response.status = 502
-        make_errinfo(response, b'connection aborted. too short headers data=' + data)
+        make_errinfo(response, 'connection aborted. too short headers data=%r' % data)
         return response
     #解压缩并解析头部
     raw_response_line, headers_data = zlib.decompress(data, -zlib.MAX_WBITS).split(b'\r\n', 1)
