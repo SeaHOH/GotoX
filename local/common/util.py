@@ -304,6 +304,8 @@ class LimitBase:
     @classmethod
     def init(cls):
         if not hasattr(cls, '_limiter'):
+            if cls.maxsize <= 0:
+                cls.maxsize = 1
             cls._limiter = cls._limiterFactory()
 
     def __init__(self, maxsize=None, timeout=None):
@@ -368,6 +370,8 @@ class LimitDictBase:
     @classmethod
     def init(cls):
         if not hasattr(cls, '_limiters'):
+            if cls.maxsize <= 0:
+                cls.maxsize = 1
             cls._limiters = cls._limitersDictFactory()
         if not hasattr(cls, 'lock'):
             cls.lock = threading.Lock()
