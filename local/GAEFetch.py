@@ -168,7 +168,7 @@ class custom_gae_params:
     def __init__(self, host):
         self.hostname = self.host = host
         self.url = self.fetchserver % host
-        
+
 
 gae_params_dict = {}
 for appid in GC.GAE_APPIDS:
@@ -204,18 +204,25 @@ def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
         payload = struct.pack('!h', len(metadata)) + metadata + payload
     else:
         payload = struct.pack('!h', len(metadata)) + metadata
-    request_headers = {
-        'User-Agent': 'Mozilla/5.0',
-        'Accept-Encoding': 'gzip',
-        'Content-Length': str(len(payload))
-        }
     realurl = 'GAE-' + url
     response = LimitGAE()
-    _response = _gae_urlfetch(appid, payload, request_headers, getfast, method, realurl)
+    _response = _gae_urlfetch(appid, payload, getfast, method, realurl)
     return response(_response)
 
-def _gae_urlfetch(appid, payload, request_headers, getfast, method, realurl):
+def _gae_urlfetch(appid, payload, getfast, method, realurl):
     request_params, http_util, connection_cache_key = _get_request_params(appid)
+    if http_util is http_gws:
+        request_headers = {
+            'User-Agent': 'Mozilla/5.0',
+            'Accept-Encoding': 'gzip',
+            'Content-Length': str(len(payload))
+            }
+    else:
+        #禁用 CDN 不兼容的 GAE chunked 机制
+        request_headers = {
+            'User-Agent': '',
+            'Content-Length': str(len(payload))
+            }
     while True:
         response = http_util.request(request_params, payload, request_headers,
                                      connection_cache_key=connection_cache_key,
