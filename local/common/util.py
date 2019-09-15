@@ -328,7 +328,7 @@ class LimitBase:
         try:
             cls._limiter.push(timeout=timeout, maxsize=maxsize)
         except LimiterFull:
-            raise LimiterFull(-1, (cls, key))
+            raise LimiterFull(-1, cls)
         return True
 
     @classmethod
@@ -337,7 +337,7 @@ class LimitBase:
             logging.debug('%s.pop with empty limiter', cls, stack_info=True)
 
     @classmethod
-    def full(cls, key):
+    def full(cls):
         return cls._limiter.full()
 
 class LimitDictBase:

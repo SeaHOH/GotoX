@@ -108,9 +108,11 @@ def _download(url, f):
     c.setopt(c.HEADERFUNCTION, f.header_cb)
     if start:
         c.setopt(c.RANGE, '%d-' % start)
-    c.perform()
-    ok = c.getinfo(c.RESPONSE_CODE) in (200, 206)
-    c.close()
+    try:
+        c.perform()
+        ok = c.getinfo(c.RESPONSE_CODE) in (200, 206)
+    finally:
+        c.close()
     return ok
 
 class file:
