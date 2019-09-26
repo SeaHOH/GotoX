@@ -37,6 +37,10 @@ def exists(file):
     clear_zero_file(file)
     return os.path.exists(file)
 
+def getmtime(file):
+    st = os.stat(file)
+    return max(st.st_mtime, st.st_ctime)
+
 def backup_file(file, bak_file=None, no_copy=None):
     if exists(file):
         if bak_file is None:
@@ -191,7 +195,7 @@ class IPSource:
         self.logger.debug('%r：保存 IP %d 个', file, len(ip_set))
 
     def save_source(self, file):
-        mtime = os.path.getmtime(file) if exists(file) else time()
+        mtime = getmtime(file) if exists(file) else time()
         if file is self.ip_file:
             self._save_source(self.ip_set | self.ip_set_block |
                               self.ip_set_ex | self.ip_set_ex_block, file)
@@ -199,7 +203,7 @@ class IPSource:
             self._save_source(self.ip_set_ex, file)
         elif file is self.ip_file_del:
             self._save_source(self.ip_set_del | self.ip_set_del_block, file)
-        os.utime(file, (mtime, mtime))
+        os.utime(file, times=(mtime, mtime))
 
     def get_stat_filenames(self, clear_outdated=True):
         now = time()
@@ -474,13 +478,13 @@ class IPSource:
         update_source = False
         ip_mtime = ip_mtime_ex = 0
         if exists(self.ip_file):
-            ip_mtime = os.path.getmtime(self.ip_file)
+            ip_mtime = getmtime(self.ip_file)
             if ip_mtime > self.ip_mtime:
                 backup_file(self.ip_file)
         else:
             self.logger.error('未发现 IP 列表文件 "%s"，请创建！', self.ip_file)
         if exists(self.ip_file_ex):
-            ip_mtime_ex = os.path.getmtime(self.ip_file_ex)
+            ip_mtime_ex = getmtime(self.ip_file_ex)
             if ip_mtime_ex > self.ip_mtime_ex:
                 backup_file(self.ip_file_ex)
         now = time()
@@ -494,7 +498,7 @@ class IPSource:
         if force or update_source:
             self.update_list(update_source=update_source)
         if ip_mtime_ex:
-            pass_time = now - ip_mtime_ex
+            pass_time = now - max(ip_mtime_ex, start_time)
             if pass_time > self.ex_del_max or \
                     len(self.ip_list_ex) == 0 and pass_time > self.ex_del_min:
                 os.remove(self.ip_file_ex)
@@ -994,6 +998,7 @@ class IPManager:
     def stop(self):
         self.running = False
 
+start_time = time()
 ip_source = IPSource()
 ip_source_gae = IPPoolSource(ip_source, 'gae')
 ip_source_gws = IPPoolSource(ip_source, 'gws')
