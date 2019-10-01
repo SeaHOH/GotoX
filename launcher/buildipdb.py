@@ -245,9 +245,7 @@ if is_main:
     ipdb1 = direct_ipdb
     ipdb2 = os.path.join(file_dir, 'directip.db')
     data_source = data_source_manager.get_source(*sys.argv)
-    if parse_set_proxy(data_source):
-        data_source = 0
-    if data_source:
+    if parse_set_proxy(data_source) is None:
         ipdb = ipdb1 if '-u' in sys.argv else ipdb2
         download_cniplist_as_db(ipdb, data_source)
         sys.exit(0)

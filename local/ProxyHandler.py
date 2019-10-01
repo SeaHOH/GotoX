@@ -561,7 +561,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                            b'Content-Length: %d\r\n\r\n' % len(c))
                 self.write(c)
                 return
-            except NetWorkIOError as e:
+            except Exception as e:
                 noerror = False
                 if self.conaborted:
                     raise e
@@ -574,11 +574,8 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                         logging.warning('%s do_DIRECT "%s %s" 连接被重置，尝试使用 "GAE" 规则。', self.address_string(e), self.command, self.url)
                         return self.go_GAE()
                 elif e.args[0] not in bypass_errno:
+                    logging.warning('%s do_DIRECT "%s %s" 失败：%r', self.address_string(response or e), self.command, self.url, e)
                     raise e
-            except Exception as e:
-                noerror = False
-                logging.warning('%s do_DIRECT "%s %s" 失败：%r', self.address_string(response or e), self.command, self.url, e)
-                raise e
             finally:
                 if not noerror:
                     self.close_connection = True

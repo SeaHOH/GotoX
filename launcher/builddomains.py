@@ -115,9 +115,7 @@ if is_main:
     txt1 = direct_domains
     txt2 = os.path.join(file_dir, 'directdomains.txt')
     data_source = data_source_manager.get_source(*sys.argv)
-    if parse_set_proxy(data_source):
-        data_source = 0
-    if data_source:
+    if parse_set_proxy(data_source) is None:
         txt = txt1 if '-u' in sys.argv else txt2
         download_domains_as_txt(txt, data_source)
         sys.exit(0)

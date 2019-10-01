@@ -101,6 +101,7 @@ class IPSource:
         self.log_stat_bad_times = 0
         self.ip_mtime = 0
         self.ip_mtime_ex = 0
+        self.ip_mtime_ex_start_time = 0
         self.ip_stat_block = {}
         self.ip_stat_files = []
         self.ip_set_bad = set()
@@ -278,6 +279,9 @@ class IPSource:
     def save_stat(self):
         backup_file(self.ip_stat_files[0], self.ip_stat_files[-1], no_copy=True)
         self._save_stat(self.ip_stat_today, self.ip_stat_files[0], self.sort_ip_stat)
+        if not self.ip_stat_files[0].endswith(strftime('%y%j')):
+            self.load_stat()
+            self.save_stat_bad()
 
     @_lock_file_stat
     def load_stat_bad(self):
@@ -430,10 +434,6 @@ class IPSource:
             self.save_source(self.ip_file_del)
 
     def make_good_list(self):
-        if not self.ip_stat_files[0].endswith(strftime('%y%j')):
-            self.save_stat()
-            self.load_stat()
-            self.save_stat_bad()
         ip_list = sorted(self.ip_stat.items(), key=self.sort_ip_stat_good)
         return [ip for ip, _ in ip_list if ip in self.ip_set_good]
 
@@ -475,6 +475,7 @@ class IPSource:
         self.ip_list_weak = get_littery_list(self.ip_set_weak)
 
     def check_update(self, force=False):
+        now = time()
         update_source = False
         ip_mtime = ip_mtime_ex = 0
         if exists(self.ip_file):
@@ -487,7 +488,10 @@ class IPSource:
             ip_mtime_ex = getmtime(self.ip_file_ex)
             if ip_mtime_ex > self.ip_mtime_ex:
                 backup_file(self.ip_file_ex)
-        now = time()
+                self.ip_mtime_ex_start_time = now
+        elif self.ip_mtime_ex_start_time:
+            self.ip_mtime_ex_start_time = 0
+            update_source = True
         if ip_mtime > self.ip_mtime or ip_mtime_ex > self.ip_mtime_ex:
             self.ip_mtime = ip_mtime
             self.ip_mtime_ex = ip_mtime_ex
@@ -498,10 +502,17 @@ class IPSource:
         if force or update_source:
             self.update_list(update_source=update_source)
         if ip_mtime_ex:
-            pass_time = now - max(ip_mtime_ex, start_time)
-            if pass_time > self.ex_del_max or \
+            pass_time = now - self.ip_mtime_ex_start_time
+            idle_time = self.ip_mtime_ex_start_time - ip_mtime_ex
+            if idle_time > self.ex_del_max:
+                ex_del_max = self.ex_del_max ** 2 / idle_time
+            else:
+                ex_del_max = self.ex_del_max
+            if pass_time > ex_del_max or \
                     len(self.ip_list_ex) == 0 and pass_time > self.ex_del_min:
                 os.remove(self.ip_file_ex)
+                self.ip_mtime_ex = 0
+                self.ip_mtime_ex_start_time = 0
                 self.logger.test('删除优先使用 IP 列表文件：%s', self.ip_file_ex)
         return update_source
 
@@ -781,7 +792,7 @@ class IPManager:
                 elif len(self.ip_list) < self.max_cnt and (
                             self.max_threads == 0 or (
                             isinstance(result, socket.timeout) and
-                            result.args[-3:] == ' ms' and
+                            result.args[0][-3:] == ' ms' and
                             self.pick_worker_cnt >= self.max_threads)) or \
                             len(self.ip_list) <= self.min_cnt:
                     http_gws.ssl_connection_time[result.xip] = http_gws.timeout + 1
@@ -998,7 +1009,6 @@ class IPManager:
     def stop(self):
         self.running = False
 
-start_time = time()
 ip_source = IPSource()
 ip_source_gae = IPPoolSource(ip_source, 'gae')
 ip_source_gws = IPPoolSource(ip_source, 'gws')

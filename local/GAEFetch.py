@@ -8,12 +8,14 @@ import logging
 from io import BytesIO
 from time import time, timezone, localtime, strftime, strptime, mktime
 from http.client import HTTPResponse, parse_headers
+from .FilterUtil import get_action
 from .GlobalConfig import GC
 from .GIPManager import test_ip_gae
 from .HTTPUtil import http_gws, http_nor
 from .common.decompress import GzipSock
 from .common.decorator import make_lock_decorator
-from .common.dns import dns, dns_resolve
+from .common.dns import dns, set_dns
+from .common.net import isipv4, isipv6
 from .common.util import LRUCache, LimitBase
 
 class LimitGAE(LimitBase):
@@ -166,7 +168,7 @@ class custom_gae_params:
     __slots__ = 'host', 'url', 'hostname'
 
     def __init__(self, host):
-        self.hostname = self.host = host
+        self.host = host
         self.url = self.fetchserver % host
 
 
@@ -182,13 +184,23 @@ def _get_request_params(appid):
     if isinstance(request_params, gae_params):
         http_util = http_gws
     else:
-        if request_params.hostname not in dns and not dns_resolve(request_params.hostname):
-            raise OSError(11001, '无法解析 GAE 自定义域名：' + request_params.hostname)
+        action, target = get_action('https', request_params.host, request_params.path, request_params.url)
+        if target and action in ('do_DIRECT', 'do_FORWARD'):
+            iporname, profile = target
+        else:
+            iporname, profile = None, None
+        request_params.hostname = hostname = set_dns(request_params.host, iporname)
+        if hostname is None:
+            raise OSError(11001, '无法解析 GAE 自定义域名：' + request_params.host)
+        if profile == '@v4':
+            dns[hostname] = [ip for ip in dns[hostname] if isipv4(ip)]
+        elif profile == '@v6':
+            dns[hostname] = [ip for ip in dns[hostname] if isipv6(ip)]
         http_util = http_nor
     connection_cache_key = '%s:%d' % (request_params.hostname, request_params.port)
     return request_params, http_util, connection_cache_key
 
-def gae_urlfetch(method, url, headers, payload, appid, getfast=None, **kwargs):
+def gae_urlfetch(method, url, headers, payload, appid, getfast=None):
     # GAE 代理请求不允许设置 Host 头域
     if 'Host' in headers:
         del headers['Host']

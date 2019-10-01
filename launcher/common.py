@@ -335,23 +335,23 @@ def set_proxy(proxy_addr):
         os.environ.pop('HTTPS_PROXY', None)
 
 def parse_set_proxy(data_source):
+    use_proxy = None
     if '-p' in sys.argv:
         try:
             proxy_addr = sys.argv[sys.argv.index('-p') + 1]
         except IndexError:
             print('\n代理地址读取失败，退出脚本...')
             sys.exit(-1)
-        if set_proxy(proxy_addr):
-            use_proxy = None
-        else:
+        if not set_proxy(proxy_addr):
             print('\n代理地址 %r 设置失败，退出脚本...' % proxy_addr)
             sys.exit(-1)
         if data_source == 0:
             print('进入交互模式\n')
+            return True
     elif '-d' in sys.argv:
-        use_proxy = False
         if data_source == 0:
             print('进入交互模式\n')
+            return False
     else:
         use_proxy = input('进入交互模式\n\n是否设置代理（Y/N）：')
         use_proxy = use_proxy.upper() == 'Y'
