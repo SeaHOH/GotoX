@@ -140,6 +140,8 @@ class GC:
     if GAE_ENABLEPROXY:
         GAE_IPLIST = GAE_IPLIST2P
         GAE_TIMEOUT = max(GAE_TIMEOUT, 10)
+    else:
+        CONFIG.remove_option('iplist', 'google_2p')
 
     try:
         d = CONFIG._sections['iplist']
