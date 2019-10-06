@@ -248,8 +248,6 @@ class BaseHTTPUtil:
         hostname = hostname or sock.orig_hostname
         if hostname is None:
             return
-        if isinstance(hostname, bytes):
-            hostname = hostname.decode()
         match_hostname(cert, hostname)
 
     def get_server_hostname(self, host, cache_key):
@@ -260,13 +258,13 @@ class BaseHTTPUtil:
             if cache_key == 'google_gae|:443' or host and host.endswith('.appspot.com'):
                 if gws_servername is None:
                     fakehost = random_hostname('*com')
-                    return fakehost.encode()
+                    return fakehost
                 else:
                     return random.choice(gws_servername)
             else:
                 return GC.PICKER_SERVERNAME
         else:
-            return host.encode()
+            return host
 
     @staticmethod
     def set_tcp_socket(sock, timeout=None, set_buffer=True):
@@ -325,8 +323,8 @@ class BaseHTTPUtil:
             sock.orig_hostname = server_hostname
         context = self.get_context(sock.orig_hostname)
         ssl_sock = SSLConnection(context, sock)
-        if server_hostname:
-            ssl_sock.set_tlsext_host_name(server_hostname)
+        if server_hostname and not isip(server_hostname):
+            ssl_sock.set_tlsext_host_name(server_hostname.encode())
         return ssl_sock
 
     @staticmethod
@@ -1002,26 +1000,20 @@ class HTTPUtil(BaseHTTPUtil):
 # AES128-SHA
 # ECDHE-RSA-AES128-SHA
 # http://docs.python.org/dev/library/ssl.html
-# https://www.openssl.org/docs/manmaster/man1/ciphers.html
+# https://www.openssl.org/docs/manmaster/man1/openssl-ciphers.html
+# 以下 GWS ciphers 设置用于 TLS v1.2 连接
 gws_ciphers = (
-    #'ECDHE+AES256+AESGCM:'
-    #'RSA+AES256+AESGCM:'
-    #'ECDHE+AESGCM:'
-    #'RSA+AESGCM:'
-    #'ECDHE+SHA384+TLSv1.2:'
-    #'RSA+SHA384+TLSv1.2:'
-    #'ECDHE+SHA256+TLSv1.2:'
-    #'RSA+SHA256+TLSv1.2:'
-    'TLSv1.2:'
-    #'ALL:'
-    '!RC4-SHA:'
+    'ECDHE+AES256+AESGCM:'
+    'ECDHE+AESGCM:'
+    'ECDHE+HIGH:'
+    'RSA+AES256+AESGCM:'
+    'RSA+AESGCM:'
+    'RSA+HIGH:'
+    'HIGH:MEDIUM:'
     '!AES128-GCM-SHA256:'
-    '!ECDHE-RSA-RC4-SHA:'
     '!ECDHE-RSA-AES128-GCM-SHA256:'
-    '!AES128-SHA:'
     '!ECDHE-RSA-AES128-SHA:'
-    #'!aNULL:!eNULL:!MD5:!DSS:!RC4:!3DES'
-    '!aNULL:!eNULL:!EXPORT:!EXPORT40:!EXPORT56:!LOW:!RC4:!CBC'
+    '!aNULL:!eNULL:!EXPORT:!EXPORT40:!EXPORT56:!LOW:!RC4:!CBC:!DSS:!3DES'
     ).encode()
 
 # max_window=4, timeout=8, proxy='', ssl_ciphers=None, max_retry=2

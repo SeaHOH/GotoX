@@ -132,7 +132,7 @@ class GC:
     GAE_MAXSIZE = min(CONFIG.getint('gae', 'maxsize', fallback=1024 * 1024 * 4), 1024 * 1024 * 32 - 1)
     GAE_IPLIST = CONFIG.get('gae', 'iplist')
     GAE_IPLIST2P = CONFIG.get('gae', 'iplist2p', fallback='google_2p')
-    GAE_SERVERNAME = tuple(name.encode() for name in CONFIG.getlist('gae', 'servername')) or None
+    GAE_SERVERNAME = CONFIG.gettuple('gae', 'servername') or None
     GAE_ENABLEPROXY = CONFIG.getboolean('gae', 'enableproxy', fallback=False)
     GAE_PROXYLIST = CONFIG.getlist('gae', 'proxylist') or None
     if not GAE_PROXYLIST:
@@ -170,7 +170,7 @@ class GC:
     FILTER_ACTION = max(min(CONFIG.getint('filter', 'action', fallback=3), 4), 1)
     FILTER_SSLACTION = max(min(CONFIG.getint('filter', 'sslaction', fallback=2), 4), 1)
 
-    PICKER_SERVERNAME = CONFIG.get('picker', 'servername', fallback='fonts.googleapis.com').encode()
+    PICKER_SERVERNAME = CONFIG.get('picker', 'servername', fallback='fonts.googleapis.com')
     PICKER_COMDOMAIN = CONFIG.get('picker', 'comdomain', fallback='*.googleapis.com')
     PICKER_BLOCKTIME = CONFIG.getfloat('picker', 'blocktime', fallback=0.3)
     PICKER_TIMESBLOCK = CONFIG.getint('picker', 'timesblock', fallback=3)
@@ -238,11 +238,8 @@ class GC:
     DNS_LOCAL_WHITELIST = CONFIG.gettuple('dns', 'localwhitelist')
     DNS_LOCAL_BLACKLIST = CONFIG.gettuple('dns', 'localblacklist')
     DNS_OVER_HTTPS = CONFIG.getboolean('dns', 'overhttps', fallback=True)
-    DNS_OVER_HTTPS_LIST = CONFIG.get('dns', 'overhttpslist', fallback='google_gws')
-    DNS_OVER_HTTPS_ECS = CONFIG.get('dns', 'overhttpsecs', fallback='auto')
+    DNS_OVER_HTTPS_SERVERS = CONFIG.gettuple('dns', 'overhttpsservers', fallback='cloudflare-dns.com')
     DNS_IP_API = CONFIG.gettuple('dns', 'ipapi')
-    if DNS_OVER_HTTPS_ECS is 'auto' and not DNS_IP_API:
-        DNS_OVER_HTTPS_ECS = ''
     DNS_PRIORITY = CONFIG.getlist('dns', 'priority', fallback='system|overhttps|remote')
     DNS_BLACKLIST = set(CONFIG.getlist('dns', 'blacklist'))
 
@@ -253,6 +250,8 @@ class GC:
         else:
             DNS_PRIORITY.remove(dnstype)
     DNS_PRIORITY.extend(DNS_DEF_PRIORITY)
+    if not DNS_OVER_HTTPS:
+        DNS_PRIORITY.remove('overhttps')
 
     DNS_CACHE_ENTRIES = CONFIG.getint('dns/cache', 'entries', fallback=1024)
     DNS_CACHE_EXPIRATION = CONFIG.getint('dns/cache', 'expiration', fallback=7200)

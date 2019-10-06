@@ -50,13 +50,11 @@ def get_fake_sni(host):
         if sni == 'none':
             sni = None
         elif sni == '':
-            sni = host.encode()
+            sni = host
         elif sni == '*':
-            sni = random_hostname().encode()
+            sni = random_hostname()
         elif '*' in sni:
-            sni = random_hostname(sni).encode()
-        else:
-            sni = sni.encode()
+            sni = random_hostname(sni)
         host = _host or host
         if host == 'none':
             host = None

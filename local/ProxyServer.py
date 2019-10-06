@@ -6,7 +6,7 @@ import logging
 import socketserver
 from threading import _start_new_thread as start_new_thread
 from .common.decorator import sole_no_block
-from .common.dns import reset_dns, update_dns_params
+from .common.dns import reset_dns
 from .common.internet_active import is_active, internet_v4, internet_v6
 from .common.net import NetWorkIOError, bypass_errno
 from .common.proxy import get_listen_ip
@@ -57,7 +57,6 @@ def start_proxyserver():
         if '(libev) select: Unknown error' in repr(e):
             wait_exit('如果出现此错误请告诉作者，谢谢！\nhttps://github.com/SeaHOH/GotoX/issues', exc_info=True)
     AutoProxyHandler.bufsize = AutoProxy.socket.getsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF)
-    update_dns_params()
 
 def stop_proxyserver():
     AutoProxy.server_close()

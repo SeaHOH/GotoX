@@ -9,7 +9,7 @@ if GC.LISTEN_AUTH == 2:
     import string
     from urllib.parse import quote, unquote
 
-    login_page = '''
+    login_page = '''\
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
 <html lang="zh-cn">
 <head>
@@ -72,7 +72,7 @@ div, input {font-size: 12pt; font-family: arial,sans-serif}
         max_try_times = 5
 
         auth_white_list = LRUCache(32, 60 * expired_time)
-        auth_black_list = LRUCache(32, 3600*6)
+        auth_black_list = LRUCache(32, 3600 * 6)
         logged_users = {}
         users = GC.LISTEN_AUTHUSER
         login_url = 'gotox.go/login'
@@ -232,7 +232,7 @@ elif GC.LISTEN_AUTH == 1:
                 b'Content-Length: 0\r\n'
                 b'Proxy-Connection: keep-alive\r\n\r\n')
         auth_white_list = set(GC.LISTEN_AUTHWHITELIST)
-        auth_black_list = LRUCache(32, 3600*6)
+        auth_black_list = LRUCache(32, 3600 * 6)
         users = GC.LISTEN_AUTHUSER
         every_try_times = 2
         #最大失败次数，超出后加入黑名单，时效 6 小时

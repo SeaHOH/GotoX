@@ -496,7 +496,7 @@ class IPSource:
             self.ip_mtime = ip_mtime
             self.ip_mtime_ex = ip_mtime_ex
             update_source = True
-        elif len(self.ip_list_weak) < len(self.ip_set_weak) / 2 or \
+        elif len(self.ip_list_weak) < len(self.ip_set_weak) // 2 or \
                 now - self.load_time > self.time_to_reload:
             update_source = True
         if force or update_source:
@@ -505,7 +505,7 @@ class IPSource:
             pass_time = now - self.ip_mtime_ex_start_time
             idle_time = self.ip_mtime_ex_start_time - ip_mtime_ex
             if idle_time > self.ex_del_max:
-                ex_del_max = self.ex_del_max ** 2 / idle_time
+                ex_del_max = self.ex_del_max ** 2 // idle_time
             else:
                 ex_del_max = self.ex_del_max
             if pass_time > ex_del_max or \
@@ -888,7 +888,7 @@ class IPManager:
             pass
 
     def test_ip_gae(self, ip):
-        server_name = random_hostname('*com').encode()
+        server_name = random_hostname('*com')
         _, _, type = self.get_ip_info(ip,
                 server_name=server_name,
                 callback=self.check_gae_status)

@@ -1,14 +1,16 @@
 # coding:utf-8
 
+import json
 import queue
 import socket
 import dnslib
 import logging
+import random
+import urllib.parse as urlparse
 from select import select
 from time import time, sleep
 from threading import _start_new_thread as start_new_thread
-from json.decoder import JSONDecoder
-from .net import isip, isipv4, isipv6, get_wan_ipv4
+from .net import isip, isipv4, isipv6
 from .util import LRUCache, spawn_loop
 from local.GlobalConfig import GC
 
@@ -23,10 +25,9 @@ if '6' in GC.LINK_PROFILE:
 
 def reset_dns():
     dns.clear()
-    #保持链接 GAE 列表不过期
+    #保持链接 GAE/GWS 列表不过期
     dns.set('google_gae|', GC.IPLIST_MAP['google_gae'], expire=False)
     dns.set('google_gws|', GC.IPLIST_MAP['google_gws'], expire=False)
-    dns.set(dnshostalias, GC.IPLIST_MAP[GC.DNS_OVER_HTTPS_LIST], expire=False)
 
 def set_dns(host, iporname):
     #先处理正常解析
@@ -83,15 +84,6 @@ def dns_resolve(host, qtypes=qtypes):
             dns.set(host, 0, 300)
     return iplist
 
-dnshostalias = 'dns.over.https'
-https_resolve_cache_key = GC.DNS_OVER_HTTPS_LIST + ':443'
-jsondecoder = JSONDecoder()
-dns = LRUCache(GC.DNS_CACHE_ENTRIES, GC.DNS_CACHE_EXPIRATION)
-reset_dns()
-
-from .region import islocal
-from local.HTTPUtil import http_gws
-
 def _address_string(xip):
     xip0, xip1 = xip[:2]
     if isipv6(xip):
@@ -110,82 +102,140 @@ def address_string(item):
     else:
         return _address_string(xips) + ' '
 
-class dns_params:
+dns = LRUCache(GC.DNS_CACHE_ENTRIES, GC.DNS_CACHE_EXPIRATION)
+reset_dns()
+
+from .region import islocal
+from local.FilterUtil import get_action
+from local.HTTPUtil import http_gws, http_nor
+
+doh_servers = set()
+doh_servers_bad = set()
+for _sv in GC.DNS_OVER_HTTPS_SERVERS:
+    _sv = urlparse.urlsplit('http://' + _sv)
+    _sv = (_sv.hostname.encode('idna').decode(),
+           _sv.port or 443,
+           urlparse.quote(_sv.path) or '/dns-query')
+    doh_servers.add(_sv)
+
+class DoHError(Exception):
+    pass
+
+# add 方法在最后调用以避免丢失数据
+def mark_good_doh(server):
+    doh_servers_bad.discard(server)
+    doh_servers.add(server)
+
+def mark_bad_doh(server):
+    doh_servers.discard(server)
+    doh_servers_bad.add(server)
+
+class doh_params:
     ssl = True
-    host = 'dns.google.com'
-    hostname = dnshostalias
-    port = 443
     command = 'GET'
-    headers = {'Host': host, 'User-Agent': 'GotoX Agent'}
-    DNSServerPath = '/resolve?name=%s&type=%s'
-    _DNSServerPath =  DNSServerPath + '&ecs='
-    if GC.DNS_OVER_HTTPS_ECS and GC.DNS_OVER_HTTPS_ECS != 'auto':
-        DNSServerPath = _DNSServerPath + GC.DNS_OVER_HTTPS_ECS.replace('/', '%%2F')
-    Url = 'https://' +  host
+    __slots__ = 'qtype', 'host', 'port', 'path', 'query', 'url', 'headers', 'hostname'
 
-    __slots__ = 'path', 'url'
+    def __init__(self, qname, qtype):
+        self.qtype = qtype
+        self.query = urlparse.urlencode({
+            'name': qname,
+            'type': qtype
+        })
 
-    def __init__(self, *qargs):
-        self.path = self.DNSServerPath % qargs
-        self.url = self.Url + self.path
+    def set_server(self, host, port, path):
+        self.host = host
+        self.port = port
+        self.path = '%s?%s' % (path, self.query)
+        self.url = 'https://%s%s' % (host, self.path)
+        self.headers = {'Accept': 'application/dns-json'}
+        action, target = get_action('https', host, path, self.url)
+        if target and action in ('do_DIRECT', 'do_FORWARD'):
+            iporname, profile = target
+        else:
+            iporname, profile = None, None
+        if iporname is None and host not in dns:
+            logging.warning('无法找到 DoH 域名 %r 的自定义 IP 列表，尝试使用系统 DNS 设置解析。' % host)
+            dns[host] = dns_system_resolve(host)
+        self.hostname = set_dns(host, iporname)
+        if self.hostname is None:
+            logging.error('无法解析 DoH 域名：' + host)
 
-def update_dns_params():
-    if GC.DNS_OVER_HTTPS_ECS == 'auto':
-        ip = get_wan_ipv4()
-        if ip:
-            dns_params.DNSServerPath = dns_params._DNSServerPath + ip
+def _https_resolve(params):
+    '此函数功能实现仅限于解析为 A、AAAA 记录'
+    # https://developers.google.com/speed/public-dns/docs/doh/json
+    # https://developers.cloudflare.com/1.1.1.1/dns-over-https/json-format/
 
-if GC.DNS_OVER_HTTPS_ECS == 'auto':
-    spawn_loop(3600, update_dns_params)
-
-def _https_resolve(qname, qtype, queobj):
-    '''
-    此函数功能实现仅限于解析为 A、AAAA 记录
-    https://developers.google.com/speed/public-dns/docs/dns-over-https
-    '''
-
-    timeout = 1.5
-    params = dns_params(qname, qtype)
-    iplist = list()
-    for _ in range(2):
-        response = None
-        noerror = True
-        xip = None
-        try:
-            response = http_gws.request(params, headers=params.headers, connection_cache_key=https_resolve_cache_key, getfast=timeout)
-            if response and response.status == 200:
-                reply = jsondecoder.decode(response.read().decode())
-                # NOERROR = 0
-                if reply and reply['Status'] == 0 and 'Answer' in reply:
-                    for answer in reply['Answer']:
-                        if answer['type'] == qtype:
-                            iplist.append(answer['data'])
-        except Exception as e:
-            noerror = False
-            logging.warning('%s _https_resolve %r 失败：%r', address_string(response), qname, e)
-        finally:
-            if response:
-                response.close()
-                xip = response.xip
-                if noerror:
-                    if GC.GAE_KEEPALIVE:
-                        http_gws.ssl_connection_cache[https_resolve_cache_key].append((time(), response.sock))
-                    else:
-                        response.sock.close()
-                    break
-    queobj.put((iplist, xip))
+    iplist = []
+    xip = None
+    response = None
+    noerror = False
+    ok = False
+    http_util = http_gws if params.hostname.startswith('google') else http_nor
+    connection_cache_key = '%s:%d' % (params.hostname, params.port)
+    try:
+        response = http_util.request(params, headers=params.headers, connection_cache_key=connection_cache_key)
+        if response:
+            data = response.read().decode()
+            noerror = True
+            if response.status == 200:
+                reply = json.loads(data)
+                if reply:
+                    # NOERROR: 0
+                    ok = reply['Status'] == 0
+                    if ok and 'Answer' in reply:
+                        for answer in reply['Answer']:
+                            if answer['type'] == params.qtype:
+                                iplist.append(answer['data'])
+            else:
+                raise DoHError((response.status, data))
+    except DoHError as e:
+        logging.error('%s _https_resolve %r 失败：%r', address_string(response), qname, e)
+    except Exception as e:
+        logging.debug('%s _https_resolve %r 失败：%r', address_string(response), qname, e)
+    finally:
+        if response:
+            response.close()
+            xip = response.xip
+            if noerror:
+                if GC.GAE_KEEPALIVE or http_util is not http_gws:
+                    http_util.ssl_connection_cache[connection_cache_key].append((time(), response.sock))
+                else:
+                    response.sock.close()
+        return iplist, xip, ok
 
 def _dns_over_https_resolve(qname, qtypes=qtypes):
     iplist = classlist()
     xips = []
-    queobj = queue.Queue()
-    for qtype in qtypes:
-        start_new_thread(_https_resolve, (qname, qtype, queobj))
-    for qtype in qtypes:
-        _iplist, xip = queobj.get()
-        iplist += _iplist
-        if xip and xip not in xips:
-            xips.append(xip)
+    qtypes = list(qtypes)
+    params = doh_params(qname, qtypes.pop())
+    while True:
+        try:
+            servers = random.sample(doh_servers, len(doh_servers))
+            break
+        except ValueError:
+            pass
+    if doh_servers_bad:
+        servers += list(doh_servers_bad)
+    for server in servers:
+        while True:
+            ok = False
+            params.set_server(*server)
+            if params.hostname is None:
+                break
+            _iplist, xip, ok = _https_resolve(params)
+            iplist += _iplist
+            if xip and xip not in xips:
+                xips.append(xip)
+            if ok and qtypes:
+                params = doh_params(qname, qtypes.pop())
+            else:
+                break
+        if ok:
+            mark_good_doh(server)
+            if not qtypes:
+                break
+        else:
+            mark_bad_doh(server)
     if xips:
         iplist.xip = xips
     return iplist
@@ -193,11 +243,10 @@ def _dns_over_https_resolve(qname, qtypes=qtypes):
 remote_query_opt = dnslib.EDNS0(flags='do', udp_len=1024)
 
 def _dns_remote_resolve(qname, dnsservers, blacklist=[], timeout=2, qtypes=qtypes):
-    '''
-    https://gfwrev.blogspot.com/2009/11/gfwdns.html
-    https://zh.wikipedia.org/wiki/域名服务器缓存污染
-    http://support.microsoft.com/kb/241352 (已删除)
-    '''
+    # https://gfwrev.blogspot.com/2009/11/gfwdns.html
+    # https://zh.wikipedia.org/wiki/域名服务器缓存污染
+    # http://support.microsoft.com/kb/241352 (已删除)
+
     query_datas = []
     #ids = []
     for qtype in qtypes:
@@ -365,8 +414,6 @@ def dns_local_resolve(host, qtypes=qtypes):
     return iplist
 
 def dns_over_https_resolve(host, qtypes=qtypes):
-    if not GC.DNS_OVER_HTTPS:
-        return
     start = time()
     iplist = _dns_over_https_resolve(host, qtypes=qtypes) 
     cost = int((time() - start) * 1000)
