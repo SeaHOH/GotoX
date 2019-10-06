@@ -1013,6 +1013,7 @@ gws_ciphers = (
     '!AES128-GCM-SHA256:'
     '!ECDHE-RSA-AES128-GCM-SHA256:'
     '!ECDHE-RSA-AES128-SHA:'
+    '!TLSv1.0:!SSLv3:'
     '!aNULL:!eNULL:!EXPORT:!EXPORT40:!EXPORT56:!LOW:!RC4:!CBC:!DSS:!3DES'
     ).encode()
 
