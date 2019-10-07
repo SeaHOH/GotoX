@@ -22,7 +22,13 @@ class LimitGAE(LimitBase):
     'A response limiter wrapper for GAE.'
 
     maxsize = GC.GAE_MAXREQUESTS * len(GC.GAE_APPIDS)
+    appids = dict((appid, 0) for appid in GC.GAE_APPIDS)
     _response = None
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.appid = _get_appid()
+        self.appids[self.appid] += 1
 
     def __getattr__(self, attr):
         return getattr(self._response, attr)
@@ -35,16 +41,17 @@ class LimitGAE(LimitBase):
 
     def close(self):
         if super().close():
+            self.appids[self.appid] -= 1
             if hasattr(self._response, 'close'):
                 self._response.close()
 
 LimitGAE.init()
 
 timezone_PST = timezone - 3600 * 8 # UTC-8
-timezone_PDT = timezone - 3600 * 7 # UTC-7
+#timezone_PDT = timezone - 3600 * 7 # UTC-7
 def get_refreshtime():
     #距离 GAE 流量配额每日刷新的时间
-    #刷新时间是否遵循夏令时？
+    #刷新时间不遵循夏令时
     now = time() + timezone_PST
     refreshtime = strftime('%y %j', localtime(now + 86400))
     refreshtime = mktime(strptime(refreshtime, '%y %j'))
@@ -75,12 +82,12 @@ def check_appid_exists(appid):
                 response.close()
                 if err is None:
                     exists = response.status in (200, 503)
-                    if exists:
+                    if exists and GC.GAE_KEEPALIVE:
                         http_util.ssl_connection_cache[connection_cache_key].append((time(), sock))
                     return exists
 
 @_lock_appid
-def get_appid():
+def _get_appid():
     global nappid
     while True:
         nappid += 1
@@ -90,7 +97,7 @@ def get_appid():
         contains, expired, _ = badappids.getstate(appid)
         if contains and expired:
             LimitGAE.maxsize += GC.GAE_MAXREQUESTS
-        if not contains or expired:
+        if (not contains or expired) and LimitGAE.appids[appid] < GC.GAE_MAXREQUESTS:
             break
     return appid
 
@@ -200,7 +207,7 @@ def _get_request_params(appid):
     connection_cache_key = '%s:%d' % (request_params.hostname, request_params.port)
     return request_params, http_util, connection_cache_key
 
-def gae_urlfetch(method, url, headers, payload, appid, getfast=None):
+def gae_urlfetch(method, url, headers, payload, getfast=None):
     # GAE 代理请求不允许设置 Host 头域
     if 'Host' in headers:
         del headers['Host']
@@ -218,7 +225,7 @@ def gae_urlfetch(method, url, headers, payload, appid, getfast=None):
         payload = struct.pack('!h', len(metadata)) + metadata
     realurl = 'GAE-' + url
     response = LimitGAE()
-    _response = _gae_urlfetch(appid, payload, getfast, method, realurl)
+    _response = _gae_urlfetch(response.appid, payload, getfast, method, realurl)
     return response(_response)
 
 def _gae_urlfetch(appid, payload, getfast, method, realurl):

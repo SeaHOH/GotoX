@@ -32,14 +32,14 @@ from .GlobalConfig import GC
 from .HTTPUtil import LimitRequest, http_gws, http_nor
 from .RangeFetch import RangeFetchs
 from .GAEFetch import (
-    check_appid_exists, get_appid, mark_badappid, make_errinfo, gae_urlfetch)
+    check_appid_exists, mark_badappid, make_errinfo, gae_urlfetch)
 from .FilterUtil import (
     set_temp_action,
     set_temp_connect_action,
     get_action,
     get_connect_action
     )
-from .FilterConfig import ACTION_FILTERS
+from .FilterConfig import action_filters
 
 normattachment = partial(re.compile(r'(?<=filename=)([^"\']+)').sub, r'"\1"')
 getbytes = re.compile(r'^bytes=(\d*)-(\d*)(,..)?').search
@@ -482,10 +482,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 response.status != 304 and \
                 'Location' in response_headers:
             logging.info('%r 返回包含重定向 %r', self.url, response_headers['Location'])
-        if response.status == 304:
-            logging.test('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), self.action[3:], self.command, self.url, response.status, length or '-')
-        else:
-            logging.info('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), self.action[3:], self.command, self.url, response.status, length or '-')
+        logging.info('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), self.action[3:], self.command, self.url, response.status, length or '-', color=response.status == 304 and 'green')
         return response, data, need_chunked
 
     def check_useragent(self):
@@ -677,19 +674,19 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 logging.warning('%s do_GAE 由于有上传数据 "%s %s" 终止重试', self.address_string(last_response), self.command, self.url)
                 self.close_connection = True
                 return
-            appid = get_appid()
             noerror = True
             data = None
             response = None
             self.close_connection = self.cc
             try:
-                response = gae_urlfetch(self.command, self.url, request_headers, payload, appid)
+                response = gae_urlfetch(self.command, self.url, request_headers, payload)
                 last_response = response or last_response
                 if response is None:
                     if retry < GC.GAE_FETCHMAX - 1:
                         logging.warning('%s do_GAE 失败，url=%r，重试', self.address_string(), self.url)
                         sleep(0.5)
                     continue
+                appid = response.appid
                 #处理 GoProxy 错误信息
                 if response.reason == 'debug error':
                     app_msg = response.app_msg
@@ -1350,7 +1347,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             reset_dns()
         elif cmd == 'reset_autorule':
             #重置自动规则
-            ACTION_FILTERS.RESET = True
+            action_filters.reset = True
         self.close_connection = False
         self.write('HTTP/1.1 204 No Content\r\n'
                    'Content-Length: 0\r\n\r\n')

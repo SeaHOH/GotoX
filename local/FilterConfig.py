@@ -63,22 +63,19 @@ elif GC.LINK_PROFILE == 'ipv6':
     pickip = lambda str: [ip.strip() for ip in str.split('|') if isipv6(ip.strip())]
     isipuse = isipv6
 
-class actionfilterlist(list):
+class ACTION_FILTERS:
 
     CONFIG_FILENAME = os.path.join(config_dir, 'ActionFilter.ini')
     CONFIG = ConfigParser(inline_comment_prefixes=('#', ';'))
     CONFIG._optcre = re.compile(r'(?P<option>[^\s]+)(?P<vi>\s+=)?\s*(?P<value>.*)')
 
     def __init__(self):
-        list.__init__(self)
         self.readconfig()
-        self.FILE_MTIME = os.path.getmtime(self.CONFIG_FILENAME)
-        self.RESET = False
+        self.mtime = os.path.getmtime(self.CONFIG_FILENAME)
+        self.reset = False
         start_new_thread(self.check_modify, ())
 
     def readconfig(self):
-        self.CONFIG._sections.clear()
-        self.CONFIG._proxies.clear()
         self.CONFIG.read(self.CONFIG_FILENAME)
 
         order_sections = []
@@ -89,7 +86,7 @@ class actionfilterlist(list):
             except:
                 continue
         order_sections.sort(key=lambda x: x[0])
-        self.clear()
+        self.config = []
         for order, action, section in order_sections:
             action = action.upper()
             if action not in actToNum:
@@ -160,20 +157,23 @@ class actionfilterlist(list):
                     else:
                         v = v, None, mhost, None
                 filters.append((scheme.lower(), host, path, v))
-            self.append(filters)
+            self.config.append(filters)
+
+        self.CONFIG._sections.clear()
+        self.CONFIG._proxies.clear()
 
     def check_modify(self):
         while True:
             sleep(1)
-            if self.RESET:
+            if self.reset:
                 continue
-            filemtime = os.path.getmtime(self.CONFIG_FILENAME)
-            if filemtime > self.FILE_MTIME:
+            mtime = os.path.getmtime(self.CONFIG_FILENAME)
+            if mtime > self.mtime:
                 try:
                     self.readconfig()
-                    self.FILE_MTIME = filemtime
-                    self.RESET = True
+                    self.mtime = mtime
+                    self.reset = True
                 except Exception as e:
                     logging.warning('%r 内容被修改，重新加载时出现错误，请检查后重新修改：\n%r', self.CONFIG_FILENAME, e)
 
-ACTION_FILTERS = actionfilterlist()
+action_filters = ACTION_FILTERS()

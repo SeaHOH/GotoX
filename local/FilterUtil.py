@@ -14,31 +14,31 @@ from .FilterConfig import (
     FAKECERT,
     numToAct,
     numToSSLAct,
-    ACTION_FILTERS as _ACTION_FILTERS
+    action_filters as _action_filters
     )
 
 gLock = threading.Lock()
 gn = 0
-ACTION_FILTERS = _ACTION_FILTERS.copy()
+action_filters = _action_filters.config
 filters_cache = LRUCache(256)
 ssl_filters_cache = LRUCache(128)
 reset_method_list = [reset_dns]
 
 def check_reset():
-    if _ACTION_FILTERS.RESET:
-        while _ACTION_FILTERS.RESET and gn > 0:
-            sleep(0.001)
+    if _action_filters.reset:
+        while _action_filters.reset and gn > 0:
+            sleep(0.01)
         else:
             with gLock:
-                if gn == 0 and _ACTION_FILTERS.RESET:
-                    global ACTION_FILTERS
-                    ACTION_FILTERS = _ACTION_FILTERS.copy()
+                if gn == 0 and _action_filters.reset:
+                    global action_filters
+                    action_filters = _action_filters.config
                     filters_cache.clear()
                     ssl_filters_cache.clear()
                     for reset_method in reset_method_list:
                         reset_method()
-                    _ACTION_FILTERS.RESET = False
-                    logging.warning('%r 内容被修改，已重新加载自动代理配置。', _ACTION_FILTERS.CONFIG_FILENAME)
+                    _action_filters.reset = False
+                    logging.warning('%r 内容被修改，已重新加载自动代理配置。', _action_filters.CONFIG_FILENAME)
 
 def get_fake_sni(host):
     if not isinstance(host, str):
@@ -64,7 +64,6 @@ def get_fake_sni(host):
     return
 
 def get_redirect(target, url):
-    '''Get the redirect target'''
     rule, unquote, mhost, raction = target
     if isinstance(rule, str):
         return rule, (mhost, None)
@@ -174,7 +173,7 @@ def get_action(scheme, host, path, url):
         #建立缓存条目
         filters_cache.setpadding(key)
         _filters = []
-        for filters in ACTION_FILTERS:
+        for filters in action_filters:
             if filters.action == FAKECERT:
                 continue
             for schemefilter, hostfilter, pathfilter, target in filters:
@@ -219,7 +218,7 @@ def get_connect_action(ssl, host):
         with gLock:
             gn += 1
         ssl_filters_cache.setpadding(key)
-        for filters in ACTION_FILTERS:
+        for filters in action_filters:
             for schemefilter, hostfilter, _, target in filters:
                 if schemefilter in schemes and match_host_filter(hostfilter, host):
                     #填充结果到缓存

@@ -10,7 +10,7 @@ import threading
 from time import time, sleep
 from urllib.parse import urljoin
 from .common.util import LimiterFull, spawn_later
-from .GAEFetch import get_appid, mark_badappid, gae_urlfetch
+from .GAEFetch import mark_badappid, gae_urlfetch
 from .GlobalConfig import GC
 from .GIPManager import ip_manager_gae
 
@@ -25,7 +25,6 @@ class RangeFetch:
         self.tLock = threading.Lock()
         self.expect_begin = 0
         self._stopped = False
-        self._last_app_status = {}
         self.lastupdate = ip_manager_gae.last_update
         self.iplist = GC.IPLIST_MAP['google_gae'].copy()
 
@@ -153,7 +152,6 @@ class RangeFetch:
                 noerror = True
                 response = None
                 starttime = None
-                appid = None
                 if self._stopped: return
                 try:
                     if self.response:
@@ -161,20 +159,14 @@ class RangeFetch:
                         self.response = None
                         start, end = self.firstrange
                     else:
-                        appid = get_appid()
-                        if self._last_app_status.get(appid, 200) >= 500:
-                            sleep(2)
                         start, end = range_queue.get(timeout=1)
                     headers['Range'] = 'bytes=%d-%d' % (start, end)
                     while start - self.expect_begin > self.threads * self.delaysize and \
                             data_queue.qsize() * self.bufsize > 3 * self.threads * self.delaysize:
                         if self._stopped: return
                         sleep(0.1)
-                    if appid:
-                        response = gae_urlfetch(self.command, self.url, headers, self.payload, appid, getfast=self.timeout)
+                    response = gae_urlfetch(self.command, self.url, headers, self.payload, getfast=self.timeout)
                     if response:
-                        if appid:
-                            self._last_app_status[appid] = response.app_status
                         xip = response.xip[0]
                         if xip in self.iplist:
                             realstart = start
@@ -184,7 +176,6 @@ class RangeFetch:
                             noerror = False
                             continue
                 except queue.Empty:
-                    appid = None
                     return
                 except LimiterFull:
                     range_queue.put((start, end))
@@ -199,8 +190,8 @@ class RangeFetch:
                     logging.warning('%s RangeFetch %s 没有响应，重试', self.address_string(response), headers['Range'])
                     range_queue.put((start, end))
                 elif response.app_status == 503:
-                    if appid:
-                        mark_badappid(appid)
+                    if hasattr(response, 'appid'):
+                        mark_badappid(response.appid)
                     range_queue.put((start, end))
                     noerror = False
                 elif response.app_status != 200:

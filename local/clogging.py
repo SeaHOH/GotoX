@@ -516,7 +516,7 @@ class Logger(object):
         return level >= self.getEffectiveLevel()
 
     @_lock_output
-    def _log(self, level, msg, args, exc_info=None, stack_info=None, **kwargs):
+    def _log(self, level, msg, args, exc_info=None, stack_info=None, color=None, **kwargs):
         if not self.isEnabledFor(level):
             return
         ct = time.time()
@@ -533,7 +533,7 @@ class Logger(object):
         if msg[-1:] != '\n':
             msg += '\n'
         _write(msg, file=self.root.stream,
-                onerr=onerr, color=levelName, reset=True)
+                onerr=onerr, color=color or levelName, reset=True)
 
         if exc_info:
             if isinstance(exc_info, BaseException):
