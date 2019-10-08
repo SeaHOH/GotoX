@@ -10,7 +10,6 @@ import OpenSSL
 import urllib.request
 from time import mtime
 from select import select
-from local.GlobalConfig import GC
 
 NetWorkIOError = socket.error, ssl.SSLError, ssl.CertificateError, OSError
 if OpenSSL:
@@ -141,23 +140,32 @@ def get_main_domain(host):
                 host = '.'.join(hostsp[-3:])
     return host
 
-direct_opener = urllib.request.OpenerDirector()
-#if GC.proxy:
-#    direct_opener.add_handler(urllib.request.ProxyHandler({
-#        'http': GC.proxy,
-#        'https': GC.proxy
-#    })
-handler_names = ['UnknownHandler', 'HTTPHandler', 'HTTPSHandler',
-                 'HTTPDefaultErrorHandler', 'HTTPRedirectHandler',
-                 'HTTPErrorProcessor']
-for handler_name in handler_names:
-    klass = getattr(urllib.request, handler_name, None)
-    if klass:
-        direct_opener.add_handler(klass())
+direct_opener = None
+dns_ip_api = None
+
+def init_direct_opener():
+    from local.GlobalConfig import GC
+    global direct_opener, dns_ip_api
+    direct_opener = urllib.request.OpenerDirector()
+    #if GC.proxy:
+    #    direct_opener.add_handler(urllib.request.ProxyHandler({
+    #        'http': GC.proxy,
+    #        'https': GC.proxy
+    #    })
+    handler_names = ['UnknownHandler', 'HTTPHandler', 'HTTPSHandler',
+                     'HTTPDefaultErrorHandler', 'HTTPRedirectHandler',
+                     'HTTPErrorProcessor']
+    for handler_name in handler_names:
+        klass = getattr(urllib.request, handler_name, None)
+        if klass:
+            direct_opener.add_handler(klass())
+    dns_ip_api = GC.DNS_IP_API
 
 def get_wan_ipv4():
-    if GC.DNS_IP_API:
-        apis = list(GC.DNS_IP_API)
+    if direct_opener is None:
+        init_direct_opener()
+    if dns_ip_api:
+        apis = list(dns_ip_api)
         random.shuffle(apis)
         for url in apis:
             response = None

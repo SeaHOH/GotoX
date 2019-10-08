@@ -9,6 +9,7 @@ import logging
 from configparser import ConfigParser
 from .common.decompress import _brotli
 from .common.path import get_realpath, config_dir, data_dir, log_dir
+from .common.net import isip, isipv6
 from .common.util import wait_exit
 #from .common.proxy import get_system_proxy, parse_proxy
 
@@ -31,14 +32,25 @@ _SSLv = {
 
 def _servers_2_addresses(servers, default_port):
     for server in servers:
-        addr, _, port = server.partition(':')
-        try:
-            port = int(port)
-        except:
-            port = default_port
-        yield addr, port
+        if server[:1] == '[':
+            addr, delim, port = server[1:].partition(']:')
+            if not delim:
+                addr = addr[:-1]
+        elif '.' in server:
+            addr, _, port = server.partition(':')
+        else:
+            if isipv6(server):
+                yield server, default_port
+            continue
+        if isip(addr):
+            try:
+                port = int(port)
+            except:
+                port = default_port
+            yield addr, port
 
 def servers_2_addresses(servers, default_port):
+    default_port = int(default_port)
     return tuple(_servers_2_addresses(servers, default_port))
 
 #load config from proxy.ini
