@@ -232,11 +232,10 @@ class Limiter:
         return self.__qsize
 
     def empty(self):
-        if self.__lock_push.acquire(timeout=0):
-            self.__lock_push.release()
-            return self.__qsize == 0
-        else:
+        if self.__lock_push.locked():
             return False
+        else:
+            return self.__qsize == 0
 
     def full(self):
         return self.__qsize >= self.maxsize

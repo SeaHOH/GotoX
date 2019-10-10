@@ -95,7 +95,7 @@ class RangeFetch:
             if isRangeFetchBig:
                 spawn_later(self.sleeptime * i if i else 0, self.__fetchlet, range_queue, data_queue, i + 1)
             else:
-                spawn_later(self.sleeptime if i else 0, self.__fetchlet, range_queue, data_queue, i + 1)
+                spawn_later(self.sleeptime / i if i else 0, self.__fetchlet, range_queue, data_queue, i + 1)
         has_peek = hasattr(data_queue, 'peek')
         peek_timeout = 30
         self.expect_begin = start

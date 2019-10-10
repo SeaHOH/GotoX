@@ -11,6 +11,8 @@ import hashlib
 import pycurl
 from io import BytesIO
 from configparser import ConfigParser
+from distutils.version import StrictVersion
+from distutils.versionpredicate import VersionPredicate
 
 
 usercustomize = b'''\
@@ -222,6 +224,7 @@ py_ver = sys.argv[1]
 if py_ver not in config.sections():
     print('version parameter mismatch!', file=sys.stderr)
     sys.exit(-1)
+extras = sys.argv[2:]
 
 py_url = config.get(py_ver, 'url')
 py_sum = config.get(py_ver, 'sum')
@@ -241,7 +244,8 @@ os.chdir('python')
 for filename in ('pythonw.exe', 'vcruntime140.dll'):
     os.remove(filename)
 dll = re.compile('.+?\D\d?\.(dll|pyd)').match
-os.mkdir('DLLs')
+if not os.path.exists('DLLs'):
+    os.mkdir('DLLs')
 for filename in os.listdir():
     if filename.endswith(('txt', '_pth')):
         os.remove(filename)
@@ -265,15 +269,30 @@ if not os.path.exists('site-packages'):
     os.mkdir('site-packages')
 os.chdir('site-packages')
 
-def extract(project, version=None):
-    if version is None:
-        data = download(pypi_api(project), JSON)
+stable_sp = True
+NOTSTABLE = re.compile('[a-z]').search
+StrictVersion.version_re = re.compile(r'^(\d+) \. (\d+) (\. (\d+))? (\.?[a-z]+(\d+))?$',
+                            re.VERBOSE | re.ASCII)
+
+def extract(project, version):
+    data = download(pypi_api(project), JSON)
+    if version:
+        version = VersionPredicate('%s(%s)' % (project, version))
+        if version.pred:
+            releases = sorted(data['releases'].keys(),
+                              key=lambda r: StrictVersion(r), reverse=True)
+            for release in releases:
+                if stable_sp and NOTSTABLE(release):
+                    continue
+                if version.satisfied_by(release):
+                    dists = data['releases'][release]
+                    break
     else:
-        data = download(pypi_ver_api(project, version), JSON)
-    dists = data['urls']
+        dists = data['urls']
     dist_type = None
     for dist in dists:
-        if ((py_ver in dist['python_version'].replace('.', '') and py_arch in dist['filename']) or 
+        if ((py_ver in dist['python_version'].replace('.', '') and
+                py_arch in dist['filename']) or 
                 'py3-none-any' in dist['filename']) and \
                 dist['packagetype'] in ('bdist_wheel', 'bdist_egg'):
             dist_type = dist['packagetype']
@@ -332,8 +351,12 @@ def package(name):
                 os.remove(filepath)
             elif filename.endswith('pyd'):
                 if dll_tag not in filename:
-                    raise RuntimeError('filename %r does not match the dll_tag %r'
-                                       % (dll_tag, filename))
+                    newname = '%s%s.pyd' % (filename[:-3], dll_tag)
+                    os.rename(os.path.join(dirpath, filename),
+                              os.path.join(dirpath, newname))
+                    print('Warning: filename %r does not match the dll_tag %r, '
+                          'rename it as %r.' % (filename, dll_tag, newname))
+                    filename =  newname
                 filename = filename.split(dll_tag)[0] + 'py'
                 filepath = os.path.join(dirpath, filename)
                 with open(filepath, 'wb') as f:
@@ -350,9 +373,10 @@ def package(name):
                 os.remove(filepath)
         break
 
-for project in config.options('site-packages'):
-    version = config.get('site-packages', project)
-    if version.startswith('>'):
-        version = None
+for project, version in config.items('site-packages'):
+    package(extract(project, version))
+
+for project in extras:
+    version = config.get('site-packages', project, fallback='')
     package(extract(project, version))
 
