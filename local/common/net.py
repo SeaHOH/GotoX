@@ -1,6 +1,5 @@
 # coding:utf-8
 
-import ssl
 import errno
 import socket
 import random
@@ -11,9 +10,7 @@ import urllib.request
 from time import mtime
 from select import select
 
-NetWorkIOError = socket.error, ssl.SSLError, ssl.CertificateError, OSError
-if OpenSSL:
-    NetWorkIOError += OpenSSL.SSL.Error,
+NetWorkIOError = OSError, OpenSSL.SSL.Error
 reset_errno = errno.ECONNRESET, errno.ENAMETOOLONG
 if hasattr(errno, 'WSAENAMETOOLONG'):
     reset_errno += errno.WSAENAMETOOLONG,

@@ -3,11 +3,8 @@
 
 import sys
 import os
-import re
 import errno
 import socket
-import ssl
-import struct
 import random
 import socks
 import collections
@@ -122,9 +119,10 @@ class LimitConnection(LimitDictBase):
     def __init__(self, sock, ip, maxsize=None, timeout=None):
         super().__init__(ip, maxsize, timeout)
         self._sock = sock
+        self.iplock = self._limiter.iplock
 
-    def __getattr__(self, attr):
-        return getattr(self._sock, attr)
+    def __getattr__(self, name):
+        return getattr(self._sock, name)
 
     def close(self):
         if super().close():
@@ -134,23 +132,25 @@ class LimitConnection(LimitDictBase):
                 pass
             self._sock.close()
 
-    def get_iplock(self):
-        limiter = self._limiters.get(self._key)
-        if limiter is None:
-            logging.debug('%s.get_iplock lost reference: %r', self.__class__, self._key)
-            with self.lock:
-                limiter = self._limiters[self._key]
-        return limiter.iplock
-
-class LimitRequest(LimitDictBase):
-    'A request limiter for host cache key.'
+class LimitConnect(LimitDictBase):
+    'A connect limiter for host cache key.'
 
     maxsize = 2
     timeout = 8
 
 LimitConnection.init()
-LimitRequest.init()
+LimitConnect.init()
 
+def limit_connect(func):
+
+    def newfunc(*args, **kwargs):
+        limiter = LimitConnect.push(args[2])
+        try:
+            return func(*args, **kwargs)
+        finally:
+            LimitConnect.pop(limiter)
+
+    return newfunc
 
 class BaseHTTPUtil:
     '''Basic HTTP Request Class'''
@@ -331,19 +331,19 @@ class BaseHTTPUtil:
     def google_verify(sock):
         cert = sock.get_peer_certificate()
         if not cert:
-            raise ssl.SSLError('没有获取到证书')
+            raise CertificateError(-1, '没有获取到证书')
         subject = cert.get_subject()
         if subject.O not in GoogleONames:
-            raise ssl.SSLError('%s 证书的组织名称（%s）不属于 %s 之一。' % (sock.getpeername[0], subject.O, GoogleONames))
+            raise CertificateError(-1, '%s 证书的组织名称（%s）不属于 %s 之一。' % (sock.getpeername[0], subject.O, GoogleONames))
         return cert
 
     @staticmethod
     def google_verify_pkey(sock):
         certs = sock.get_peer_cert_chain()
         if len(certs) < 2:
-            raise ssl.SSLError('谷歌域名没有获取到正确的证书链：缺少 CA。')
+            raise CertificateError(-1, '谷歌域名没有获取到正确的证书链：缺少 CA。')
         if OpenSSL.crypto.dump_publickey(OpenSSL.crypto.FILETYPE_PEM, certs[1].get_pubkey()) not in GoogleICAPkeys:
-            raise ssl.SSLError('谷歌域名没有获取到正确的证书链：CA 公钥不匹配。')
+            raise CertificateError(-1, '谷歌域名没有获取到正确的证书链：CA 公钥不匹配。')
         return certs[0]
 
     @staticmethod
@@ -415,6 +415,9 @@ class HTTPUtil(BaseHTTPUtil):
         #    self.create_connection = self.__create_connection_withproxy
         #    self.create_ssl_connection = self.__create_ssl_connection_withproxy
 
+        self.create_connection = limit_connect(self.create_connection)
+        self.create_ssl_connection = limit_connect(self.create_ssl_connection)
+
     def get_tcp_ssl_connection_time(self, addr):
         t = self.tcp_connection_time.get(addr) or self.ssl_connection_time.get(addr, self.timeout)
         if LimitConnection.full(addr[0]):
@@ -432,6 +435,12 @@ class HTTPUtil(BaseHTTPUtil):
         if LimitConnection.full(addr[0]):
             t += self.timeout
         return t
+
+    def _cache_connection(self, cache, count, queobj):
+        for _ in range(count):
+            sock = queobj.get()
+            if hasattr(sock, '_sock'):
+                cache.append((time(), sock))
 
     def _create_connection(self, ipaddr, queobj, timeout=None, get_cache_sock=None):
         if get_cache_sock:
@@ -460,17 +469,6 @@ class HTTPUtil(BaseHTTPUtil):
             queobj.put(e)
             # reset a large and random timeout to the ipaddr
             self.tcp_connection_time[ipaddr] = self.timeout + 1
-
-    def _close_connection(self, cache, count, queobj, first_tcp_time):
-        now = time()
-        tcp_time_threshold = max(min(1.5, 1.5 * first_tcp_time), 0.5)
-        for _ in range(count):
-            sock = queobj.get()
-            if isinstance(sock, socket.socket):
-                if sock.tcp_time < tcp_time_threshold:
-                    cache.append((now, sock))
-                else:
-                    sock.close()
 
     def create_connection(self, address, hostname, cache_key, ssl=None, forward=None, **kwargs):
         def get_cache_sock(cache=None):
@@ -566,7 +564,7 @@ class HTTPUtil(BaseHTTPUtil):
                 else:
                     if addrslen - n > 1:
                         cache = self.tcp_connection_cache[cache_key]
-                        start_new_thread(self._close_connection, (cache, addrslen-n-1, queobj, result.tcp_time))
+                        start_new_thread(self._cache_connection, (cache, addrslen-n-1, queobj))
                     return result
         if result:
             raise result
@@ -627,17 +625,6 @@ class HTTPUtil(BaseHTTPUtil):
                 self.ssl_connection_time[ipaddr] = self.timeout + 1
                 queobj.put(e)
             break
-
-    def _close_ssl_connection(self, cache, count, queobj, first_ssl_time):
-        now = time()
-        ssl_time_threshold = max(min(1.5, 1.5 * first_ssl_time), 1.0)
-        for _ in range(count):
-            ssl_sock = queobj.get()
-            if isinstance(ssl_sock, (SSLConnection, ssl.SSLSocket)):
-                if ssl_sock.ssl_time < ssl_time_threshold:
-                    cache.append((now, ssl_sock))
-                else:
-                    ssl_sock.close()
 
     def create_ssl_connection(self, address, hostname, cache_key, getfast=None, forward=None, **kwargs):
         def get_cache_sock(cache=None):
@@ -725,7 +712,7 @@ class HTTPUtil(BaseHTTPUtil):
                 else:
                     if addrslen - n > 1:
                         cache = self.ssl_connection_cache[cache_key]
-                        start_new_thread(self._close_ssl_connection, (cache, addrslen-n-1, queobj, result.ssl_time))
+                        start_new_thread(self._cache_connection, (cache, addrslen-n-1, queobj))
                     return result
         if result:
             raise result
@@ -888,7 +875,6 @@ class HTTPUtil(BaseHTTPUtil):
                     left_size -= len(data)
                     readed += len(data)
             payload.readed = readed
-            sock.wfile.flush()
             #为下个请求恢复无延迟发送
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
         else:
@@ -939,27 +925,21 @@ class HTTPUtil(BaseHTTPUtil):
                 headers['Content-Length'] = str(len(payload))
 
         for i in range(self.max_retry):
-            needpop = None
+            if hasattr(request_params, 'connection') and check_connection_dead(request_params.connection):
+                raise socket.error(errno.ECONNABORTED, '本地连接已断开')
             sock = None
             ssl_sock = None
             ip = ''
             try:
-                needpop = LimitRequest.push(connection_cache_key)
-                if hasattr(request_params, 'connection') and check_connection_dead(request_params.connection):
-                    raise socket.error(errno.ECONNABORTED, '本地连接已断开')
                 if ssl:
                     ssl_sock = self.create_ssl_connection(address, hostname, connection_cache_key, getfast=bool(getfast))
                 else:
                     sock = self.create_connection(address, hostname, connection_cache_key)
-                needpop = LimitRequest.pop(connection_cache_key)
                 result = ssl_sock or sock
                 if result:
                     result.settimeout(timeout)
-                    response =  self._request(result, method, request_params.path, self.protocol_version, headers, payload, bufsize=bufsize)
-                    return response
+                    return self._request(result, method, request_params.path, self.protocol_version, headers, payload, bufsize=bufsize)
             except Exception as e:
-                if e.args == (errno.ECONNABORTED, '本地连接已断开'):
-                    raise
                 if i < self.max_retry - 1 and isinstance(e, LimiterFull):
                     continue
                 if ssl_sock:
@@ -986,9 +966,6 @@ class HTTPUtil(BaseHTTPUtil):
                     return
                 if 'timed out' in str(e):
                     timeout += 10
-            finally:
-                if needpop:
-                    LimitRequest.pop(connection_cache_key)
 
 # Google video ip can act as Google Web Server if cipher suits not include
 # RC4-SHA
@@ -1014,7 +991,8 @@ gws_ciphers = (
     '!ECDHE-RSA-AES128-GCM-SHA256:'
     '!ECDHE-RSA-AES128-SHA:'
     '!TLSv1.0:!SSLv3:'
-    '!aNULL:!eNULL:!EXPORT:!EXPORT40:!EXPORT56:!LOW:!RC4:!CBC:!DSS:!3DES'
+    '!aNULL:!eNULL:!EXPORT:!EXPORT40:!EXPORT56:!LOW:!CBC:!DSS:'
+    '!MD5:!3DES:!DES:!RC4:!IDEA:!SEED:!aDSS:!SRP:!PSK'
     ).encode()
 
 # max_window=4, timeout=8, proxy='', ssl_ciphers=None, max_retry=2

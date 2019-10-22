@@ -1,6 +1,5 @@
 # coding:utf-8
 
-import ssl
 import zlib
 import queue
 import struct
@@ -23,15 +22,15 @@ class LimitGAE(LimitBase):
 
     maxsize = GC.GAE_MAXREQUESTS * len(GC.GAE_APPIDS)
     appids = dict((appid, 0) for appid in GC.GAE_APPIDS)
-    _response = None
 
     def __init__(self, *args):
         super().__init__(*args)
         self.appid = _get_appid()
         self.appids[self.appid] += 1
+        self._response = None
 
-    def __getattr__(self, attr):
-        return getattr(self._response, attr)
+    def __getattr__(self, name):
+        return getattr(self._response, name)
 
     def __call__(self, response):
         if response:
@@ -70,6 +69,8 @@ def check_appid_exists(appid):
             sock = http_util.create_ssl_connection((request_params.host, request_params.port),
                                                    request_params.hostname,
                                                    connection_cache_key)
+            if sock is None:
+                continue
             sock.sendall(b'HEAD / HTTP/1.1\r\n'
                          b'Host: %s\r\n'
                          b'Connection: Close\r\n\r\n' % host.encode())

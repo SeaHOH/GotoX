@@ -5,7 +5,6 @@ import sys
 import errno
 import re
 import html
-import ssl
 import socket
 import random
 import socks
@@ -29,7 +28,7 @@ from .common.proxy import parse_proxy, proxy_no_rdns
 from .common.region import isdirect
 from .common.util import LRUCache, LimiterFull, message_html
 from .GlobalConfig import GC
-from .HTTPUtil import LimitRequest, http_gws, http_nor
+from .HTTPUtil import http_gws, http_nor
 from .RangeFetch import RangeFetchs
 from .GAEFetch import (
     check_appid_exists, mark_badappid, make_errinfo, gae_urlfetch)
@@ -117,7 +116,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 byte = request.recv(1, socket.MSG_PEEK) if rd else None
                 if not byte:
                     #未收到后续请求数据，判断证书验证失败
-                    raise ssl.SSLError('客户端证书验证失败，请检查双方主机名称设置是否匹配')
+                    raise CertificateError(-1, '客户端证书验证失败，请检查双方主机名称设置是否匹配')
             except Exception as e:
                 #if e.args[0] not in bypass_errno:
                 servername = request.get_servername() or self.ssl_servername
@@ -893,10 +892,8 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         else:
             create_connection = http_util.create_connection
         for _ in range(2):
-            needpop = None
             limited = None
             try:
-                needpop = LimitRequest.push(connection_cache_key)
                 if not GC.PROXY_ENABLE:
                     remote = create_connection((host, port), hostname, connection_cache_key, ssl=self.ssl, forward=self.fwd_timeout)
                 else:
@@ -908,9 +905,6 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 logging.warning('%s 转发到 %r 失败：%r', self.address_string(), self.url or host, e)
             except NetWorkIOError as e:
                 logging.warning('%s 转发到 %r 失败：%r', self.address_string(e), self.url or host, e)
-            finally:
-                if needpop:
-                    LimitRequest.pop(connection_cache_key)
         if remote is None:
             if not limited and not isdirect(host):
                 if self.command == 'CONNECT':
@@ -1045,8 +1039,6 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             ssl_sock = SSLConnection(context, self.connection)
             ssl_sock.do_handshake_server_side()
             self.fakecert = True
-        except ssl.SSLEOFError:
-            return
         except Exception as e:
             if e.args[0] not in bypass_errno:
                 logging.exception('%s 伪造加密连接失败：host=%r，%r', self.address_string(), self.host, e)

@@ -2,7 +2,6 @@
 '''Auto check and update google IPs'''
 
 import os
-import ssl
 import logging
 import random
 import socket
@@ -541,8 +540,8 @@ class IPPoolSource:
         ip_source.ip_set_assoeted |= self.ip_set
         self.ip_list_ed = collections.deque()
 
-    def __getattr__(self, attr):
-        return getattr(self._ip_source, attr)
+    def __getattr__(self, name):
+        return getattr(self._ip_source, name)
 
     def update_list_good(self, force=False):
         now = time()
@@ -847,7 +846,7 @@ class IPManager:
                 cert = http_gws.google_verify(ssl_sock)
                 domain = cert.get_subject().CN
                 if not domain:
-                    raise ssl.SSLError('%s 无法获取 commonName：%s' % (ip, cert))
+                    raise CertificateError(-1, '%s 无法获取 commonName：%s' % (ip, cert))
                 type = callback(ssl_sock, ip)
             except NetWorkIOError as e:
                 self.logger.debug('get_ip_info 发生错误：%s', e)

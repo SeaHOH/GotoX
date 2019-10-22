@@ -12,9 +12,7 @@ def wait_exit(*args, **kwargs):
     from local.common.util import wait_exit
     wait_exit(*args, **kwargs)
 
-_ver = sys.version_info
-PY3 = _ver[0] == 3
-#PY35 = PY3 and _ver[1] == 5
+PY3 = sys.version_info.major == 3
 if not PY3:
     import time
     print(u'请使用 Python 3 系列版本运行本程序！\n30 秒后自动退出……')
@@ -109,7 +107,7 @@ def init():
                 pass
         try:
             import gevent.monkey
-            gevent.monkey.patch_all(os=False, signal=False, subprocess=False, Event=True)
+            gevent.monkey.patch_all(os=False, ssl=False, subprocess=False, signal=False)
         except TypeError:
             gevent.monkey.patch_all(os=False)
         if get_looptype().startswith('libuv'):
@@ -122,8 +120,8 @@ def init():
 
     import logging
 
-    if allown_gevent_patch and gevent.__version__ < '1.0.0':
-        logging.warning('警告：请更新 gevent 至 1.0.0 以上版本！')
+    if allown_gevent_patch and gevent.__version__ < '1.3.0':
+        logging.warning('警告：请更新 gevent 至 1.3.0 以上版本！')
 
     try:
         import OpenSSL

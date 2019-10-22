@@ -570,7 +570,7 @@ class Logger(object):
         if logfile:
             # More detailed time information in log file.
             cts = time.strftime('%Y-%m-%d %H:%M:%S', ctt)
-            ms = (ct - int(ct)) * 1000
+            ms = ct % 1 * 1000
             logfile.write('%s.%03d %s %s: %s' %
                     (cts, ms, levelName, self.name, msg))
             if exc_info:

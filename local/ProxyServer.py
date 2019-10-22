@@ -72,7 +72,7 @@ def get_localhosts():
 
 IPPROTO_IPV6 = getattr(socket, 'IPPROTO_IPV6', 41)
 
-class LocalProxyServer(socketserver.ThreadingTCPServer):
+class LocalProxyServer(socketserver.TCPServer):
     '''Local Proxy Server'''
     request_queue_size = 96
     is_offline = True
@@ -115,7 +115,7 @@ class LocalProxyServer(socketserver.ThreadingTCPServer):
                 raise
 
     def handle_error(self, *args):
-        '''make ThreadingTCPServer happy'''
+        '''make TCPServer happy'''
         exc_info = sys.exc_info()
         error = exc_info and len(exc_info) and exc_info[1]
         if (isinstance(error, NetWorkIOError) and len(error.args) > 1 and 'bad write' in error.args[1]) or \
@@ -123,7 +123,12 @@ class LocalProxyServer(socketserver.ThreadingTCPServer):
             exc_info = error = None
         else:
             del exc_info, error
-            socketserver.ThreadingTCPServer.handle_error(self, *args)
+            socketserver.TCPServer.handle_error(self, *args)
+
+    process_request_thread = socketserver.ThreadingTCPServer.process_request_thread
+
+    def process_request(self, request, client_address):
+        start_new_thread(self.process_request_thread, (request, client_address))
 
 from .ProxyHandler import AutoProxyHandler, GAEProxyHandler
 

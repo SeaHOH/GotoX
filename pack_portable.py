@@ -75,6 +75,14 @@ def __bootstrap__():
 __bootstrap__()
 '''
 
+useless_exes = '''\
+pythonw.exe
+vcruntime140.dll
+_msi.pyd
+_distutils_findvs.pyd
+winsound.pyd
+'''.split()
+
 params_7z = {
     '7z': '7za',
     'to_null': '1>/dev/null'
@@ -241,15 +249,18 @@ os.remove(filepath)
 if not os.path.exists('python'):
     os.mkdir('python')
 os.chdir('python')
-for filename in ('pythonw.exe', 'vcruntime140.dll'):
-    os.remove(filename)
-dll = re.compile('.+?\D\d?\.(dll|pyd)').match
+for filename in useless_exes:
+    try:
+        os.remove(filename)
+    except:
+        pass
+is_dll = re.compile('^(?!python\d\d).+\.(dll|pyd|cat)$').match
 if not os.path.exists('DLLs'):
     os.mkdir('DLLs')
 for filename in os.listdir():
-    if filename.endswith(('txt', '_pth')):
+    if filename.endswith(('txt', 'cfg', '_pth')):
         os.remove(filename)
-    elif dll(filename):
+    elif is_dll(filename):
         os.rename(filename, os.path.join('DLLs', filename))
     elif filename.endswith('zip'):
         cmd = '{7z} x {file} -opythonzip {to_null}'.format(file=filename, **params_7z)
@@ -303,7 +314,15 @@ def extract(project, version):
                 dist_type = dist['packagetype']
                 break
     url =dist['url']
-    filename = dist['filename']
+    filename = fn = dist['filename']
+    while True:
+        fn = fn.rpartition('.')[0]
+        if not fn.endswith('.tar'):
+            fn += '.egg'
+            if os.path.exists(fn):
+                return
+            else:
+                break
     sum = '|'.join(('sha256', dist['digests']['sha256']))
     filepath = download(url, filename, sum)
     if filepath.endswith('tar.gz'):
@@ -339,6 +358,8 @@ def extract(project, version):
     return filepath.rpartition('.')[0]
 
 def package(name):
+    if not name:
+        return
     for dirpath, dirnames, filenames in os.walk('.'):
         for dirname in dirnames:
             if dirname in ('test', 'tests', 'testing'):

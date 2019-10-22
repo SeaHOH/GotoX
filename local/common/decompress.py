@@ -18,8 +18,8 @@ class DeflateReader(BufferedReader):
         self.fp = fileobj
         BufferedReader.__init__(self, _DeflateReader(fileobj))
 
-    def __getattr__(self, attr):
-        return getattr(self.fp, attr)
+    def __getattr__(self, name):
+        return getattr(self.fp, name)
 
 class _DeflateReader(DecompressReader):
     def __init__(self, fp):
@@ -89,8 +89,8 @@ class GzipReader(BufferedReader):
         self.fp = fileobj
         BufferedReader.__init__(self, _GzipReader(fileobj))
 
-    def __getattr__(self, attr):
-        return getattr(self.fp, attr)
+    def __getattr__(self, name):
+        return getattr(self.fp, name)
 
 class BrotliReader(RawIOBase):
     # A wrapper for brotlipy.
@@ -104,8 +104,8 @@ class BrotliReader(RawIOBase):
         self._length = 0
         self._read = 0
 
-    def __getattr__(self, attr):
-        return getattr(self.fp, attr)
+    def __getattr__(self, name):
+        return getattr(self.fp, name)
 
     def read(self, size=-1):
         if self.decompressor is None or size == 0:

@@ -75,10 +75,6 @@ logging.basicConfig(**log_config)
 
 import os
 import queue
-import struct
-import socket
-import ssl
-import re
 from time import sleep
 from threading import _start_new_thread as start_new_thread
 from OpenSSL import __version__ as opensslver
@@ -88,7 +84,6 @@ from .common.net import isip, isipv4, isipv6
 from .common.path import icon_gotox
 from .common.region import IPDBVer, DDTVer
 from .ProxyServer import network_test, start_proxyserver
-from .ProxyHandler import AutoProxyHandler
 from . import GIPManager
 
 def main():
@@ -130,7 +125,7 @@ def main():
                 try:
                     iplist = dns_resolve(host)
                     queobj.put((host, iplist))
-                except (socket.error, OSError) as e:
+                except OSError as e:
                     logging.error('自定义 IP 列表解析失败：host=%r，%r', host, e)
                     queobj.put((host, None))
             # https://support.google.com/websearch/answer/186669?hl=zh-Hans

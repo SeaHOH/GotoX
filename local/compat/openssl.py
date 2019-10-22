@@ -9,6 +9,8 @@ from ssl import (
     _DEFAULT_CIPHERS, _RESTRICTED_SERVER_CIPHERS,
     _dnsname_match, _ipaddress_match)
 
+_DEFAULT_CIPHERS += ':!SSLv3'
+_RESTRICTED_SERVER_CIPHERS += ':!SSLv3'
 zero_errno = errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTSOCK
 zero_EOF_error = -1, 'Unexpected EOF'
 def_ciphers = _DEFAULT_CIPHERS.encode()
@@ -21,8 +23,8 @@ class SSLConnection:
         self._sock = sock
         self._connection = SSL.Connection(context, sock)
 
-    def __getattr__(self, attr):
-        return getattr(self._connection, attr)
+    def __getattr__(self, name):
+        return getattr(self._connection, name)
 
     def __iowait(self, io_func, *args, **kwargs):
         timeout = self._sock.gettimeout()
@@ -71,7 +73,7 @@ class SSLConnection:
 
     def do_handshake(self):
         with self._context.lock:
-            with self._sock.get_iplock():
+            with self._sock.iplock:
                 name = '_session' + (':' in self._sock._key and '6' or '4')
                 session = getattr(self._context, name, None)
                 if session is not None:
