@@ -5,7 +5,7 @@ import socket
 import logging
 import socketserver
 from threading import _start_new_thread as start_new_thread
-from .common.decorator import sole_no_block
+from .common.decorator import make_sole_decorator
 from .common.dns import reset_dns
 from .common.internet_active import is_active, internet_v4, internet_v6
 from .common.net import NetWorkIOError, bypass_errno
@@ -15,7 +15,9 @@ from .GlobalConfig import GC
 
 localhosts = ['127.0.0.1', '::1', 'localhost', 'gotox.go']
 
-@sole_no_block
+_sole_network_test = make_sole_decorator()
+
+@_sole_network_test
 def network_test(first=None):
     type = GC.LINK_PROFILE
     stop_server = None

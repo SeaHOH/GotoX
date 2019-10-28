@@ -19,12 +19,11 @@ from http.client import HTTPResponse
 from .GlobalConfig import GC
 from .compat.openssl import (
     zero_errno, zero_EOF_error, res_ciphers, SSL, SSLConnection,
-    CertificateError, CertificateErrorTab, match_hostname
-    )
+    CertificateError, CertificateErrorTab, match_hostname )
 from .common.dns import dns, dns_resolve
 from .common.internet_active import internet_v4, internet_v6
 from .common.net import (
-    NetWorkIOError, random_hostname, bypass_errno, isip, check_connection_dead)
+    NetWorkIOError, random_hostname, bypass_errno, isip, check_connection_dead )
 from .common.decorator import make_lock_decorator
 from .common.path import cert_dir
 from .common.proxy import parse_proxy, proxy_no_rdns
@@ -144,11 +143,12 @@ LimitConnect.init()
 def limit_connect(func):
 
     def newfunc(*args, **kwargs):
-        limiter = LimitConnect.push(args[2])
+        key = args[2]
+        limiter = LimitConnect.push(key)
         try:
             return func(*args, **kwargs)
         finally:
-            LimitConnect.pop(limiter)
+            LimitConnect.pop(key)
 
     return newfunc
 

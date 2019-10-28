@@ -22,7 +22,7 @@ from .common.decorator import make_lock_decorator
 from .common.dns import reset_dns, set_dns, dns_resolve, dns
 from .common.net import (
     NetWorkIOError, reset_errno, closed_errno, bypass_errno,
-    isip, isipv4, isipv6, forward_socket)
+    isip, isipv4, isipv6, forward_socket )
 from .common.path import web_dir
 from .common.proxy import parse_proxy, proxy_no_rdns
 from .common.region import isdirect
@@ -31,13 +31,10 @@ from .GlobalConfig import GC
 from .HTTPUtil import http_gws, http_nor
 from .RangeFetch import RangeFetchs
 from .GAEFetch import (
-    check_appid_exists, mark_badappid, make_errinfo, gae_urlfetch)
+    check_appid_exists, mark_badappid, make_errinfo, gae_urlfetch )
 from .FilterUtil import (
-    set_temp_action,
-    set_temp_connect_action,
-    get_action,
-    get_connect_action
-    )
+    set_temp_action, set_temp_connect_action,
+    get_action, get_connect_action )
 from .FilterConfig import action_filters
 
 normattachment = partial(re.compile(r'(?<=filename=)([^"\']+)').sub, r'"\1"')
@@ -1332,19 +1329,25 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         self.write(data)
 
     def do_CMD(self):
+        exit = None
         reqs = urlparse.parse_qs(self.url_parts.query)
-        cmd = reqs['cmd'][0]
+        cmd = reqs['cmd'][0] #只接受第一个命令
         if cmd == 'reset_dns':
             #重置 DNS
             reset_dns()
         elif cmd == 'reset_autorule':
             #重置自动规则
             action_filters.reset = True
+        elif cmd in ('quit', 'exit', 'off', 'close', 'shutdown'):
+            #关闭退出
+            exit = True
         self.close_connection = False
         self.write('HTTP/1.1 204 No Content\r\n'
                    'Content-Length: 0\r\n\r\n')
         logging.warning('%s "%s %s HTTP/1.1" 204 0，GotoX 命令 [%s] 执行完毕。',
             self.address_string(), self.command, self.url, cmd)
+        if exit:
+            sys.exit(0)
 
     def log_error(self, format, *args):
         self.close_connection = True

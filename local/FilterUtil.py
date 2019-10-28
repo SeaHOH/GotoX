@@ -3,6 +3,7 @@
 import threading
 import logging
 from time import mtime, sleep
+from threading import _start_new_thread as start_new_thread
 from functools import partial
 from urllib import parse
 from .common.dns import reset_dns
@@ -11,11 +12,7 @@ from .common.path import config_dir
 from .common.util import LRUCache
 from .GlobalConfig import GC
 from .FilterConfig import (
-    FAKECERT,
-    numToAct,
-    numToSSLAct,
-    action_filters as _action_filters
-    )
+    FAKECERT, numToAct, numToSSLAct, action_filters as _action_filters )
 
 gLock = threading.Lock()
 gn = 0
@@ -24,21 +21,45 @@ filters_cache = LRUCache(256)
 ssl_filters_cache = LRUCache(128)
 reset_method_list = [reset_dns]
 
-def check_reset():
-    if _action_filters.reset:
-        while _action_filters.reset and gn > 0:
-            sleep(0.01)
-        else:
+def lock_filters_cache(func):
+    def newfunc(*args, **kwargs):
+        global gn
+        with gLock:
+            gn += 1
+        try:
+            return func(*args, **kwargs)
+        finally:
             with gLock:
-                if gn == 0 and _action_filters.reset:
-                    global action_filters
-                    action_filters = _action_filters.config
-                    filters_cache.clear()
-                    ssl_filters_cache.clear()
-                    for reset_method in reset_method_list:
-                        reset_method()
-                    _action_filters.reset = False
-                    logging.warning('%r 内容被修改，已重新加载自动代理配置。', _action_filters.CONFIG_FILENAME)
+                gn -= 1
+
+    return newfunc
+
+def check_reset():
+    while True:
+        try:
+            if _action_filters.reset:
+                _check_reset()
+        except Exception as e:
+            logging.warning('check_reset 发生错误：%s', e)
+        sleep(1)
+
+def _check_reset():
+    while _action_filters.reset and gn > 0:
+        sleep(0.01)
+    else:
+        with gLock:
+            if gn == 0 and _action_filters.reset:
+                global action_filters
+                action_filters = _action_filters.config
+                filters_cache.clear()
+                ssl_filters_cache.clear()
+                for reset_method in reset_method_list:
+                    reset_method()
+                _action_filters.reset = False
+                logging.warning('%r 内容被修改，已重新加载自动代理配置。',
+                                _action_filters.CONFIG_FILENAME)
+
+start_new_thread(check_reset, ())
 
 def get_fake_sni(host):
     if not isinstance(host, str):
@@ -72,7 +93,8 @@ def get_redirect(target, url):
     elif isinstance(rule, tuple):
         url = url.replace(*rule)
     else:
-        logging.error('%r 匹配重定向规则 %r，解析错误，请检查你的配置文件："%s/ActionFilter.ini"', url, target, config_dir)
+        logging.error('%r 匹配重定向规则 %r，解析错误，请检查你的配置文件：'
+                      '"%s/ActionFilter.ini"', url, target, config_dir)
         return
     return parse.unquote(url) if unquote else url, (mhost, raction)
 
@@ -135,8 +157,8 @@ def set_temp_connect_action(host):
         ssl_filters_cache.set(host, ('do_FAKECERT', filter), GC.LINK_TEMPTIME)
         return True
 
+@lock_filters_cache
 def get_action(scheme, host, path, url):
-    check_reset()
     schemes = '', scheme
     key = '%s://%s' % (scheme, host)
     filters = filters_cache.gettill(key)
@@ -165,43 +187,36 @@ def get_action(scheme, host, path, url):
                             return action, target
                     continue
                 return action, target
-    global gn
-    try:
-        with gLock:
-            gn += 1
-        filter = None
-        #建立缓存条目
-        filters_cache.setpadding(key)
-        _filters = []
-        for filters in action_filters:
-            if filters.action == FAKECERT:
-                continue
-            for schemefilter, hostfilter, pathfilter, target in filters:
-                if schemefilter in schemes and match_host_filter(hostfilter, host):
-                    action = numToAct[filters.action]
-                    #填充规则到缓存
-                    _filters.append((pathfilter, action, target))
-                    #匹配第一个，后面忽略
-                    if not filter and match_path_filter(pathfilter, path):
-                        #计算重定向网址
-                        if action in REDIRECTS:
-                            target = get_redirect(target, url)
-                            if target is not None:
-                                durl, mhost = target
-                                if durl and durl != url:
-                                    filter = action, target
-                        else:
-                            filter = action, target
-        #添加默认规则
-        _filters.append(filter_DEF)
-        filters_cache[key] = _filters
-        return filter or filter_DEF[1:]
-    finally:
-        with gLock:
-            gn -= 1
+    filter = None
+    #建立缓存条目
+    filters_cache.setpadding(key)
+    _filters = []
+    for filters in action_filters:
+        if filters.action == FAKECERT:
+            continue
+        for schemefilter, hostfilter, pathfilter, target in filters:
+            if schemefilter in schemes and match_host_filter(hostfilter, host):
+                action = numToAct[filters.action]
+                #填充规则到缓存
+                _filters.append((pathfilter, action, target))
+                #匹配第一个，后面忽略
+                if not filter and match_path_filter(pathfilter, path):
+                    #计算重定向网址
+                    if action in REDIRECTS:
+                        target = get_redirect(target, url)
+                        if target is not None:
+                            durl, mhost = target
+                            if durl and durl != url:
+                                filter = action, target
+                    else:
+                        filter = action, target
+    #添加默认规则
+    _filters.append(filter_DEF)
+    filters_cache[key] = _filters
+    return filter or filter_DEF[1:]
 
+@lock_filters_cache
 def get_connect_action(ssl, host):
-    check_reset()
     scheme = 'https' if ssl else 'http'
     schemes = '', scheme
     key = '%s://%s' % (scheme, host)
@@ -213,21 +228,14 @@ def get_connect_action(ssl, host):
         else:
             filter = ssl_filters_cache.gettill(key)
         return filter
-    global gn
-    try:
-        with gLock:
-            gn += 1
-        ssl_filters_cache.setpadding(key)
-        for filters in action_filters:
-            for schemefilter, hostfilter, _, target in filters:
-                if schemefilter in schemes and match_host_filter(hostfilter, host):
-                    #填充结果到缓存
-                    ssl_filters_cache[key] = filter = numToSSLAct[filters.action], target
-                    #匹配第一个，后面忽略
-                    return filter
-        #添加默认规则
-        ssl_filters_cache[key] = ssl_filter_DEF
-        return ssl_filter_DEF
-    finally:
-        with gLock:
-            gn -= 1
+    ssl_filters_cache.setpadding(key)
+    for filters in action_filters:
+        for schemefilter, hostfilter, _, target in filters:
+            if schemefilter in schemes and match_host_filter(hostfilter, host):
+                #填充结果到缓存
+                ssl_filters_cache[key] = filter = numToSSLAct[filters.action], target
+                #匹配第一个，后面忽略
+                return filter
+    #添加默认规则
+    ssl_filters_cache[key] = ssl_filter_DEF
+    return ssl_filter_DEF

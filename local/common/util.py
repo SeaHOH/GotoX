@@ -247,9 +247,6 @@ class Limiter:
             self.__qsize += 1
             return True
 
-    def push_first(self):
-        return self._push(1)
-
     def push(self, block=True, timeout=None, maxsize=None):
         if block:
             if timeout is None:
@@ -283,15 +280,32 @@ class Limiter:
             self.__qsize -= 1
             return True
 
+class finalize:
+    __slots__ = 'weakref', 'func', 'args', 'kwargs'
+
+    def __init__(self, obj, func, *args, **kwargs):
+        self.weakref = weakref.ref(obj, self)
+        self.func = func
+        self.args = args
+        self.kwargs = kwargs
+
+    def __call__(self, _=None):
+        self.func, func = None, self.func
+        if func:
+            self.args, args = None, self.args
+            self.kwargs, kwargs = None, self.kwargs
+            func(*args, **kwargs)
+            return True
+
+
 class LimitBase:
     '''Base limiter.
 
     Don't modify the following properties in subclass:
-    _popped:              flag which marking object has popped
     _limiter:             limiter, set by Class.init, modify it via _limiterFactory
 
     Subclass could customize the following properties:
-    _limiterFactory:      e.g. add what properties you need to the limiter
+    _limiterFactory:      classmethod. add what properties you need to the limiter
     maxsize:              allow objects max size
     timeout:              push block timedout, 'None' means block forever
     '''
@@ -312,14 +326,10 @@ class LimitBase:
 
     def __init__(self, maxsize=None, timeout=None):
         self.push(maxsize, timeout)
-        self._popped = None
-        weakref.ref(self, self.close)
+        self._finalize = finalize(self, self.pop)
 
-    def close(self, _=None):
-        self._popped, popped = True, self._popped
-        if not popped:
-            self.pop()
-            return True
+    def close(self):
+        return self._finalize()
 
     @classmethod
     def push(cls, maxsize=None, timeout=None):
@@ -344,12 +354,11 @@ class LimitDictBase:
     '''Base limiters via dict key.
 
     Don't modify the following properties in subclass:
-    _popped:              flag which marking object has popped
     _limiter:             limiter, set by Class.__init__, modify it via _limiterFactory
     _key:                 dict key which marking objects
 
     Subclass could customize the following properties:
-    _limiterFactory:      e.g. add what properties you need to the limiter
+    _limiterFactory:      classmethod. add what properties you need to the limiter
     _limiters:            limiters in dict, set by Class.init
     lock:                 a threading.Lock Instance, set by Class.init
     maxsize:              allow objects max size per key
@@ -374,16 +383,11 @@ class LimitDictBase:
 
     def __init__(self, key, maxsize=None, timeout=None):
         self._limiter = self.push(key, maxsize, timeout)
-        self._popped = None
         self._key = key
-        weakref.ref(self, self.close)
+        self._finalize = finalize(self, self.pop, key)
 
-    def close(self, _=None):
-        self._popped, popped = True, self._popped
-        if not popped:
-            self.pop(self._limiter)
-            self._limiter = None
-            return True
+    def close(self):
+        return self._finalize()
 
     @classmethod
     def _get_limiter(cls, key):
@@ -398,23 +402,21 @@ class LimitDictBase:
     def push(cls, key, maxsize=None, timeout=None):
         maxsize = maxsize or cls.maxsize
         timeout = timeout or cls.timeout
-        needpush = None
         with cls.lock:
             limiter = cls._get_limiter(key)
             if limiter is None:
                 limiter = cls._limiterFactory()
                 cls._limiters[key] = weakref.KeyedRef(limiter, cls._clear, key)
-            needpush = not limiter.push_first()
-        if needpush:
-            try:
-                limiter.push(timeout=timeout, maxsize=maxsize)
-            except LimiterFull:
-                raise LimiterFull(-1, (cls, key))
+        try:
+            limiter.push(timeout=timeout, maxsize=maxsize)
+        except LimiterFull:
+            raise LimiterFull(-1, (cls, key))
         return limiter
 
     @classmethod
-    def pop(cls, limiter):
-        if not limiter.pop():
+    def pop(cls, key):
+        limiter = cls._get_limiter(key)
+        if limiter is None or not limiter.pop():
             key = weakref.getweakrefs(limiter)[0].key
             logging.debug('%s.pop %r with empty limiter', cls, key, stack_info=True)
 

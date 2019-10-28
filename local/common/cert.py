@@ -5,7 +5,6 @@ import os
 import sys
 import threading
 import glob
-import binascii
 import random
 import logging
 import OpenSSL
@@ -133,20 +132,19 @@ def get_cert(commonname, ip=False):
             if cert:
                 return certfile
 
+        sub_certs.pop(certfile, None)
         create_subcert(certfile, commonname, ip)
         return certfile
 
 def import_ca(certfile=None):
     if certfile is None:
         certfile = ca_certfile
-    with open(certfile, 'rb') as fp:
-        certdata = fp.read().strip()
     try:
-        begin = b'-----BEGIN CERTIFICATE-----'
-        end = b'-----END CERTIFICATE-----'
-        if certdata.startswith(begin) and certdata.endswith(end):
-            certdata = binascii.a2b_base64(certdata[len(begin):-len(end)])
-        commonname = crypto.load_certificate(crypto.FILETYPE_ASN1, certdata).get_subject().CN
+        with open(certfile, 'rb') as fp:
+            certdata = fp.read().strip()
+        cert = crypto.load_certificate(crypto.FILETYPE_PEM, certdata)
+        commonname = cert.get_subject().CN
+        certdata = crypto.dump_certificate(crypto.FILETYPE_ASN1, cert)
     except Exception as e:
         logging.error('load_certificate(certfile=%r) 失败：%s', certfile, e)
         return -1
@@ -190,8 +188,8 @@ def import_ca(certfile=None):
                         ca_exists = True
                         logging.test("证书 %r 已经存在于 Windows 系统证书仓库", commonname)
                     else:
-                        cert =  crypto.load_certificate(crypto.FILETYPE_ASN1, _certdata)
-                        if cert.get_subject().CN == commonname:
+                        _cert =  crypto.load_certificate(crypto.FILETYPE_ASN1, _certdata)
+                        if _cert.get_subject().CN == commonname:
                             ret = crypt32.CertDeleteCertificateFromStore(crypt32.CertDuplicateCertificateContext(pCertCtx))
                             if ret == 1:
                                 logging.test("已经移除无效的 Windows 证书 %r", commonname)
@@ -308,6 +306,3 @@ def check_ca():
                 crypto.dump_publickey(crypto.FILETYPE_PEM, cert.get_pubkey())):
             logging.error('Certs mismatch, delete Certs.')
             any(os.remove(x) for x in certfiles)
-
-if __name__ == '__main__':
-    check_ca()

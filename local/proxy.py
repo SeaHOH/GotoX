@@ -48,6 +48,7 @@ sys.dont_write_bytecode = True
 
 #这条代码负责添加依赖库路径，不要改变位置
 from . import compat
+compat.single_instance('gotox.server')
 compat.init()
 
 import logging

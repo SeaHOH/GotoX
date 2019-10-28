@@ -1,5 +1,9 @@
 # coding:utf-8
 
+import time
+import _thread
+import threading
+
 def dummy(*args, **kwargs): pass
 
 def clean_after_invoked(func):
@@ -16,24 +20,25 @@ def clean_after_invoked(func):
 
     return newfunc
 
-def sole_no_block(func):
-    running = False
-    result = None
+def make_sole_decorator(block=False):
 
-    def newfunc(*args, **kwargs):
-        nonlocal running, result
-        if not running:
-            running = True
-            try:
-                result = func(*args, **kwargs)
-            finally:
-                running = False
-        return result
+    def sole_decorator(func):
+        running = False
+        result = None
+        def newfunc(*args, **kwargs):
+            nonlocal running, result
+            while block and running:
+                time.sleep(0.1)
+            if not running:
+                running = True
+                try:
+                    result = func(*args, **kwargs)
+                finally:
+                    running = False
+            return result
+        return newfunc
 
-    return newfunc
-
-import _thread
-import threading
+    return sole_decorator
 
 _lock_decorator_cache = {}
 

@@ -94,8 +94,8 @@
     - 返回头部支持常见文件类型，不包含缓存信息。
 - **辅助工具：**
     - Windows 下提供一个系统托盘辅助工具。
-        - 使用发布的便携版 Python 可以从 `GotoX.vbs` 或新建快捷方式启动（`GotoX.vbs` 里有写怎么新建）；
-        - 使用安装版 Python 可直接运行 `launcher/win32.py` 启动。
+        - 使用发布的便携版 Python 可以从 `GotoX.vbs` 或快捷方式启动（使用 `create_shortcut.vbs` 生成于桌面）；
+        - 使用安装版 Python 可直接运行 `launcher/start.py` 启动。
         - 可以打开 GotoX 配置文件；
         - 可以选择使用何种类型的 gevent 事件循环；
         - 可以下载生成直连 IP 数据库，**其它系统**需直接运行 `launcher/buildipdb.py` 脚本；

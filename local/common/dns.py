@@ -10,7 +10,7 @@ import urllib.parse as urlparse
 from select import select
 from time import time, sleep
 from threading import _start_new_thread as start_new_thread
-from .net import isip, isipv4, isipv6
+from .net import isip, isipv4, isipv6, stop_all_forward
 from .util import LRUCache, spawn_loop
 from local.GlobalConfig import GC
 
@@ -28,6 +28,7 @@ def reset_dns():
     #保持链接 GAE/GWS 列表不过期
     dns.set('google_gae|', GC.IPLIST_MAP['google_gae'], expire=False)
     dns.set('google_gws|', GC.IPLIST_MAP['google_gws'], expire=False)
+    stop_all_forward()
 
 def set_dns(host, iporname):
     #先处理正常解析

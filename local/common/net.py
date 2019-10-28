@@ -206,6 +206,11 @@ def check_connection_dead(sock):
         sock.close()
     return dead
 
+all_forward_sockets = set()
+
+def stop_all_forward():
+    all_forward_sockets.clear()
+
 def forward_socket(local, remote, payload=None, timeout=60, tick=4, bufsize=8192, maxping=None, maxpong=None):
     if payload:
         remote.sendall(payload)
@@ -213,6 +218,7 @@ def forward_socket(local, remote, payload=None, timeout=60, tick=4, bufsize=8192
     maxpong = maxpong or timeout
     allins = [local, remote]
     timecount = timeout
+    all_forward_sockets.add(remote)
     try:
         while allins and timecount > 0:
             start_time = mtime()
@@ -221,6 +227,8 @@ def forward_socket(local, remote, payload=None, timeout=60, tick=4, bufsize=8192
             timecount -= int(t)
             if err:
                 raise socket.error(err)
+            if remote not in all_forward_sockets:
+                break
             for sock in ins:
                 ndata = sock.recv_into(buf)
                 if ndata:
@@ -236,4 +244,5 @@ def forward_socket(local, remote, payload=None, timeout=60, tick=4, bufsize=8192
         logging.debug('forward_socket except: %s %r', ins, e)
         raise
     finally:
+        all_forward_sockets.discard(remote)
         remote.close()

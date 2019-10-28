@@ -3,12 +3,13 @@
 import os
 import sys
 from local.common.cconfig import cconfig
-from local.common.path import py_dir, config_dir, packages
+from local.common.path import py_dir, config_dir, data_dir, packages
 
 from .monkey_patch import *
 
 def wait_exit(*args, **kwargs):
     replace_logging()
+    patch_time()
     from local.common.util import wait_exit
     wait_exit(*args, **kwargs)
 
@@ -27,6 +28,27 @@ if os.path.dirname(sys.executable) != py_dir:
     sys.path.append(packages)
     sys.path.extend(glob.glob(os.path.join(packages, '*.egg')))
 
+@clean_after_invoked
+def single_instance(name):
+    lock_file = os.path.join(data_dir, name + '.lock')
+
+    def unlock():
+        lock.close()
+        os.remove(lock_file)
+
+    while True:
+        try:
+            lock = open(lock_file, 'xb', 0)
+        except FileExistsError:
+            try:
+                os.remove(lock_file)
+            except:
+                wait_exit('已经有一个 %s 实例正在运行中。', name)
+        else:
+            import atexit
+            atexit.register(unlock)
+            break
+
 looptype = None
 
 def get_looptype():
@@ -34,25 +56,24 @@ def get_looptype():
     if allown_gevent_patch and looptype is None:
         import gevent
         loopobj = gevent.get_hub().loop
-        while True:
-            try:
-                assert isinstance(loopobj, gevent.libuv.loop.loop), ''
-                looptype = 'libuv-cffi-' + gevent.libuv.loop.get_version().split('-')[-1]
-                break
-            except:
-                pass
-            try:
-                assert isinstance(loopobj, gevent.libev.corecext.loop), ''
-                looptype = 'libev-cext-' + gevent.libev.corecext.get_version().split('-')[-1]
-                break
-            except:
-                pass
-            try:
-                assert isinstance(loopobj, gevent.libev.corecffi.loop), ''
-                looptype = 'libev-cffi-' + gevent.libev.corecffi.get_version().split('-')[-1]
-                break
-            except:
-                pass
+        try:
+            assert isinstance(loopobj, gevent.libuv.loop.loop), ''
+            looptype = 'libuv-cffi-' + gevent.libuv.loop.get_version().split('-')[-1]
+            return looptype
+        except:
+            pass
+        try:
+            assert isinstance(loopobj, gevent.libev.corecext.loop), ''
+            looptype = 'libev-cext-' + gevent.libev.corecext.get_version().split('-')[-1]
+            return looptype
+        except:
+            pass
+        try:
+            assert isinstance(loopobj, gevent.libev.corecffi.loop), ''
+            looptype = 'libev-cffi-' + gevent.libev.corecffi.get_version().split('-')[-1]
+            return looptype
+        except:
+            pass
     if looptype is None:
         looptype = 'none'
     return looptype
@@ -110,7 +131,7 @@ def init():
             gevent.monkey.patch_all(os=False, ssl=False, subprocess=False, signal=False)
         except TypeError:
             gevent.monkey.patch_all(os=False)
-        if get_looptype().startswith('libuv'):
+        if get_looptype().startswith('libuv') and sys.platform.startswith('win'):
             patch_gevent_socket()
 
     replace_logging()

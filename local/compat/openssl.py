@@ -4,11 +4,13 @@ import socket
 import errno
 from OpenSSL import SSL, crypto
 from select import select
-from ipaddress import ip_address
 from ssl import (
     _DEFAULT_CIPHERS, _RESTRICTED_SERVER_CIPHERS,
-    _dnsname_match, _ipaddress_match)
-
+    _dnsname_match, _ipaddress_match )
+try:
+    from ssl import _inet_paton as ip_address # py3.7+
+except ImportError:
+    from ipaddress import ip_address
 _DEFAULT_CIPHERS += ':!SSLv3'
 _RESTRICTED_SERVER_CIPHERS += ':!SSLv3'
 zero_errno = errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTSOCK
@@ -203,6 +205,6 @@ def get_subject_alt_name(self):
     for i in range(self.get_extension_count()):
         ext = self.get_extension(i)
         if ext._nid == SSL._lib.NID_subject_alt_name:
-            return tuple(s.split(':') for s in ext._subjectAltNameString().split(', '))
+            return tuple(s.split(':', 1) for s in ext._subjectAltNameString().split(', '))
 
 crypto.X509.get_subject_alt_name = get_subject_alt_name

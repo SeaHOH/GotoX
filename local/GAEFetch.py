@@ -5,7 +5,7 @@ import queue
 import struct
 import logging
 from io import BytesIO
-from time import time, timezone, localtime, strftime, strptime, mktime
+from time import time, sleep, timezone, localtime, strftime, strptime, mktime
 from http.client import HTTPResponse, parse_headers
 from .FilterUtil import get_action
 from .GlobalConfig import GC
@@ -94,6 +94,7 @@ def _get_appid():
         nappid += 1
         if nappid >= len(GC.GAE_APPIDS):
             nappid = 0
+            sleep(0.01)
         appid = GC.GAE_APPIDS[nappid]
         contains, expired, _ = badappids.getstate(appid)
         if contains and expired:

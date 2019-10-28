@@ -1031,10 +1031,10 @@ def stop_ip_check():
     ip_manager_gws.stop()
 
 def fixed_iplist():
+    list_gae = []
+    list_gws = []
     while True:
         sleep(3600)
-        list_gae = []
-        list_gws = []
         for ip in ip_source.ip_set_used:
             type = None
             if ip in ip_source_gae.ip_set:
@@ -1051,3 +1051,5 @@ def fixed_iplist():
                 len(ip_source.ip_set_used), len(list_gae))
         GC.IPLIST_MAP['google_gae'][:] = list_gae
         GC.IPLIST_MAP['google_gws'][:] = list_gws
+        list_gae.clear()
+        list_gws.clear()

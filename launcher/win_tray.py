@@ -6,11 +6,15 @@ import sys
 
 sys.dont_write_bytecode = True
 
+import warnings
+warnings.filterwarnings('ignore', '"is" with a literal', SyntaxWarning, append=True) # py38+
+
 from common import (
     root_dir as app_root, config_dir, icon_gotox, direct_ipdb, direct_domains,
-    config_filename, config_user_filename, config_auto_filename,
+    config_filename, config_user_filename, config_auto_filename, single_instance,
     get_dirname, getlogger, startfile, load_config as _load_config, cconfig)
 
+single_instance('gotox.win_tray')
 logging = getlogger()
 
 app_start = os.path.join(app_root, 'start.py')
@@ -187,7 +191,7 @@ def stop_GotoX():
     else:
         retcode = GotoX_app.poll()
         if retcode is None:
-            GotoX_app.terminate()
+            urlopen('http://localhost/docmd?cmd=quit')
         else:
             logging.warning('GotoX 进程已经结束，code：%s。', retcode)
 

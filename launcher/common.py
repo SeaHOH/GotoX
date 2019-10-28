@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # coding: utf-8
 
 import os
@@ -32,7 +31,7 @@ logging = None
 if root_dir not in sys.path:
     sys.path.insert(0, root_dir)
 
-from local.compat import replace_logging, patch_configparser
+from local.compat import single_instance, replace_logging, patch_configparser
 from local.common.cconfig import cconfig
 from local.common.decorator import propertyb
 
