@@ -50,7 +50,6 @@ before_deploy:
 
   - cd ..
   - md5sum *.zip *.7z | tee md5sum
-  - sha1sum *.zip *.7z | tee sha1sum
   - sha256sum *.zip *.7z | tee sha256sum
 
 deploy:
