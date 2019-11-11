@@ -817,9 +817,9 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 if self.conaborted:
                     raise e
                 errors.append(e)
-                if e.args[0] in closed_errno or \
-                        (isinstance(e, NetWorkIOError) and len(e.args) > 1 and 'bad write' in e.args[1]) or \
-                        (isinstance(e.args[0], list) and any('bad write' in arg for arg in e.args[0][0])):
+                if not isinstance(e, LimiterFull) and (e.args[0] in closed_errno or
+                        (isinstance(e, NetWorkIOError) and len(e.args) > 1 and 'bad write' in e.args[1]) or
+                        (isinstance(e.args[0], list) and any('bad write' in arg for arg in e.args[0][0]))):
                     #连接主动终止
                     logging.debug('%s do_GAE %r 返回 %r，终止', self.address_string(response or e), self.url, e)
                     self.close_connection = True

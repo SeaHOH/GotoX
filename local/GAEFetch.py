@@ -21,6 +21,7 @@ class LimitGAE(LimitBase):
     'A response limiter wrapper for GAE.'
 
     maxsize = GC.GAE_MAXREQUESTS * len(GC.GAE_APPIDS)
+    timeout = 30
     appids = dict((appid, 0) for appid in GC.GAE_APPIDS)
 
     def __init__(self, *args):

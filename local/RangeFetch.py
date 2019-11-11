@@ -160,12 +160,12 @@ class RangeFetch:
                         start, end = self.firstrange
                     else:
                         start, end = range_queue.get(timeout=1)
-                    headers['Range'] = 'bytes=%d-%d' % (start, end)
-                    while start - self.expect_begin > self.threads * self.delaysize and \
-                            data_queue.qsize() * self.bufsize > 3 * self.threads * self.delaysize:
-                        if self._stopped: return
-                        sleep(0.1)
-                    response = gae_urlfetch(self.command, self.url, headers, self.payload, getfast=self.timeout)
+                        headers['Range'] = 'bytes=%d-%d' % (start, end)
+                        while start - self.expect_begin > self.threads * self.delaysize and \
+                                data_queue.qsize() * self.bufsize > 3 * self.threads * self.delaysize:
+                            if self._stopped: return
+                            sleep(0.1)
+                        response = gae_urlfetch(self.command, self.url, headers, self.payload, getfast=self.timeout)
                     if response:
                         xip = response.xip[0]
                         if xip in self.iplist:
