@@ -5,12 +5,13 @@
 - 支持绑定自定义域名的 GAE 代理，配置时用自定义域名代替 AppID。
 - 运行时可一直维护一个较小但快速的 GAE IP 列表。
 
-# 可用性（2018/12/20）
-- 由于谷歌服务器变化，可使用的 GAE 服务器急剧减少，可根据当地 ISP 情况选择使用 IPv4、原生 IPv6 或 IPv6 隧道连接 GAE。
-- 使用 SNIProxy 连接 GAE 时（无法与谷歌 IP 混用，不应作为常规方法，仅为后备），请注意 **[gae/servername]** 参数的选择，详见配置注释。
+# 可用性（2020/02/19）
+- 由于谷歌政策调整，未绑定信用卡的 could 账户 5 月 31 日后将无法使用其免费 GAE 服务，因此不再继续改进 GAE 服务端。
+- 增加 Cloudflare Workers 作为新的远程代理服务器，测试中。
 
 # 安全性
 - 由于平台限制，对于通过 GAE 的 https 流量，GotoX 使用自动生成的证书作为凭证，采取中间人方法进行代理；对于需要修改（某些自动代理规则需要）的 https 流量也是如此，不论其是否通过 GAE。
+- 上一条也适用于 CFWorkers。
 - GotoX 使用 sha256 算法生成证书，只要你不把生成的[私钥文件](#导入证书)泄露出去，就不会有第三方能通过它们对你进行中间人攻击。
 - 默认配置时，GotoX 会验证 GAE 服务器的中级证书是否为谷歌 [GIAG3](https://pki.goog/gsr2/GIAG3.crt)，同时会在 AppID 请求 https 网址时验证其证书有效性。
 - 使用 GAE 代理也就意味着：你需要**信任谷歌和你所使用的 AppID 服务端的权限者**，他们能够窥探和修改通过 GAE 代理的流量信息。
@@ -18,12 +19,12 @@
 - 支持通过 https 代理协议连接 GotoX，然而非加密后端规则（非 GAEProxy、HTTPS）的 http 连接从代理连出去仍然是普通 http 连接，这只是作为一个方法验证来实现。
 
 # 部署服务端
-- 推荐使用[本项目 fork 的 GoProxy GAE 服务端分支](https://github.com/SeaHOH/GotoX/tree/gaeserver.goproxy)，包含一些小改动，可完全兼容 GoProxy/[zebra](https://github.com/MeABc/zebra) 客户端。同时本项目不再兼容其它服务端，如 XX-Net GAE 服务端。
-- 申请 AppID 或部署服务端时，可尝试直接以默认配置运行本代理使用；如果无法顺利进行，请使用 VPN、Shadowsocks 等其它代理重新开始。
-    - **警告**：不建议使用未知来源的 AppID，它们**可能会记录你的各种信息，甚至更改你的流量**以达到更危险的目的。
+- CFWorkers 服务端部署非常简单，可参看 wiki 简易教程。
+- 注册和部署时，可尝试直接以默认配置运行本代理使用；如果无法顺利进行，请使用 VPN、Shadowsocks 等其它代理重新开始。
+    - **警告**：不建议使用未知来源的兼容服务端，它们**可能会记录你的各种信息，甚至更改你的流量**以达到更危险的目的。
 - **相关链接**
-    - 简易教程 https://github.com/SeaHOH/GotoX/wiki/简易部署教程
-    - 常见问题 https://github.com/SeaHOH/GotoX/wiki/常见问题
+    - 简易教程 https://github.com/SeaHOH/GotoX/wiki/简易部署教程：Cloudflare-Workers
+    - 常见问题 https://github.com/SeaHOH/GotoX/wiki/常见问题 （待更新）
 
 # 使用
 - ### 主要配置

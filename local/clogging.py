@@ -404,7 +404,12 @@ class Logger(object):
     def __init__(self, name, level=NOTSET, *args, **kwargs):
         if name not in self.root.loggerDict:
             self.name = name
-            self.level = _checkLevel(level)
+            level = _checkLevel(level)
+            if level and self.parent and \
+                    level == self.parent.getEffectiveLevel():
+                self.level = NOTSET
+            else:
+                self.level = level
             self.root.loggerDict[name] = self
             self.disabled = False
             self.logName = True
@@ -412,13 +417,13 @@ class Logger(object):
     def getLogger(self, name=None, level=NOTSET, stream=None, logfile=None):
         if name in (None, 'root'):
             return self.root
-        names = name.split('.')
-        if len(names) > 1:
-            logger = RootLogger(names.pop(0), level or WARNING, stream, logfile)
-            while names:
-                logger = logger.getChild(names.pop(0))
-            return logger
-        return self.getChild(name, level)
+        root, _, child = name.partition('.')
+        if child:
+            level = _checkLevel(level) or WARNING
+            logger = RootLogger(root, level, stream, logfile)
+            return logger.getChild(child)
+        else:
+            return self.getChild(name, level)
 
     @_lock_setting
     def getChild(self, name, level=NOTSET):
@@ -426,7 +431,7 @@ class Logger(object):
         if len(names) > 1:
             logger = self
             while names:
-                logger = logger.getChild(names.pop(0))
+                logger = logger.getChild(names.pop(0), level)
             return logger
         if self.name != 'root':
             name = '.'.join((self.name, name))
@@ -610,6 +615,7 @@ class RootLogger(Logger):
         return cls.getRootLogger(*args, **kwargs)
 
     def __init__(self, name='root', level=WARNING, stream=None, logfile=None):
+        name = name.replace('.', '-')
         if name not in _rootLoggerDict:
             self.disable = 0
             self.loggerDict = {}

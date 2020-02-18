@@ -16,7 +16,7 @@ addons:
 script:
   - export PYTHON_VERSION=3.7.5
   - export PYTHON_IMPL_VERSION=cp37
-  - export RELEASE_VERSION=$(grep -oP '[0-9\.]+' local/__init__.py)
+  - export RELEASE_VERSION=$(grep -oP '[0-9\.ab]+' local/__init__.py)
 
 before_deploy:
   - pip install pycurl

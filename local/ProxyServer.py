@@ -109,13 +109,6 @@ class LocalProxyServer(socketserver.TCPServer):
         self.shutdown()
         self.socket.close()
 
-    def finish_request(self, request, client_address):
-        try:
-            self.RequestHandlerClass(request, client_address, self)
-        except NetWorkIOError as e:
-            if e.args[0] not in bypass_errno:
-                raise
-
     def handle_error(self, *args):
         '''make TCPServer happy'''
         exc_info = sys.exc_info()
@@ -125,9 +118,18 @@ class LocalProxyServer(socketserver.TCPServer):
             exc_info = error = None
         else:
             del exc_info, error
-            socketserver.TCPServer.handle_error(self, *args)
+            super().handle_error(*args)
 
-    process_request_thread = socketserver.ThreadingTCPServer.process_request_thread
+    def process_request_thread(self, request, client_address):
+        try:
+            self.finish_request(request, client_address)
+        except NetWorkIOError as e:
+            if e.args[0] not in bypass_errno:
+                self.handle_error(request, client_address)
+        except Exception:
+            self.handle_error(request, client_address)
+        finally:
+            self.shutdown_request(request)
 
     def process_request(self, request, client_address):
         start_new_thread(self.process_request_thread, (request, client_address))

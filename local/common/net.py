@@ -95,11 +95,11 @@ def isip(ip):
     else:
         return False
 
-def isipv4(ip, inet_aton=socket.inet_aton):
+def isipv4(ip, AF_INET=socket.AF_INET, inet_pton=socket.inet_pton):
     if '.' not in ip:
         return False
     try:
-        inet_aton(ip)
+        inet_pton(AF_INET, ip)
     except:
         return False
     else:

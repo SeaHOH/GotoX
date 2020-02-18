@@ -300,7 +300,6 @@ class BaseHTTPUtil:
         else:
             # create a ipv4/ipv6 socket object
             sock = _socket(AF_INETX)
-            self.set_tcp_socket(sock, timeout)
         try:
             # wrap for connect limit
             sock = LimitConnection(sock, ip, self.max_per_ip)
@@ -308,6 +307,7 @@ class BaseHTTPUtil:
             new_sock_cache.append(sock)
             raise e
         else:
+            self.set_tcp_socket(sock, timeout)
             return sock
 
     def get_tcp_socket(self, ip, timeout=None):
@@ -844,27 +844,33 @@ class HTTPUtil(BaseHTTPUtil):
             #以下按原样转发
             if 'Transfer-Encoding' in headers:
                 while True:
-                    chunk_size_str = self.rfile.readline(65537)
-                    if len(chunk_size_str) > 65536:
-                        raise Exception('分块尺寸过大')
-                    sock.sendall(chunk_size_str)
-                    readed += len(chunk_size_str)
-                    chunk_size = int(chunk_size_str.split(b';')[0], 16)
-                    if chunk_size == 0:
-                        while True:
-                            chunk = self.rfile.readline(65536)
-                            sock.sendall(chunk)
-                            readed += len(chunk)
-                            if chunk in (b'\r\n', b'\n', b''): # b'' 也许无法读取到空串
-                                break
-                            else:
-                                logging.debug('%s "%s %s%s"分块拖挂：%r', sock.xip[0], method, headers.get('host', ''), path, chunk)
+                    chunk = payload.read(bufsize)
+                    if chunk:
+                        sock.sendall(chunk)
+                        readed += len(chunk)
+                    else:
                         break
-                    chunk = self.rfile.readline(65536)
-                    if chunk[-2:] != b'\r\n':
-                        raise Exception('分块尺寸不匹配 CRLF')
-                    sock.sendall(chunk)
-                    readed += len(chunk)
+                    #chunk_size_str = payload.readline(65537)
+                    #if len(chunk_size_str) > 65536:
+                    #    raise Exception('分块尺寸过大')
+                    #sock.sendall(chunk_size_str)
+                    #readed += len(chunk_size_str)
+                    #chunk_size = int(chunk_size_str.split(b';')[0], 16) + 2
+                    #if chunk_size == 2:
+                    #    while True:
+                    #        chunk = payload.readline(65536)
+                    #        sock.sendall(chunk)
+                    #        readed += len(chunk)
+                    #        if chunk in (b'\r\n', b'\n', b''): # b'' 也许无法读取到空串
+                    #            break
+                    #        else:
+                    #            logging.debug('%s "%s %s%s"分块拖挂：%r', sock.xip[0], method, headers['Host'], path, chunk)
+                    #    break
+                    #chunk = payload.read(chunk_size)
+                    #sock.sendall(chunk)
+                    #readed += chunk_size
+                    #if chunk[-2:] != b'\r\n':
+                    #    raise Exception('分块尺寸不匹配 CRLF')
             else:
                 left_size = int(headers.get('Content-Length', 0))
                 while True:
@@ -996,7 +1002,9 @@ gws_ciphers = (
     ).encode()
 
 # max_window=4, timeout=8, proxy='', ssl_ciphers=None, max_retry=2
-http_gws = HTTPUtil(os.path.join(cert_dir, 'cacerts', 'gws.pem'), gws_ciphers, GC.LINK_WINDOW, GC.GAE_TIMEOUT, GC.proxy)
 http_nor = HTTPUtil(os.path.join(cert_dir, 'cacerts'), res_ciphers, GC.LINK_WINDOW, GC.LINK_TIMEOUT, GC.proxy)
-reset_method_list.append(http_gws.clear_all_connection_cache)
+http_cfw = HTTPUtil(os.path.join(cert_dir, 'cacerts'), res_ciphers, GC.LINK_WINDOW, GC.CFW_TIMEOUT, GC.proxy)
+http_gws = HTTPUtil(os.path.join(cert_dir, 'cacerts', 'gws.pem'), gws_ciphers, GC.LINK_WINDOW, GC.GAE_TIMEOUT, GC.proxy)
 reset_method_list.append(http_nor.clear_all_connection_cache)
+reset_method_list.append(http_cfw.clear_all_connection_cache)
+reset_method_list.append(http_gws.clear_all_connection_cache)

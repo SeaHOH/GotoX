@@ -30,6 +30,7 @@ from .common.util import LRUCache, LimiterFull, message_html
 from .GlobalConfig import GC
 from .HTTPUtil import http_gws, http_nor
 from .RangeFetch import RangeFetchs
+from .CFWFetch import cfw_fetch
 from .GAEFetch import (
     check_appid_exists, mark_badappid, make_errinfo, gae_urlfetch )
 from .FilterUtil import (
@@ -201,10 +202,13 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         #记录 gws 连接活动时间
         #获取 hostname 别名
         self.close_connection = True
-        if self.headers.get('Upgrade') == 'websocket' and self.action in ('do_DIRECT', 'do_GAE'):
-            self.action = 'do_FORWARD'
-            self.target = None
-            logging.warn('%s %s 不支持 websocket %r，转用 FORWARD。', self.address_string(), self.action[3:], self.url)
+        self.ws = self.headers.get('Upgrade') == 'websocket'
+        if self.ws:
+            self.url = 'ws' + self.url[4:]
+            if self.action == 'do_GAE':
+                self.action = 'do_FORWARD'
+                self.target = None
+                logging.warn('%s %s 不支持 %r，转用 FORWARD。', self.address_string(), self.action[3:], self.url)
         if self.action in ('do_DIRECT', 'do_FORWARD'):
             if self.target:
                 iporname, profile = self.target
@@ -395,7 +399,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             if length > 33554432:
                 logging.error('%s "%s %s %s" 附加内容尺寸过大：%d，无法通过 GAE 代理', self.address_string(), self.action[3:], self.command, self.url, length)
                 raise
-        elif self.action != 'do_DIRECT' or length > 65536 or 'Transfer-Encoding' in request_headers:
+        elif self.action not in ('do_DIRECT', 'do_CFW')  or length > 65536 or 'Transfer-Encoding' in request_headers:
             #不读取，直接传递 rfile 以加快代理转发速度
             payload = self.rfile
             self.rfile.readed = 0
@@ -431,6 +435,17 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         #处理响应
         response_headers = {k.title(): v for k, v in response.headers.items()
                                 if k.title() not in self.skip_response_headers}
+        log =  logging.info
+        if self.action == 'do_CFW':
+            if 'report-uri.cloudflare.com' in response_headers:
+                del response_headers['Expect-CT']
+            response_headers = {k: v for k, v in response_headers.items()
+                                    if not k.startswith('CF-')}
+            
+            if response_headers.get('X-Fetch-Status') == 'fail':
+                log = logging.warning
+            else:
+                del response_headers['Server']
         self.response_length = response.length or 0
         #明确设置 Accept-Ranges
         if response_headers.get('Accept-Ranges') != 'bytes':
@@ -457,6 +472,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         data = response.read(self.bufsize)
         need_chunked = data and not length # response 中的数据已经正确解码
         if need_chunked:
+            length = '-'
             if self.request_version == 'HTTP/1.1':
                 response_headers['Transfer-Encoding'] = 'chunked'
             else:
@@ -467,6 +483,8 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             response_headers['Content-Length'] = length
         cookies = response.headers.get_all('Set-Cookie')
         if cookies:
+            if self.action == 'do_CFW':
+                cookies = [cookie for cookie in cookies if GC.CFW_WORKER not in cookie]
             response_headers['Set-Cookie'] = '\r\nSet-Cookie: '.join(cookies)
         if 'Content-Disposition' in response_headers:
             response_headers['Content-Disposition'] = normattachment(response_headers['Content-Disposition'])
@@ -478,17 +496,8 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 response.status != 304 and \
                 'Location' in response_headers:
             logging.info('%r 返回包含重定向 %r', self.url, response_headers['Location'])
-        logging.info('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), self.action[3:], self.command, self.url, response.status, length or '-', color=response.status == 304 and 'green')
+        log('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), self.action[3:], self.command, self.url, response.status, length, color=response.status == 304 and 'green')
         return response, data, need_chunked
-
-    def check_useragent(self):
-        #修复某些软件无法正确处理 206 Partial Content 响应的持久连接
-        user_agent = self.headers.get('User-Agent', '')
-        if user_agent.startswith('mpv') or \
-            user_agent.endswith(('(Chrome)', 'Iceweasel/38.2.1')):
-            # youtube-dl 有时会传递给其它支持的播放器，导致无法辨识，统一关闭
-            # 其它自定义的就没法，此处无法辨识，感觉关闭所有 206 有点划不来
-            self.close_connection = True
 
     def do_DIRECT(self):
         #直接请求目标地址
@@ -537,13 +546,14 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 if response.status == 403 and not isdirect(self.host):
                     logging.warn('%s do_DIRECT "%s %s" 连接被拒绝，尝试使用 "GAE" 规则。', self.address_string(response), self.command, self.url)
                     return self.go_GAE()
-                #修复某些软件无法正确处理持久连接（停用）
-                self.check_useragent()
                 response, data, need_chunked = self.handle_response_headers(response)
                 headers_sent = True
-                _, err = self.write_response_content(data, response, need_chunked)
-                if err:
-                    raise err
+                if self.ws:
+                    self.forward_websocket(response.sock)
+                else:
+                    _, err = self.write_response_content(data, response, need_chunked)
+                    if err:
+                        raise err
                 return
             except CertificateError as e:
                 noerror = False
@@ -556,7 +566,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 return
             except Exception as e:
                 noerror = False
-                if self.conaborted:
+                if self.ws or self.conaborted:
                     raise e
                 #连接重置
                 if e.args[0] in reset_errno:
@@ -570,6 +580,8 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                     logging.warning('%s do_DIRECT "%s %s" 失败：%r', self.address_string(response or e), self.command, self.url, e)
                     raise e
             finally:
+                if self.ws:
+                    return
                 if not noerror:
                     self.close_connection = True
                 if response:
@@ -605,6 +617,52 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         response.append('\r\n')
         self.write('\r\n'.join(response))
         logging.info('%s "%s FAKEOPTIONS %s HTTP/1.1" 200 0', self.address_string(), self.action[3:], self.url)
+
+    def do_CFW(self):
+        request_headers, payload = self.handle_request_headers()
+        headers_sent = False
+        for retry in range(GC.CFW_FETCHMAX):
+            if retry > 0 and payload and isinstance(payload, bytes) or hasattr(payload, 'readed') and payload.readed:
+                logging.warning('%s do_DIRECT 由于有上传数据 "%s %s" 终止重试', self.address_string(), self.command, self.url)
+                self.close_connection = True
+                if not headers_sent:
+                    c = message_html('504 响应超时', '响应超时', '获取 %s 超时，请稍后重试。' % self.url).encode()
+                    self.write(b'HTTP/1.1 504 Gateway Timeout\r\n'
+                               b'Content-Type: text/html\r\n'
+                               b'Content-Length: %d\r\n\r\n' % len(c))
+                    self.write(c)
+                return
+            noerror = True
+            response = None
+            self.close_connection = self.cc
+            try:
+                response = cfw_fetch(self.command, self.url, request_headers, payload)
+                response, data, need_chunked = self.handle_response_headers(response)
+                headers_sent = True
+                if self.ws:
+                    self.forward_websocket(response.sock)
+                else:
+                    _, err = self.write_response_content(data, response, need_chunked)
+                    if err:
+                        raise err
+            except Exception as e:
+                noerror = False
+                if self.ws or self.conaborted:
+                    raise e
+                if e.args[0] not in bypass_errno:
+                    logging.warning('%s do_CFW "%s %s" 失败：%r', self.address_string(response or e), self.command, self.url, e)
+                    raise e
+            finally:
+                if self.ws:
+                    return
+                if not noerror:
+                    self.close_connection = True
+                if response:
+                    response.close()
+                    if noerror and GC.CFW_KEEPALIVE:
+                        response.http_util.ssl_connection_cache[response.connection_cache_key].append((time(), response.sock))
+                    else:
+                        response.sock.close()
 
     def do_GAE(self):
         #发送请求到 GAE 代理
@@ -796,8 +854,6 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                     logging.info('发现[autorange/big]匹配：%r', self.url)
                     response.status = 206
                     need_autorange = 2
-                #修复某些软件无法正确处理持久连接（停用）
-                self.check_useragent()
                 #第一个响应，不用重复写入头部
                 if not headers_sent:
                     #开始自动多线程（Partial Content）
@@ -1244,6 +1300,17 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         c = message_html('404 无法访问', '无法访问', '不能 "%s %s"<p>无论是通过 GAE 还是 DIRECT 都无法访问成功' % (self.command, self.url)).encode()
         self.write(b'HTTP/1.0 404\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
         self.write(c)
+
+    def forward_websocket(self, remote):
+        try:
+            forward_socket(self.connection, remote, timeout=120)
+        except NetWorkIOError as e:
+            if e.args[0] not in bypass_errno:
+                logging.warning('%s 转发 "%s" 失败：%r', self.address_string(remote), self.url, e)
+                raise
+        finally:
+            logging.debug('%s 转发终止："%s"', self.address_string(remote), self.url)
+            self.close_connection = True
 
     def forward_connect(self, remote, timeout=0, tick=4, bufsize=32768, maxping=None, maxpong=None):
         #在本地与远程连接间进行数据转发

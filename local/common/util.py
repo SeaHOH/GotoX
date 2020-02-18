@@ -417,7 +417,6 @@ class LimitDictBase:
     def pop(cls, key):
         limiter = cls._get_limiter(key)
         if limiter is None or not limiter.pop():
-            key = weakref.getweakrefs(limiter)[0].key
             logging.debug('%s.pop %r with empty limiter', cls, key, stack_info=True)
 
     @classmethod

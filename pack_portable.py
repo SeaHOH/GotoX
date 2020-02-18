@@ -113,6 +113,8 @@ def _download(url, f):
     c.setopt(c.SSL_VERIFYHOST, 2)
     c.setopt(c.BUFFERSIZE, 32768)
     c.setopt(c.TIMEOUT, 60)
+    c.setopt(c.FOLLOWLOCATION, 1)
+    c.setopt(c.MAXREDIRS, 3)
     c.setopt(c.URL, url)
     c.setopt(c.WRITEFUNCTION, f.write)
     c.setopt(c.HEADERFUNCTION, f.header_cb)
@@ -240,11 +242,11 @@ py_ver, py_arch = py_ver.split('-')
 py_ver = py_ver.replace('.', '')[:2]
 dll_tag = 'cp%s-%s' % (py_ver, py_arch)
 
-
-filepath = download(py_url, sum=py_sum)
-cmd = '{7z} e {file} -opython {to_null}'.format(file=filepath, **params_7z)
-os.system(cmd)
-os.remove(filepath)
+if not os.path.exists('python/python.exe'):
+    filepath = download(py_url, sum=py_sum)
+    cmd = '{7z} e {file} -opython {to_null}'.format(file=filepath, **params_7z)
+    os.system(cmd)
+    os.remove(filepath)
 
 if not os.path.exists('python'):
     os.mkdir('python')

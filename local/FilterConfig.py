@@ -14,41 +14,45 @@ from .GlobalConfig import GC
 BLOCK     = 1
 FORWARD   = 2
 DIRECT    = 3
-GAE       = 4
-FAKECERT  = 5
-PROXY     = 6
-REDIRECT  = 7
-IREDIRECT = 8
+FAKECERT  = 4
+GAE       = 5
+CFW       = 6
+PROXY     = 7
+REDIRECT  = 8
+IREDIRECT = 9
 
 numToAct = {
     BLOCK     : 'do_BLOCK',
     FORWARD   : 'do_FORWARD',
     DIRECT    : 'do_DIRECT',
-    REDIRECT  : 'do_REDIRECT',
-    IREDIRECT : 'do_IREDIRECT',
-    PROXY     : 'do_PROXY',
     FAKECERT  : 'do_DIRECT',
     GAE       : 'do_GAE',
+    CFW       : 'do_CFW',
+    PROXY     : 'do_PROXY',
+    REDIRECT  : 'do_REDIRECT',
+    IREDIRECT : 'do_IREDIRECT',
 }
 numToSSLAct = {
     BLOCK     : 'do_FAKECERT',
     FORWARD   : 'do_FORWARD',
     DIRECT    : 'do_FAKECERT',
-    REDIRECT  : 'do_FAKECERT',
-    IREDIRECT : 'do_FAKECERT',
-    PROXY     : 'do_PROXY',
     FAKECERT  : 'do_FAKECERT',
     GAE       : 'do_FAKECERT',
+    CFW       : 'do_FAKECERT',
+    PROXY     : 'do_PROXY',
+    REDIRECT  : 'do_FAKECERT',
+    IREDIRECT : 'do_FAKECERT',
 }
 actToNum = {
     'BLOCK'     : BLOCK,
     'FORWARD'   : FORWARD,
     'DIRECT'    : DIRECT,
-    'REDIRECT'  : REDIRECT,
-    'IREDIRECT' : IREDIRECT,
-    'PROXY'     : PROXY,
     'FAKECERT'  : FAKECERT,
     'GAE'       : GAE,
+    'CFW'       : CFW,
+    'PROXY'     : PROXY,
+    'REDIRECT'  : REDIRECT,
+    'IREDIRECT' : IREDIRECT,
 }
 
 isfiltername = re.compile(r'(?P<order>\d+)-(?P<action>\w+)').match
@@ -108,7 +112,7 @@ class ACTION_FILTERS:
                 if filters.action == FAKECERT:
                     if not v:
                         v = None
-                elif filters.action in (BLOCK, GAE):
+                elif filters.action in (BLOCK, GAE, CFW):
                     v = None
                 elif filters.action in (FORWARD, DIRECT):
                     if v[:1] == '@':

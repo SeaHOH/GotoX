@@ -127,7 +127,17 @@ class GC:
         LINK_TEMPTIME_S = ' %d 分 %d 秒' % (LINK_TEMPTIME // 60, LINK_TEMPTIME_S)
     else:
         LINK_TEMPTIME_S = ' %d 分钟' % (LINK_TEMPTIME // 60)
-    LINK_TEMPWHITELIST = CONFIG.gettuple('link', 'tempwhitelist')
+    LINK_TEMPWHITELIST = CONFIG.gettuple('link', 'tempwhitelist') + ('.cloudflare.com',)
+
+    CFW_WORKER = CONFIG.get('cfw', 'worker').strip()
+    if CFW_WORKER.find('.') < 1:
+        CFW_WORKER = None
+    CFW_PASSWORD = CONFIG.get('cfw', 'password').strip()
+    CFW_TIMEOUT = max(CONFIG.getint('cfw', 'timeout', fallback=10), 3)
+    CFW_KEEPALIVE = CONFIG.getboolean('cfw', 'keepalive', fallback=True)
+    CFW_KEEPTIME = CONFIG.getint('cfw', 'keeptime', fallback=180)
+    CFW_MAXPERIP = min(CONFIG.getint('cfw', 'maxperip', fallback=4), 8)
+    CFW_FETCHMAX = CONFIG.getint('cfw', 'fetchmax', fallback=2)
 
     GAE_APPIDS = re.findall(r'[\w\-\.]+', CONFIG.get('gae', 'appid').replace('.appspot.com', ''))
     GAE_DEBUG = CONFIG.getint('gae', 'debug', fallback=0)
