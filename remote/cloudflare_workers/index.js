@@ -43,7 +43,7 @@
  *
  *      Those headers should be removed in local server:
  *
- *        "Expect-CT" which includes "report-uri.cloudflare.com"
+ *        "Expect-CT" not allowed, we use self-sign CA in local server
  *        "Set-Cookie" which includes "domain=.*.workers.dev"
  *        "Server" is always "cloudflare"
  *        "CF-" which name starts with it
@@ -163,34 +163,57 @@ async function readRequest(request, followRedirect) {
     }
 
     // 设置代理请求负载
-    if (parseInt(request.headers.get('Content-Length')) > requestMetedataLength + 2)
+    const requestBodyLength = parseInt(request.headers.get('Content-Length')) - 2 - requestMetedataLength
+    if (requestBodyLength) {
+        //以下设置无效，fetch() 始终要读取全部数据，对上传大量数据是个障碍，造成多余的延时和内存使用
+        //if (requestHeaders.has('Content-Length'))
+        //    requestHeaders.delete('Content-Length')
+        //requestHeaders.set('Transfer-Encoding', 'chunked')
         if (['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(requestMethod))
             throw 'Bad request, ' + requestMethod + ' method should not has a body.'
         else
-            newRequestInit['body'] = readerDone && chunk || makeReadableStream(bodyReader, left && chunk)
+            newRequestInit['body'] = chunk.length == requestBodyLength && chunk || makeReadableStream(bodyReader, requestBodyLength, left && chunk)
+    }
 
     // 返回代理请求实例
     return new Request(url, newRequestInit)
 }
 
 /*
- * Convert the give reader and bytes into a readable stream
+ * Convert the give reader and stream length and bytes into a readable stream
  * @param {ReadableStreamDefaultReader} reader
+ * @param {Number} streamLength
  * @param {Uint8Array} bytes
  * @return {ReadableStream}
  */
-async function makeReadableStream(reader, bytes) {
+function makeReadableStream(reader, streamLength, bytes) {
     const pipe = new TransformStream()
-    const writer = pipe.writable.getWriter()
+    pipeStream(reader, pipe.writable.getWriter(), streamLength, bytes)
+    return pipe.readable
+}
+
+/*
+ * Pipe give reader and bytes and stream length to give writer
+ * @param {ReadableStreamDefaultReader} reader
+ * @param {ReadableStreamDefaultWriter} writer
+ * @param {Number} streamLength
+ * @param {Uint8Array} bytes
+ */
+async function pipeStream(reader, writer, streamLength, bytes) {
+    let left = streamLength
     let chunk = bytes, readerDone = false
     do {
-        if (chunk)
+        if (chunk) {
             await writer.write(chunk)
-        else
+            left -= chunk.length
+        }
+        if (!left) {
             writer.close()
-        ({value: chunk, done: readerDone} = await reader.read())
+            break
+        }
+        if (!readerDone && left)
+            ({value: chunk, done: readerDone} = await reader.read())
     } while (!readerDone)
-    return pipe.readable
 }
 
 /*

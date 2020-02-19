@@ -67,7 +67,8 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         'Set-Cookie',
         'Upgrade',
         'Alt-Svc',
-        'Alternate-Protocol'
+        'Alternate-Protocol',
+        'Expect-CT'
         )
 
     fwd_timeout = GC.LINK_FWDTIMEOUT
@@ -443,11 +444,8 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                                 if k.title() not in self.skip_response_headers}
         log =  logging.info
         if self.action == 'do_CFW':
-            if 'report-uri.cloudflare.com' in response_headers:
-                del response_headers['Expect-CT']
             response_headers = {k: v for k, v in response_headers.items()
                                     if not k.startswith('CF-')}
-            
             if response_headers.get('X-Fetch-Status') == 'fail':
                 log = logging.warning
             else:
@@ -1312,8 +1310,10 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         self.write(c)
 
     def forward_websocket(self, remote):
+        logging.info('%s 转发 "%s %s %s"', self.address_string(remote), self.action[3:], self.command, self.url)
         try:
-            forward_socket(self.connection, remote, timeout=120)
+            #实测  ping-pong 54
+            forward_socket(self.connection, remote, timeout=108, bufsize=32768)
         except NetWorkIOError as e:
             if e.args[0] not in bypass_errno:
                 logging.warning('%s 转发 "%s" 失败：%r', self.address_string(remote), self.url, e)
