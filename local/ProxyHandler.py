@@ -354,6 +354,8 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         #处理请求
         request_headers = {k.title(): v for k, v in self.headers.items()
                                if k.title() not in self.skip_request_headers}
+        if self.ws:
+            request_headers['Upgrade'] = 'websocket'
         pconnection = self.headers.get('Proxy-Connection')
         if pconnection and \
                 self.request_version < 'HTTP/1.1' and \
@@ -433,7 +435,11 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
 
     def handle_response_headers(self, response):
         #处理响应
-        response_headers = {k.title(): v for k, v in response.headers.items()
+        ws_ok = self.ws and response.status == 101
+        if ws_ok:
+            response_headers = {k.title(): v for k, v in response.headers.items()}
+        else:
+            response_headers = {k.title(): v for k, v in response.headers.items()
                                 if k.title() not in self.skip_response_headers}
         log =  logging.info
         if self.action == 'do_CFW':
@@ -446,49 +452,53 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 log = logging.warning
             else:
                 del response_headers['Server']
-        self.response_length = response.length or 0
-        #明确设置 Accept-Ranges
-        if response_headers.get('Accept-Ranges') != 'bytes':
-            response_headers['Accept-Ranges'] = 'none'
-        #解压缩请求不支持的编码
-        ce = response_headers.get('Content-Encoding')
-        if ce:
-            if ce.startswith('none'):
-                #某些服务器压缩模块会产生多余的 'none'
-                ce = ce[4:].lstrip(', ')
-                if ce:
-                    response_headers['Content-Encoding'] = ce
-                else:
-                    del response_headers['Content-Encoding']
-            if ce and ce not in self.headers.get('Accept-Encoding', '') and \
-                    ce in decompress_readers:
-                response = decompress_readers[ce](response)
-                del response_headers['Content-Encoding']
-                response_headers.pop('Content-Length', None)
-                response_headers.pop('Accept-Ranges', None)
-                self.response_length = 0
-                logging.debug('正在以 %r 格式解压缩 %s', ce, self.url)
-        length = self.response_length
-        data = response.read(self.bufsize)
-        need_chunked = data and not length # response 中的数据已经正确解码
-        if need_chunked:
-            length = '-'
-            if self.request_version == 'HTTP/1.1':
-                response_headers['Transfer-Encoding'] = 'chunked'
-            else:
-                # HTTP/1.1 以下不支持 chunked，关闭连接
-                need_chunked = False
-                self.close_connection = True
-        else:
-            response_headers['Content-Length'] = length
         cookies = response.headers.get_all('Set-Cookie')
         if cookies:
             if self.action == 'do_CFW':
                 cookies = [cookie for cookie in cookies if GC.CFW_WORKER not in cookie]
             response_headers['Set-Cookie'] = '\r\nSet-Cookie: '.join(cookies)
-        if 'Content-Disposition' in response_headers:
-            response_headers['Content-Disposition'] = normattachment(response_headers['Content-Disposition'])
-        response_headers['Connection' if self.tunnel else 'Proxy-Connection'] = 'close' if self.close_connection else 'keep-alive'
+        if ws_ok:
+            data = need_chunked = None
+            length = 0
+        else:
+            self.response_length = response.length or 0
+            #明确设置 Accept-Ranges
+            if response_headers.get('Accept-Ranges') != 'bytes':
+                response_headers['Accept-Ranges'] = 'none'
+            #解压缩请求不支持的编码
+            ce = response_headers.get('Content-Encoding')
+            if ce:
+                if ce.startswith('none'):
+                    #某些服务器压缩模块会产生多余的 'none'
+                    ce = ce[4:].lstrip(', ')
+                    if ce:
+                        response_headers['Content-Encoding'] = ce
+                    else:
+                        del response_headers['Content-Encoding']
+                if ce and ce not in self.headers.get('Accept-Encoding', '') and \
+                        ce in decompress_readers:
+                    response = decompress_readers[ce](response)
+                    del response_headers['Content-Encoding']
+                    response_headers.pop('Content-Length', None)
+                    response_headers.pop('Accept-Ranges', None)
+                    self.response_length = 0
+                    logging.debug('正在以 %r 格式解压缩 %s', ce, self.url)
+            length = self.response_length
+            data = response.read(self.bufsize)
+            need_chunked = data and not length # response 中的数据已经正确解码
+            if need_chunked:
+                length = '-'
+                if self.request_version == 'HTTP/1.1':
+                    response_headers['Transfer-Encoding'] = 'chunked'
+                else:
+                    # HTTP/1.1 以下不支持 chunked，关闭连接
+                    need_chunked = False
+                    self.close_connection = True
+            else:
+                response_headers['Content-Length'] = length
+            if 'Content-Disposition' in response_headers:
+                response_headers['Content-Disposition'] = normattachment(response_headers['Content-Disposition'])
+            response_headers['Connection' if self.tunnel else 'Proxy-Connection'] = 'close' if self.close_connection else 'keep-alive'
         headers_data = 'HTTP/1.1 %s %s\r\n%s\r\n' % (response.status, response.reason, ''.join('%s: %s\r\n' % x for x in response_headers.items()))
         self.write(headers_data)
         logging.debug('headers_data=%s', headers_data)
