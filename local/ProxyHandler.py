@@ -63,12 +63,12 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         'Content-Length',
         'Transfer-Encoding',
         'Connection',
-        'Content-MD5',
+        'Content-Md5',
         'Set-Cookie',
         'Upgrade',
         'Alt-Svc',
         'Alternate-Protocol',
-        'Expect-CT'
+        'Expect-Ct'
         )
 
     fwd_timeout = GC.LINK_FWDTIMEOUT
@@ -439,21 +439,23 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         ws_ok = self.ws and response.status == 101
         if ws_ok:
             response_headers = {k.title(): v for k, v in response.headers.items()}
+            response_headers.pop('Expect-Ct', None)
+            response_headers.pop('Set-Cookie', None)
         else:
             response_headers = {k.title(): v for k, v in response.headers.items()
                                 if k.title() not in self.skip_response_headers}
         log =  logging.info
         if self.action == 'do_CFW':
             response_headers = {k: v for k, v in response_headers.items()
-                                    if not k.startswith('CF-')}
+                                    if not k.startswith('Cf-')}
             if response_headers.get('X-Fetch-Status') == 'fail':
                 log = logging.warning
             else:
                 del response_headers['Server']
         cookies = response.headers.get_all('Set-Cookie')
+        if self.action == 'do_CFW':
+            cookies = [cookie for cookie in cookies if '.workers.dev' not in cookie]
         if cookies:
-            if self.action == 'do_CFW':
-                cookies = [cookie for cookie in cookies if GC.CFW_WORKER not in cookie]
             response_headers['Set-Cookie'] = '\r\nSet-Cookie: '.join(cookies)
         if ws_ok:
             data = need_chunked = None
@@ -505,7 +507,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 'Location' in response_headers:
             logging.info('%r 返回包含重定向 %r', self.url, response_headers['Location'])
         log('%s "%s %s %s HTTP/1.1" %s %s', self.address_string(response), self.action[3:], self.command, self.url, response.status, length, color=response.status == 304 and 'green')
-        return response, data, need_chunked
+        return response, data, need_chunked, ws_ok
 
     def do_DIRECT(self):
         #直接请求目标地址
@@ -554,9 +556,9 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 if response.status == 403 and not isdirect(self.host):
                     logging.warn('%s do_DIRECT "%s %s" 连接被拒绝，尝试使用 "GAE" 规则。', self.address_string(response), self.command, self.url)
                     return self.go_GAE()
-                response, data, need_chunked = self.handle_response_headers(response)
+                response, data, need_chunked, ws_ok = self.handle_response_headers(response)
                 headers_sent = True
-                if self.ws:
+                if ws_ok:
                     self.forward_websocket(response.sock)
                 else:
                     _, err = self.write_response_content(data, response, need_chunked)
@@ -645,9 +647,9 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             self.close_connection = self.cc
             try:
                 response = cfw_fetch(self.command, self.url, request_headers, payload)
-                response, data, need_chunked = self.handle_response_headers(response)
+                response, data, need_chunked, ws_ok = self.handle_response_headers(response)
                 headers_sent = True
-                if self.ws:
+                if ws_ok:
                     self.forward_websocket(response.sock)
                 else:
                     _, err = self.write_response_content(data, response, need_chunked)
@@ -827,7 +829,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 #输出服务端返回的错误信息
                 if response.app_status != 200:
                     if not headers_sent:
-                        response, data, need_chunked = self.handle_response_headers(response)
+                        response, data, need_chunked, _ = self.handle_response_headers(response)
                         self.write_response_content(data, response, need_chunked)
                     return
                 #发生异常时的判断条件，放在 read 操作之前
@@ -869,7 +871,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                         rangefetch = RangeFetchs[need_autorange](self, request_headers, payload, response)
                         response = None
                         return rangefetch.fetch()
-                    response, data, need_chunked = self.handle_response_headers(response)
+                    response, data, need_chunked, _ = self.handle_response_headers(response)
                     headers_sent = True
                 wrote, err = self.write_response_content(data, response, need_chunked)
                 start += wrote

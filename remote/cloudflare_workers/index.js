@@ -1,13 +1,17 @@
 /******************************************************************************
- *  GotoX remote server 0.1 in cloudflare workers
+ *  GotoX remote server 0.2 in Cloudflare Workers
  *  https://github.com/SeaHOH/GotoX
  *  The MIT License - Copyright (c) 2020 SeaHOH
  *
  *
  *  API
  *
- *    Post the body to https://your-domain/gh/
+ *    "POST" the body to "/gh" or "/gh/"
+ *    With "X-Fetch-Options" header and value is a json format string
  *
+ *        {"password": "password", "redirect": false}
+ *
+ *             Body
  *        +------------+
  *        | 2 bytes    |        <- deflated request metadata length in uint16
  *        +------------+
@@ -16,8 +20,7 @@
  *        | others ... |        <- origin request body, if has
  *        +------------+
  *
- *    Request metadata
- *
+ *          Request metadata
  *        +------------------+
  *        | method name      l
  *        +------------------+
@@ -29,12 +32,19 @@
  *        +------------------+                 |
  *        | header name      l                 |
  *        +------------------+                 |
- *        | a tab "\t"       l                  > repeat
+ *        | a tab "\t"       l                 |  <- repeat, if has more headers
  *        +------------------+                 |
  *        | header value     l                 |
  *        +------------------+                 |
  *        | more headers ... l  ---------------+
  *        +------------------+
+ *
+ *
+ *    Direct "GET" "/ws" or "/ws/" for forward WebSocket
+ *    With "X-Fetch-Options" header and value is a json format string
+ *
+ *        {"password": "password", "url": "needs-origin-ws-url"}
+ *
  *
  *    Notices
  *
@@ -56,6 +66,37 @@
 addEventListener('fetch', event => event.respondWith(handleRequest(event.request)))
 
 /*
+ * Parse the fetch request
+ * @param {Request} request
+ * @return {JSON object} fetchOptions
+ * @return {Number} status
+ * @return {String} err
+ */
+function parseFetch(request, ws) {
+    const password = ''  // 直接在此处设置使用密码，类型为字符串
+    const headers = request.headers
+    let fetchOptions, status = 400, err
+    try {
+        // 读取代理设置
+        fetchOptions = headers.has('X-Fetch-Options') && headers.get('X-Fetch-Options')
+        fetchOptions = fetchOptions && JSON.parse(fetchOptions) || {}
+        // 处理非法请求
+        if (ws && (request.method !== 'GET' || !fetchOptions.url || !headers.has('Sec-WebSocket-Key')) ||
+            !ws && (request.method !== 'POST' || !headers.has('Content-Length') || isNaN(headers.get('Content-Length')))) {
+            throw 'Bad request, please use via GotoX [ https://github.com/SeaHOH/GotoX ].'
+        }
+        if (password && fetchOptions.password !== password) {
+            status = 403
+            throw 'Access denied, the password is wrong.'
+        }
+        status = 0
+    } catch (error) {
+        err = error
+    }
+    return [fetchOptions, status, err]
+}
+
+/*
  * Main request handler
  * @param {Request} request
  * @return {Response}
@@ -66,41 +107,53 @@ async function handleRequest(request) {
     switch (path) {
         case '/gh':
         case '/gh/':
-            /** GotoX 代理 API **/
+            /** GotoX 代理 API，普通请求 **/
             try {
-                const password = null  // 直接在此处设置使用密码
-                const headers = request.headers
-                let status = 400
-                // 读取代理设置
-                let fetchOptions = headers.has('X-Fetch-Options') && headers.get('X-Fetch-Options')
-                fetchOptions = fetchOptions && JSON.parse(fetchOptions) || {}
-                // 处理非法请求
-                if (request.method !== 'POST' || !headers.has('Content-Length') || isNaN(headers.get('Content-Length'))) {
-                    throw 'Bad request, please use via GotoX [ https://github.com/SeaHOH/GotoX ].'
-                }
-                if (password && fetchOptions.password !== password) {
-                    status = 403
-                    throw 'Access denied, the password is wrong.'
-                }
-                status = null
+                let [fetchOptions, status, err] = parseFetch(request, false)
+                if (err) throw err
                 // 读取解析代理请求并获取代理请求响应
-                return await fetch(await readRequest(request, fetchOptions.redirect), {
+                return await fetch(await readRequest(request), {
+                    redirect: fetchOptions.redirect && 'follow' || 'manual',
                     cf: {
                         scrapeShield: false,
-                        polish: 'lossless',
+                        polish: 'off',
                         minify: {javascript: false, css: false, html: false},
                         mirage: false,
                         apps: false,
                         cacheTtl: -1
                     }
                 })
-            } catch (err) {
-                let errString = err.toString()
+            } catch (error) {
+                const errString = error.toString()
                 if (status != 400 && errString.substring(0, 11) === 'Bad request')
                     status = 400
                 return new Response(errString, {
                     status: status || 502,
-                    headers: new Headers({'X-Fetch-Status': 'fail'}),
+                    headers: new Headers({'X-Fetch-Status': 'fail'})
+                })
+            }
+        case '/ws':
+        case '/ws/':
+            /** GotoX 代理 API，WebSocket 请求 **/
+            try {
+                let [fetchOptions, status, err] = parseFetch(request, true)
+                if (err) throw err
+                // 新建代理请求参数
+                const wsInit = {...request}
+                const wsHeaders = new Headers()
+                wsInit.headers = wsHeaders
+                for (let [key, value] of request.headers.entries())
+                    // 排除 headers 中保存的请求 IP 等信息
+                    if (!['cf', 'x'].includes(key.substring(0, key.indexOf('-'))))
+                        wsHeaders.append(key, value)
+                const wsUrl = new URL(fetchOptions.url)
+                wsHeaders.set('Host', wsUrl.host)
+                // 获取代理请求响应
+                return await fetch(new Request(wsUrl, wsInit))
+            } catch (error) {
+                return new Response(error.toString(), {
+                    status: status || 502,
+                    headers: new Headers({'X-Fetch-Status': 'fail'})
                 })
             }
         case '/robots.txt':
@@ -115,10 +168,9 @@ async function handleRequest(request) {
 /*
  * Read proxy request
  * @param {Request} request
- * @param {Boolean} followRedirect
  * @return {Request}
  */
-async function readRequest(request, followRedirect) {
+async function readRequest(request) {
     // 根据从第一块数据读取的尺寸为压缩数据分配空间
     const bodyReader = request.body.getReader()
     let {value: chunk, done: readerDone} = await bodyReader.read()
@@ -158,22 +210,20 @@ async function readRequest(request, followRedirect) {
     // 新建代理请求参数
     const newRequestInit = {
         method: requestMethod,
-        headers: requestHeaders,
-        redirect: followRedirect && 'follow' || 'manual'
+        headers: requestHeaders
     }
 
     // 设置代理请求负载
+    // fetch() 没有使用 chunked 方式，始终要全部读取后才开始发出请求，对上传大量数据是个障碍
+    // 会造成多余的延时，是否占用 Worker 内存还未确定，可上传大于 128 MB 的数据测试
     const requestBodyLength = parseInt(request.headers.get('Content-Length')) - 2 - requestMetedataLength
-    if (requestBodyLength) {
-        //以下设置无效，fetch() 始终要读取全部数据，对上传大量数据是个障碍，造成多余的延时和内存使用
-        //if (requestHeaders.has('Content-Length'))
-        //    requestHeaders.delete('Content-Length')
-        //requestHeaders.set('Transfer-Encoding', 'chunked')
+    if (requestBodyLength)
         if (['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(requestMethod))
             throw 'Bad request, ' + requestMethod + ' method should not has a body.'
         else
-            newRequestInit['body'] = chunk.length == requestBodyLength && chunk || makeReadableStream(bodyReader, requestBodyLength, left && chunk)
-    }
+            newRequestInit.body = chunk.length == requestBodyLength && chunk || makeReadableStream(bodyReader, requestBodyLength, left && chunk)
+    else
+        bodyReader.releaseLock()
 
     // 返回代理请求实例
     return new Request(url, newRequestInit)
@@ -182,13 +232,13 @@ async function readRequest(request, followRedirect) {
 /*
  * Convert the give reader and stream length and bytes into a readable stream
  * @param {ReadableStreamDefaultReader} reader
- * @param {Number} streamLength
+ * @param {Number} length
  * @param {Uint8Array} bytes
  * @return {ReadableStream}
  */
-function makeReadableStream(reader, streamLength, bytes) {
+function makeReadableStream(reader, length, bytes) {
     const pipe = new TransformStream()
-    pipeStream(reader, pipe.writable.getWriter(), streamLength, bytes)
+    pipeStream(reader, pipe.writable.getWriter(), length, bytes)
     return pipe.readable
 }
 
@@ -196,11 +246,11 @@ function makeReadableStream(reader, streamLength, bytes) {
  * Pipe give reader and bytes and stream length to give writer
  * @param {ReadableStreamDefaultReader} reader
  * @param {ReadableStreamDefaultWriter} writer
- * @param {Number} streamLength
+ * @param {Number} length
  * @param {Uint8Array} bytes
  */
-async function pipeStream(reader, writer, streamLength, bytes) {
-    let left = streamLength
+async function pipeStream(reader, writer, length, bytes) {
+    let left = length
     let chunk = bytes, readerDone = false
     do {
         if (chunk) {
@@ -209,6 +259,7 @@ async function pipeStream(reader, writer, streamLength, bytes) {
         }
         if (!left) {
             writer.close()
+            reader.releaseLock()
             break
         }
         if (!readerDone && left)

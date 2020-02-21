@@ -491,7 +491,7 @@ class HTTPUtil(BaseHTTPUtil):
                     cache.extend(used_sock)
 
         def get_cache_sock_ex():
-            if '|' in hostname:
+            if cache_key is None or '|' in hostname:
                 return
             names = hostname.split('.')
             if len(names[-1]) == 2 and len(names[-2]) <= 3:
@@ -639,7 +639,7 @@ class HTTPUtil(BaseHTTPUtil):
                 pass
 
         def get_cache_sock_ex():
-            if '|' in hostname:
+            if cache_key is None or '|' in hostname:
                 return
             names = hostname.split('.')
             if len(names[-1]) == 2 and len(names[-2]) <= 3:
