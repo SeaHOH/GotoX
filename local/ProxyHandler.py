@@ -633,7 +633,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         headers_sent = False
         for retry in range(GC.CFW_FETCHMAX):
             if retry > 0 and payload and isinstance(payload, bytes) or hasattr(payload, 'readed') and payload.readed:
-                logging.warning('%s do_DIRECT 由于有上传数据 "%s %s" 终止重试', self.address_string(), self.command, self.url)
+                logging.warning('%s do_CFW 由于有上传数据 "%s %s" 终止重试', self.address_string(), self.command, self.url)
                 self.close_connection = True
                 if not headers_sent:
                     c = message_html('504 响应超时', '响应超时', '获取 %s 超时，请稍后重试。' % self.url).encode()
@@ -655,6 +655,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                     _, err = self.write_response_content(data, response, need_chunked)
                     if err:
                         raise err
+                return
             except Exception as e:
                 noerror = False
                 if self.ws or self.conaborted:
