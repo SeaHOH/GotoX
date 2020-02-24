@@ -1,3 +1,6 @@
+'use strict'
+
+const about = `
 /******************************************************************************
  *  GotoX remote server 0.2 in Cloudflare Workers
  *  https://github.com/SeaHOH/GotoX
@@ -28,11 +31,11 @@
  *        +------------------+
  *        | full URL         l
  *        +------------------+
- *        | a line wrap "\n" l  ---------------+
+ *        | a line wrap "/n" l  ---------------+
  *        +------------------+                 |
  *        | header name      l                 |
  *        +------------------+                 |
- *        | a tab "\t"       l                 |  <- repeat, if has more headers
+ *        | a tab "/t"       l                 |  <- repeat, if has more headers
  *        +------------------+                 |
  *        | header value     l                 |
  *        +------------------+                 |
@@ -59,8 +62,7 @@
  *        "CF-" which name starts with it
  *
  ******************************************************************************/
-
-'use strict'
+`
 
 // 拦截请求返回自定义响应
 addEventListener('fetch', event => event.respondWith(handleRequest(event.request)))
@@ -81,8 +83,8 @@ function parseFetch(request, ws) {
         fetchOptions = headers.has('X-Fetch-Options') && headers.get('X-Fetch-Options')
         fetchOptions = fetchOptions && JSON.parse(fetchOptions) || {}
         // 处理非法请求
-        if (ws && (request.method !== 'GET' || !fetchOptions.url || !headers.has('Sec-WebSocket-Key')) ||
-            !ws && (request.method !== 'POST' || !headers.has('Content-Length') || isNaN(headers.get('Content-Length')))) {
+        if (ws && !(request.method === 'GET' && fetchOptions.url && headers.has('Sec-WebSocket-Key')) ||
+            !ws && !(request.method === 'POST' && headers.has('Content-Length') && !isNaN(headers.get('Content-Length')))) {
             throw 'Bad request, please use via GotoX [ https://github.com/SeaHOH/GotoX ].'
         }
         if (password && fetchOptions.password !== password) {
@@ -139,9 +141,8 @@ async function handleRequest(request) {
                 let [fetchOptions, status, err] = parseFetch(request, true)
                 if (err) throw err
                 // 新建代理请求参数
-                const wsInit = {...request}
                 const wsHeaders = new Headers()
-                wsInit.headers = wsHeaders
+                const wsInit = {...request, headers: wsHeaders}
                 for (let [key, value] of request.headers.entries())
                     // 排除 headers 中保存的请求 IP 等信息
                     if (!['cf', 'x'].includes(key.substring(0, key.indexOf('-'))))
@@ -158,6 +159,8 @@ async function handleRequest(request) {
             }
         case '/robots.txt':
             return new Response('User-agent: *\nDisallow: /\n', {status: 200})
+        case '/about':
+            return new Response(about, {status: 200})
         case '/':
             return new Response('OK.', {status: 200})
         default:
@@ -166,7 +169,7 @@ async function handleRequest(request) {
 }
 
 /*
- * Read proxy request
+ * Read and return a proxy request
  * @param {Request} request
  * @return {Request}
  */
@@ -201,8 +204,8 @@ async function readRequest(request) {
     // 解析代理请求
     const [requestLine, ...requestHeadersStrings] = requestMetadata.split('\n')
     const [requestMethod, url] = requestLine.split(' ')
-    if (requestMethod === 'CONNECT')
-        throw 'Bad request, CONNECT method is not supported.'
+    if (['CONNECT', 'TRACE', 'TRACK'].includes(requestMethod))
+        throw `Bad request, ${requestMethod} method is not supported.`
     const requestHeaders = new Headers()
     for (let headerString of requestHeadersStrings)
         requestHeaders.append(...headerString.split('\t'))
@@ -218,8 +221,8 @@ async function readRequest(request) {
     // 会造成多余的延时，是否占用 Worker 内存还未确定，可上传大于 128 MB 的数据测试
     const requestBodyLength = parseInt(request.headers.get('Content-Length')) - 2 - requestMetedataLength
     if (requestBodyLength)
-        if (['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(requestMethod))
-            throw 'Bad request, ' + requestMethod + ' method should not has a body.'
+        if (['GET', 'HEAD', 'OPTIONS'].includes(requestMethod))
+            throw `Bad request, ${requestMethod} method should not has a body.`
         else
             newRequestInit.body = chunk.length == requestBodyLength && chunk || makeReadableStream(bodyReader, requestBodyLength, left && chunk)
     else
@@ -250,8 +253,7 @@ function makeReadableStream(reader, length, bytes) {
  * @param {Uint8Array} bytes
  */
 async function pipeStream(reader, writer, length, bytes) {
-    let left = length
-    let chunk = bytes, readerDone = false
+    let left = length, chunk = bytes, readerDone = false
     do {
         if (chunk) {
             await writer.write(chunk)

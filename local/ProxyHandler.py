@@ -453,7 +453,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             else:
                 del response_headers['Server']
         cookies = response.headers.get_all('Set-Cookie')
-        if self.action == 'do_CFW':
+        if cookies and self.action == 'do_CFW':
             cookies = [cookie for cookie in cookies if '.workers.dev' not in cookie]
         if cookies:
             response_headers['Set-Cookie'] = '\r\nSet-Cookie: '.join(cookies)
@@ -1312,11 +1312,11 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         self.write(b'HTTP/1.0 404\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
         self.write(c)
 
-    def forward_websocket(self, remote):
+    def forward_websocket(self, remote, timeout=108):
+        #实测  ping-pong 54
         logging.info('%s 转发 "%s %s %s"', self.address_string(remote), self.action[3:], self.command, self.url)
         try:
-            #实测  ping-pong 54
-            forward_socket(self.connection, remote, timeout=108, bufsize=32768)
+            forward_socket(self.connection, remote, timeout=timeout, bufsize=32768)
         except NetWorkIOError as e:
             if e.args[0] not in bypass_errno:
                 logging.warning('%s 转发 "%s" 失败：%r', self.address_string(remote), self.url, e)
