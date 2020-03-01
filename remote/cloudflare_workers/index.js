@@ -64,15 +64,17 @@ const about = `
  ******************************************************************************/
 `
 
+const nullChunk = new Uint8Array(0)
+
 // 拦截请求返回自定义响应
 addEventListener('fetch', event => event.respondWith(handleRequest(event.request)))
 
 /*
- * Parse the fetch request
+ * Parse the request's fetch options, additional status and error
  * @param {Request} request
- * @return {JSON object} fetchOptions
- * @return {Number} status
- * @return {String} err
+ * @return {Object<dict>}
+ * @return {Number}
+ * @return {String}
  */
 function parseFetch(request, ws) {
     const password = ''  // 直接在此处设置使用密码，类型为字符串
@@ -188,6 +190,7 @@ async function readRequest(request) {
             deflatedBytes.set(chunk, offset)
             offset += chunk.length
             left -= chunk.length
+            chunk = nullChunk
         }
         else {
             deflatedBytes.set(chunk.subarray(0, left), offset)
@@ -196,7 +199,7 @@ async function readRequest(request) {
         }
         if (!readerDone && left)
             ({value: chunk, done: readerDone} = await bodyReader.read())
-    } while (left)
+    } while (left && chunk.length)
 
     // 解压缩数据
     const requestMetadata = new TextDecoder().decode(new Zlib.RawInflate(deflatedBytes).decompress())
@@ -253,20 +256,18 @@ function makeReadableStream(reader, length, bytes) {
  * @param {Uint8Array} bytes
  */
 async function pipeStream(reader, writer, length, bytes) {
-    let left = length, chunk = bytes, readerDone = false
+    let left = length, chunk = bytes || nullChunk, readerDone = false
     do {
-        if (chunk) {
+        if (chunk.length) {
             await writer.write(chunk)
             left -= chunk.length
-        }
-        if (!left) {
-            writer.close()
-            reader.releaseLock()
-            break
+            chunk = nullChunk
         }
         if (!readerDone && left)
             ({value: chunk, done: readerDone} = await reader.read())
-    } while (!readerDone)
+    } while (left && chunk.length)
+    writer.close()
+    reader.releaseLock()
 }
 
 /*
