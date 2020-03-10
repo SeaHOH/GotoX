@@ -133,6 +133,7 @@ class GC:
     if CFW_WORKER.find('.') < 1:
         CFW_WORKER = None
     CFW_PASSWORD = CONFIG.get('cfw', 'password').strip()
+    CFW_DECODEEMAIL = CONFIG.getboolean('cfw', 'decodeemail', fallback=False)
     CFW_TIMEOUT = max(CONFIG.getint('cfw', 'timeout', fallback=10), 3)
     CFW_KEEPALIVE = CONFIG.getboolean('cfw', 'keepalive', fallback=True)
     CFW_KEEPTIME = CONFIG.getint('cfw', 'keeptime', fallback=180)

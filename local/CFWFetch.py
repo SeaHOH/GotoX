@@ -26,6 +26,8 @@ class cfw_ws_params(cfw_params):
 cfw_options = {}
 if GC.CFW_PASSWORD:
     cfw_options['password'] = GC.CFW_PASSWORD
+if GC.CFW_DECODEEMAIL:
+    cfw_options['decodeemail'] = GC.CFW_DECODEEMAIL
 
 def set_dns():
     if cfw_params.hostname in dns:

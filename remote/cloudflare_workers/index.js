@@ -2,7 +2,7 @@
 
 const about = `
 /******************************************************************************
- *  GotoX remote server 0.2 in Cloudflare Workers
+ *  GotoX remote server 0.3 in Cloudflare Workers
  *  https://github.com/SeaHOH/GotoX
  *  The MIT License - Copyright (c) 2020 SeaHOH
  *
@@ -12,7 +12,7 @@ const about = `
  *    "POST" the body to "/gh" or "/gh/"
  *    With "X-Fetch-Options" header and value is a json format string
  *
- *        {"password": "password", "redirect": false}
+ *        {"password": "password", "redirect": false, "decodeemail": true}
  *
  *             Body
  *        +------------+
@@ -83,7 +83,7 @@ function parseFetch(request, ws) {
     try {
         // 读取代理设置
         fetchOptions = headers.has('X-Fetch-Options') && headers.get('X-Fetch-Options')
-        fetchOptions = fetchOptions && JSON.parse(fetchOptions) || {}
+        fetchOptions = fetchOptions ? JSON.parse(fetchOptions) : {}
         // 处理非法请求
         if (ws && !(request.method === 'GET' && fetchOptions.url && headers.has('Sec-WebSocket-Key')) ||
             !ws && !(request.method === 'POST' && headers.has('Content-Length') && !isNaN(headers.get('Content-Length')))) {
@@ -95,9 +95,30 @@ function parseFetch(request, ws) {
         }
         status = 0
     } catch (error) {
-        err = error
+        err = error.toString()
     }
     return [fetchOptions, status, err]
+}
+
+/*
+ * Replacement function to decode Scrape Shield Email Address Obfuscation
+ * @param {String} match
+ * @param {String} encoded
+ * @return {String}
+ * e.g.
+ *   <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="543931142127353935313e352e7a373b39">[email&#160;protected]</a>
+ *   <a href="/cdn-cgi/l/email-protection#5f323a1f2a2c3e323e3a353e25713c3032"><i class="svg-icon email"></i></a>
+ */
+function cfDecodeEmail(match, encoded) {
+    let email = '', r = parseInt(encoded.substring(0, 2), 16)
+    for (let i = 2; encoded.length - i; i += 2)
+        email += String.fromCharCode(parseInt(encoded.substring(i, i + 2), 16) ^ r)
+    // 无法判断原始文本是否为超链接，统一保留超链接
+    return match.replace('"/cdn-cgi/l/email-protection', `"mailto:${email}`)
+                .replace(/#[a-f\d]+"/i, '"')
+                .replace(' class="__cf_email__"', '')
+                .replace(/ data-cfemail="[a-f\d]+"/i, '')
+                .replace(/\[email.+?protected\]/i, email)
 }
 
 /*
@@ -116,8 +137,8 @@ async function handleRequest(request) {
                 let [fetchOptions, status, err] = parseFetch(request, false)
                 if (err) throw err
                 // 读取解析代理请求并获取代理请求响应
-                return await fetch(await readRequest(request), {
-                    redirect: fetchOptions.redirect && 'follow' || 'manual',
+                const response = await fetch(await readRequest(request, fetchOptions), {
+                    redirect: fetchOptions.redirect ? 'follow' : 'manual',
                     cf: {
                         scrapeShield: false,
                         polish: 'off',
@@ -127,6 +148,17 @@ async function handleRequest(request) {
                         cacheTtl: -1
                     }
                 })
+                if (fetchOptions.decodeemail) {
+                // https://support.cloudflare.com/hc/en-us/articles/200170016-What-is-Email-Address-Obfuscation-
+                // cf.scrapeShield 参数无法关闭 Email Address Obfuscation，解码替换恢复
+                    const ct = response.headers.has('Content-Type') ? response.headers.get('Content-Type') : ''
+                    if (ct.includes('text/html') || ct.includes('application/xhtml+xml')) {
+                        let html = await response.text()
+                        html = html.replace(/<a .+?(?:email-protection#|data-cfemail=")([a-f\d]+)".+?<\/a>/gi, cfDecodeEmail)
+                        return new Response(html, response)
+                    }
+                }
+                return response
             } catch (error) {
                 const errString = error.toString()
                 if (status != 400 && errString.substring(0, 11) === 'Bad request')
@@ -173,9 +205,10 @@ async function handleRequest(request) {
 /*
  * Read and return a proxy request
  * @param {Request} request
+ * @param {{Object<dict>}} fetchOptions
  * @return {Request}
  */
-async function readRequest(request) {
+async function readRequest(request, fetchOptions) {
     // 根据从第一块数据读取的尺寸为压缩数据分配空间
     const bodyReader = request.body.getReader()
     let {value: chunk, done: readerDone} = await bodyReader.read()
@@ -212,6 +245,15 @@ async function readRequest(request) {
     const requestHeaders = new Headers()
     for (let headerString of requestHeadersStrings)
         requestHeaders.append(...headerString.split('\t'))
+
+    if (fetchOptions.decodeemail && requestHeaders.has('Accept-Encoding')) {
+    // 出于替换文本的需求，当文本编码为 brotli 时，Worker 无法解码，需禁用 Accept-Encoding: br
+        let ae = requestHeaders.get('Accept-Encoding').split(/, */)
+        for (let i = ae.length; --i + 1;)
+            if (ae[i].includes('br'))
+                ae.splice(i, 1)
+        requestHeaders.set('Accept-Encoding', ae.join(', '))
+    }
 
     // 新建代理请求参数
     const newRequestInit = {
