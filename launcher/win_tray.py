@@ -24,6 +24,7 @@ refresh_proxy = os.path.join(app_root, 'launcher', 'refresh_proxy_win.py')
 
 import winreg
 import ctypes
+from time import sleep
 from subprocess import Popen
 from local import __version__ as gotoxver
 
@@ -226,8 +227,8 @@ def on_quit(systray):
     global running
     running = False
     stop_GotoX()
-    if reg_notify and SetEvent(notifyHandle) == 0:
-        sys.exit(0)
+    if reg_notify:
+        SetEvent(notifyHandle)
 
 def on_disable_proxy(systray):
     proxy_state = proxy_state_menu
@@ -307,6 +308,9 @@ MFS_DISABLED = win32_adapter.MFS_DISABLED
 MFS_DEFAULT = win32_adapter.MFS_DEFAULT
 MFT_RADIOCHECK = win32_adapter.MFT_RADIOCHECK
 fixed_fState = MFS_CHECKED | MFS_DISABLED
+NIIF_WARNING = win32_adapter.NIIF_WARNING
+NIIF_USER = win32_adapter.NIIF_USER
+NIIF_LARGE_ICON = win32_adapter.NIIF_LARGE_ICON
 
 def download_cniplist(p):
     msg = buildipdb.download_cniplist_as_db(direct_ipdb, p)
@@ -317,8 +321,6 @@ def download_domains(p):
     msg = builddomains.download_domains_as_txt(direct_domains, p)
     if msg:
         balloons_warning(msg)
-
-last_main_menu = None
 
 def build_menu(systray):
     libuv_cffi_state = gloop.check('libuv-cffi') and fixed_fState or MFS_ENABLED
@@ -394,6 +396,30 @@ def build_menu(systray):
         systray.update(menu=main_menu)
         last_main_menu = main_menu
 
+def update_tip():
+    global last_proxy_state
+    new_proxy_state = get_proxy_state()
+    if last_proxy_state and last_proxy_state.str == new_proxy_state.str:
+        return
+    systray_GotoX.update(hover_text='GotoX\n当前系统（IE）代理：\n%s' % new_proxy_state)
+    last_proxy_state = new_proxy_state
+    return new_proxy_state
+
+def balloons_info(text, title='GotoX 通知'):
+    systray_GotoX.show_balloon(text, title, NIIF_USER | NIIF_LARGE_ICON)
+
+def balloons_warning(text, title='注意'):
+    systray_GotoX.show_balloon(text, title, NIIF_WARNING | NIIF_LARGE_ICON)
+
+def notify_proxy_changed():
+    old_proxy_state = last_proxy_state
+    new_proxy_state = update_tip()
+    if new_proxy_state:
+        text = '设置由：\n%s\n变更为：\n%s' % (old_proxy_state, new_proxy_state)
+        balloons_warning(text, '系统代理改变')
+
+last_main_menu = None
+last_proxy_state = None
 quit_item = '退出', on_quit
 systray_GotoX = SysTrayIcon(icon_gotox, 'GotoX', None, quit_item,
                             left_click=on_left_click,
@@ -402,37 +428,18 @@ systray_GotoX.start()
 start_GotoX()
 #load_config()
 #os.environ['HTTPS_PROXY'] = os.environ['HTTP_PROXY'] = LISTEN_AUTO.http
+sleep(0.1)
+balloons_info('''
+GotoX 已经启动。        
 
-from time import sleep
+左键单击：打开菜单
 
-def balloons_info(text, title='GotoX 通知'):
-    systray_GotoX.update(
-        hover_text='GotoX\n当前系统（IE）代理：\n%s' % proxy_state,
-        balloons=(text, title, 4 | 32, 15)
-        )
+左键双击：打开配置
 
-def balloons_warning(text, title='注意'):
-    systray_GotoX.update(
-        hover_text='GotoX\n当前系统（IE）代理：\n%s' % proxy_state,
-        balloons=(text, title, 2 | 32, 15)
-        )
+右键单击：隐显窗口
 
-def notify_proxy_changed():
-    global proxy_state
-    now_proxy_state = get_proxy_state()
-    if proxy_state.str != now_proxy_state.str:
-        text = '设置由：\n%s\n变更为：\n%s' % (proxy_state, now_proxy_state)
-        proxy_state = now_proxy_state
-        balloons_warning(text, '系统代理改变')
-
-proxy_state = get_proxy_state()
-sleep(1)
-balloons_info('\nGotoX 已经启动。        \n\n'
-              '左键单击：打开菜单\n\n'
-              '左键双击：打开配置\n\n'
-              '右键单击：隐显窗口\n\n'
-              '当前系统代理设置为：\n'
-              '%s' % proxy_state)
+当前系统代理设置为：
+%s''' % update_tip())
 
 running = True
 if reg_notify is None:
@@ -450,3 +457,5 @@ else:
             break
         notify_proxy_changed()
         reg_notify()
+
+sleep(0.1)

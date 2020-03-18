@@ -26,6 +26,11 @@ before_deploy:
   - python launcher/buildipdb.py -u -d --17mon
   - python launcher/builddomains.py -u -d --felix
 
+  - cd python/site-packages
+  - 7za a -tzip -mx=9 -mfb=258 -mtc=off helpers-win32.egg winsystray
+  - rm -rf winsystray
+  - cd ../..
+
   - rm -rf .git*
   - rm -rf .travis*
 
@@ -35,17 +40,17 @@ before_deploy:
   - mv GotoX GotoX-win_amd64
 
   - cd GotoX-py3-none-any
-  - zip -r GotoX-${RELEASE_VERSION}-py3-none-any.zip *
+  - 7za a -mx=9 -mfb=258 -mtc=off GotoX-${RELEASE_VERSION}-py3-none-any.zip *
   - mv *.zip ..
 
   - cd ../GotoX-win32
   - python pack_portable.py ${PYTHON_VERSION}-win32
-  - 7za a -r -mx=9 -m0=BCJ2 -m1=LZMA2:mf=bt3 -m2=LZMA:d19 -m3=LZMA:d19 -m4=LZMA:d19 -mb0s0:1 -mb0s1:2 -mb0s2:3 -mb0s3:4 GotoX-${RELEASE_VERSION}-${PYTHON_IMPL_VERSION}-win32.7z *
+  - 7za a -mx=9 -m0=BCJ2 -m1=LZMA2:mf=bt3 -m2=LZMA:d19 -m3=LZMA:d19 -m4=LZMA:d19 -mb0s0:1 -mb0s1:2 -mb0s2:3 -mb0s3:4 GotoX-${RELEASE_VERSION}-${PYTHON_IMPL_VERSION}-win32.7z *
   - mv *.7z ..
 
   - cd ../GotoX-win_amd64
   - python pack_portable.py ${PYTHON_VERSION}-win_amd64
-  - 7za a -r -mx=9 -m0=BCJ2 -m1=LZMA2:mf=bt3 -m2=LZMA:d19 -m3=LZMA:d19 -m4=LZMA:d19 -mb0s0:1 -mb0s1:2 -mb0s2:3 -mb0s3:4 GotoX-${RELEASE_VERSION}-${PYTHON_IMPL_VERSION}-win_amd64.7z *
+  - 7za a -mx=9 -m0=BCJ2 -m1=LZMA2:mf=bt3 -m2=LZMA:d19 -m3=LZMA:d19 -m4=LZMA:d19 -mb0s0:1 -mb0s1:2 -mb0s2:3 -mb0s3:4 GotoX-${RELEASE_VERSION}-${PYTHON_IMPL_VERSION}-win_amd64.7z *
   - mv *.7z ..
 
   - cd ..
