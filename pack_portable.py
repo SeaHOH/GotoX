@@ -15,18 +15,21 @@ from distutils.version import StrictVersion
 from distutils.versionpredicate import VersionPredicate
 
 
-usercustomize = b'''\
+sitecustomize = b'''\
 import os
 import sys
+import glob
 import _imp
 import builtins
+
+py_dir = os.path.dirname(sys.executable)
 
 def pkgdll_get_path(loader, path, name):
     dll_name = name.split('.')[-1] + dll_tag_ext
     dll_path = os.path.join(os.path.dirname(path), dll_name)
     if 'zipimporter object' in str(loader):
         path = os.path.join(eggs_cache,
-                            os.path.split(loader.archive)[1] + '-tmp',
+                            os.path.basename(loader.archive) + '-tmp',
                             loader.prefix,
                             dll_name)
         if not os.path.exists(path):
@@ -37,20 +40,46 @@ def pkgdll_get_path(loader, path, name):
         path = dll_path
     return path
 
+def set_prefix():
+    for name in ('PYTHONPATH', 'PYTHONHOME', 'PYTHONUSERBASE'):
+        os.environ.pop(name, None)
+    sys.prefix = py_dir
+    sys.base_prefix = py_dir
+    sys.exec_prefix = py_dir
+    sys.base_exec_prefix = py_dir
+    import site
+    site.PREFIXES[:] = [py_dir]
+    site.USER_SITE = None
+    site.USER_BASE = None
+
 def set_path():
     global eggs_cache
-    os.environ.pop('PYTHONPATH', None)
-    os.environ.pop('PYTHONHOME', None)
-    py_dir = os.path.dirname(sys.executable)
-    sp_dir = os.path.join(py_dir, 'site-packages')
-    del sys.path[1:]
-    sys.path.append(os.path.join(py_dir, 'DLLs'))
-    if os.path.exists(sp_dir):
-        import glob
-        sys.path.extend(glob.glob(os.path.join(sp_dir, '*.egg')))
-        sys.path.append(sp_dir)
-    sys.path.append(os.getcwd())
-    eggs_cache = os.path.join(py_dir, 'Eggs-Cache')
+    if 'VIRTUAL_ENV' in os.environ:
+        home = os.environ['PYTHONHOME']
+        prompt = os.environ.get('VIRTUAL_PROMPT')
+        dlls = os.path.join(home, 'DLLs')
+        for i, path in enumerate(sys.path):
+            if path == dlls:
+                sys.path[i] = os.path.join(py_dir, 'DLLs')
+            elif path.endswith('site-packages'):
+                if os.path.exists(path):
+                    sys.path[i + 1:i + 1] = glob.glob(os.path.join(path, '*.egg'))
+                    break
+        eggs_cache = os.path.join(home, 'Eggs-Cache')
+        if prompt:
+            sys.ps1 = prompt + ' >>> '
+            sys.ps2 = '.' * (len(prompt) + 4) + ' '
+    else:
+        if not (py_dir == sys.prefix == sys.base_prefix == sys.exec_prefix == sys.base_exec_prefix):
+            set_prefix()
+        sp_dir = os.path.join(py_dir, 'site-packages')
+        sys.path[:] = [os.path.join(py_dir, 'python%d%d.zip' % sys.version_info[:2])]
+        sys.path.append(os.path.join(py_dir, 'DLLs'))
+        sys.path.append(py_dir)
+        if os.path.exists(sp_dir):
+            sys.path.append(sp_dir)
+            sys.path.extend(glob.glob(os.path.join(sp_dir, '*.egg')))
+        eggs_cache = os.path.join(py_dir, 'Eggs-Cache')
 
 def main():
     global dll_tag_ext
@@ -75,6 +104,89 @@ def __bootstrap__():
 __bootstrap__()
 '''
 
+
+
+simplewinvenv = b'''\
+"""
+A simple virtual environment script for Python.
+Additional files must be copied manually, if need.
+It's only targeted at Windows platform.
+"""
+
+import os
+import sys
+
+help = """\
+Creates a simple virtual environment for Python
+
+Use:  python -m svenv venvdir [prompt]
+
+  venvdir       A directory to create the environment in.
+  prompt        Provides an alternative prompt prefix for this environment.
+                If not set, will use the directory name.
+
+"""
+
+activate_bat = """\
+@echo off
+set VIRTUAL_ENV=%~dp0
+set VIRTUAL_PROMPT={prompt}
+set PYTHONNOUSERSITE=
+set PYTHONHOME=%VIRTUAL_ENV%
+set _PYTHON_PROJECT_BASE=%VIRTUAL_ENV%
+set PATH=%VIRTUAL_ENV%Scripts;{exe_dir};%VIRTUAL_ENV%;%PATH%
+echo on
+"""
+
+launcher_bat = """\
+@if not defined VIRTUAL_ENV call "%~dp0activate.bat"
+@"{exe}" %*
+"""
+
+console_bat = """\
+@if not defined VIRTUAL_ENV (
+    call "%~dp0activate.bat"
+    cmd
+)
+"""
+
+def create(env_dir, prompt):
+    lib_dir = os.path.join(env_dir, 'Lib')
+    sp_dir = os.path.join(env_dir, lib_dir, 'site-packages')
+    exe_dir = os.path.dirname(sys.executable)
+    os.makedirs(sp_dir, exist_ok=True)
+    with open(os.path.join(env_dir, 'activate.bat'), 'w') as f:
+        f.write(activate_bat.format(prompt=prompt, exe_dir=exe_dir))
+    with open(os.path.join(env_dir, 'python.bat'), 'w') as f:
+        f.write(launcher_bat.format(exe=sys.executable))
+    with open(os.path.join(env_dir, 'console.bat'), 'w') as f:
+        f.write(console_bat)
+    print('New virtual environment created at %r, prompt is %r.' % (env_dir, prompt))
+
+def main():
+    try:
+        env_dir = sys.argv[1]
+    except IndexError:
+        print(help)
+        return
+    if not os.path.isabs(env_dir) or os.path.isfile(env_dir):
+        raise ValueError("The environment path must be absolute, and can't be a exists file.")
+    try:
+        prompt = sys.argv[2]
+    except IndexError:
+        prompt = os.path.basename(env_dir.rstrip(os.path.sep))
+    create(env_dir, prompt)
+
+if __name__ == '__main__':
+    rc = 1
+    try:
+        main()
+        rc = 0
+    except Exception as e:
+        print('Error: %s' % e, file=sys.stderr)
+    sys.exit(rc)
+'''
+
 useless_exes = '''\
 pythonw.exe
 vcruntime140.dll
@@ -83,10 +195,8 @@ _distutils_findvs.pyd
 winsound.pyd
 '''.split()
 
-params_7z = {
-    '7z': '7za',
-    'to_null': '1>/dev/null'
-}
+_7z = '7za'
+to_null = '1>/dev/null'
 ca1 = 'cert/CA.crt'
 ca2 = 'cert/cacerts/mozilla.pem'
 if os.path.exists(ca1):
@@ -119,7 +229,7 @@ def _download(url, f):
     c.setopt(c.WRITEFUNCTION, f.write)
     c.setopt(c.HEADERFUNCTION, f.header_cb)
     if start:
-        c.setopt(c.RANGE, '%d-' % start)
+        c.setopt(c.RANGE, f'{start:d}-')
     try:
         c.perform()
         ok = c.getinfo(c.RESPONSE_CODE) in (200, 206)
@@ -182,7 +292,7 @@ def download(url, filepath=None, sum=None):
         filepath = name_parts.pop()
         while not filepath and name_parts:
             filepath = name_parts.pop()
-    print('start download %r to %r.' % (url, filepath))
+    print(f'start download {url:r} to {filepath:r}.')
 
     f = file(filepath, sum)
     ok = False
@@ -192,7 +302,7 @@ def download(url, filepath=None, sum=None):
         try:
             ok = _download(url, f)
         except Exception as e:
-            print('download %r error: %s.' % (url, e), file=sys.stderr)
+            print(f'download {url:r} error: {e}.', file=sys.stderr)
             err = e
         else:
             if not ok and retry == max_retry:
@@ -216,10 +326,10 @@ def download(url, filepath=None, sum=None):
         err = 'response status is wrong'
     f.close()
     if ok:
-        print('download %r to %r over.' % (url, filepath))
+        print(f'download {url:r} to {filepath:r} over.')
         return res
     else:
-        print('download %r fail: %s.' % (url, err), file=sys.stderr)
+        print(f'download {url:r} fail: {err}.', file=sys.stderr)
         sys.exit(-1)
 
 
@@ -240,12 +350,11 @@ py_url = config.get(py_ver, 'url')
 py_sum = config.get(py_ver, 'sum')
 py_ver, py_arch = py_ver.split('-')
 py_ver = py_ver.replace('.', '')[:2]
-dll_tag = 'cp%s-%s' % (py_ver, py_arch)
+dll_tag = f'cp{py_ver}-{py_arch}'
 
 if not os.path.exists('python/python.exe'):
     filepath = download(py_url, sum=py_sum)
-    cmd = '{7z} e {file} -opython {to_null}'.format(file=filepath, **params_7z)
-    os.system(cmd)
+    os.system(f'{_7z} e {filepath} -opython {to_null}')
     os.remove(filepath)
 
 if not os.path.exists('python'):
@@ -265,13 +374,13 @@ for filename in os.listdir():
     elif is_dll(filename):
         os.rename(filename, os.path.join('DLLs', filename))
     elif filename.endswith('zip'):
-        cmd = '{7z} x {file} -opythonzip {to_null}'.format(file=filename, **params_7z)
-        os.system(cmd)
+        os.system(f'{_7z} x {filename} -opythonzip {to_null}')
         os.remove(filename)
-        with open('pythonzip/usercustomize.py', 'wb') as f:
-            f.write(usercustomize)
-        cmd = '{7z} a -tzip {file} ./pythonzip/* -mx=9 -mfb=258 -mtc=off {to_null}'.format(file=filename, **params_7z)
-        os.system(cmd)
+        with open('pythonzip/sitecustomize.py', 'wb') as f:
+            f.write(sitecustomize)
+        with open('pythonzip/svenv.py', 'wb') as f:
+            f.write(simplewinvenv)
+        os.system(f'{_7z} a -mx=9 -mfb=258 -mtc=off {to_null} {filename} ./pythonzip/*')
         shutil.rmtree('pythonzip', True)
 
 
@@ -290,7 +399,7 @@ StrictVersion.version_re = re.compile(r'^(\d+) \. (\d+) (\. (\d+))? (\.?[a-z]+(\
 def extract(project, version):
     data = download(pypi_api(project), JSON)
     if version:
-        version = VersionPredicate('%s(%s)' % (project, version))
+        version = VersionPredicate(f'{project}({version})')
         if version.pred:
             releases = sorted(data['releases'].keys(),
                               key=lambda r: StrictVersion(r), reverse=True)
@@ -328,13 +437,11 @@ def extract(project, version):
     sum = '|'.join(('sha256', dist['digests']['sha256']))
     filepath = download(url, filename, sum)
     if filepath.endswith('tar.gz'):
-        cmd = '{7z} e {file} {to_null}'.format(file=filepath, **params_7z)
-        os.system(cmd)
+        os.system(f'{_7z} e {filepath} {to_null}')
         os.remove(filepath)
         filepath = filepath[:-3]
     if filepath.endswith(('whl', 'egg', 'tar', 'zip')):
-        cmd = '{7z} x {file} {to_null}'.format(file=filepath, **params_7z)
-        os.system(cmd)
+        os.system(f'{_7z} x {filepath} {to_null}')
         os.remove(filepath)
     if filepath.endswith('tar'):
         # This is source code, may require a complicated installation process.
@@ -374,18 +481,17 @@ def package(name):
                 os.remove(filepath)
             elif filename.endswith('pyd'):
                 if dll_tag not in filename:
-                    newname = '%s%s.pyd' % (filename[:-3], dll_tag)
+                    newname = f'{filename[:-3]}{dll_tag}.pyd'
                     os.rename(os.path.join(dirpath, filename),
                               os.path.join(dirpath, newname))
-                    print('Warning: filename %r does not match the dll_tag %r, '
-                          'rename it as %r.' % (filename, dll_tag, newname))
+                    print(f'Warning: filename {filename:r} does not match the dll_tag {dll_tag:r}, '
+                          f'rename it as {newname:r}.')
                     filename =  newname
                 filename = filename.split(dll_tag)[0] + 'py'
                 filepath = os.path.join(dirpath, filename)
                 with open(filepath, 'wb') as f:
                     f.write(dllpy)
-    cmd = '{7z} a -tzip {file}.egg * -x!*.egg -mx=9 -mfb=258 -mtc=off {to_null}'.format(file=name, **params_7z)
-    os.system(cmd)
+    os.system(f'{_7z} a -tzip -x!*.egg -mx=9 -mfb=258 -mtc=off {to_null} {name}.egg *')
     for dirpath, dirnames, filenames in os.walk('.'):
         for dirname in dirnames:
             filepath = os.path.join(dirpath, dirname)
