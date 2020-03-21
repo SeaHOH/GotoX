@@ -37,6 +37,7 @@ def set_dns():
         iporname, profile = target
     else:
         iporname, profile = None, None
+    cfw_params.hostname = 'not ready'
     cfw_params.hostname = hostname = _set_dns(cfw_params.host, iporname)
     cfw_params.connection_cache_key = '%s:%d' % (cfw_params.hostname, cfw_params.port)
     if hostname is None:
@@ -46,7 +47,7 @@ def set_dns():
     elif profile == '@v6':
         dns[hostname] = [ip for ip in dns[hostname] if isipv6(ip)]
 
-def cfw_ws_fetch(method, url, headers):
+def cfw_ws_fetch(url, headers):
     realurl = 'CFW-' + url
     set_dns()
     options = cfw_options.copy()
@@ -57,7 +58,6 @@ def cfw_ws_fetch(method, url, headers):
     })
     response = http_cfw.request(cfw_ws_params, headers=headers,
                                 connection_cache_key=cfw_params.connection_cache_key,
-                                realmethod=method,
                                 realurl=realurl)
     if response and response.headers.get('Server') == 'cloudflare':
         return response
@@ -65,7 +65,7 @@ def cfw_ws_fetch(method, url, headers):
 
 def cfw_fetch(method, url, headers, payload=b'', options=json.dumps(cfw_options)):
     if url[:2] == 'ws':
-        return cfw_ws_fetch(method, url, headers)
+        return cfw_ws_fetch(url, headers)
     metadata = ['%s %s' % (method, url)]
     metadata += ['%s\t%s' % header for header in headers.items()]
     metadata = '\n'.join(metadata).encode()
