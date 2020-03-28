@@ -413,21 +413,19 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             except NetWorkIOError as e:
                 logging.error('%s "%s %s %s" 附加内容读取失败：%r', self.address_string(), self.action[3:], self.command, self.url, e)
                 raise
-        # 强制请求压缩内容，之后会自动判断解压缩
-        ae = request_headers.get('Accept-Encoding', '')
-        if 'identity' in ae:
-            if self.action == 'do_GAE':
-                request_headers['Accept-Encoding'] = 'identity'
-        elif self.request_compress:
+        #如果强制请求压缩内容，之后会自动判断解压缩
+        if self.request_compress:
             r = request_headers.get('Range')
-            if not r or not r.startswith('bytes='):
-                if ae is '':
-                    request_headers['Accept-Encoding'] = 'gzip, br'
-                else:
-                    if 'gzip' not in ae:
-                        request_headers['Accept-Encoding'] += ', gzip'
-                    if 'br' not in ae:
-                        request_headers['Accept-Encoding'] += ', br'
+            if not (r and r.startswith('bytes=')):
+                ae = request_headers.get('Accept-Encoding', '')
+                aes = []
+                if ae:
+                    aes.append(ae)
+                if 'gzip' not in ae:
+                    aes.append('gzip')
+                if 'br' not in ae and 'br' in decompress_readers:
+                    aes.append('br')
+                request_headers['Accept-Encoding'] = ', '.join(aes)
         self.request_headers = request_headers
         self.payload = payload
         self.reread_req = True
@@ -448,7 +446,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         if self.action == 'do_CFW':
             response_headers = {k: v for k, v in response_headers.items()
                                     if not k.startswith('Cf-')}
-            if response_headers.get('X-Fetch-Status') == 'fail':
+            if response_headers.pop('X-Fetch-Status', None) != 'ok':
                 log = logging.warning
             else:
                 del response_headers['Server']
@@ -461,7 +459,14 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             data = need_chunked = None
             length = 0
         else:
-            self.response_length = response.length or 0
+            if response.status == 206:
+                content_range = response.headers.get('Content-Range')
+                content_range = getrange(content_range)
+                if content_range:
+                    start, end = content_range.group(1, 2)
+                    self.response_length = int(end) + 1 - int(start)
+            else:
+                self.response_length = response.length or 0
             #明确设置 Accept-Ranges
             if response_headers.get('Accept-Ranges') != 'bytes':
                 response_headers['Accept-Ranges'] = 'none'
@@ -631,6 +636,10 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
     def do_CFW(self):
         request_headers, payload = self.handle_request_headers()
         headers_sent = False
+        if self.target and '@follow' in self.target:
+            options = {'redirect': 'true'}
+        else:
+            options = None
         for retry in range(GC.CFW_FETCHMAX):
             if retry > 0 and payload and isinstance(payload, bytes) or hasattr(payload, 'readed') and payload.readed:
                 logging.warning('%s do_CFW 由于有上传数据 "%s %s" 终止重试', self.address_string(), self.command, self.url)
@@ -646,7 +655,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             response = None
             self.close_connection = self.cc
             try:
-                response = cfw_fetch(self.command, self.url, request_headers, payload)
+                response = cfw_fetch(self.command, self.url, request_headers, payload, options)
                 if not response:
                     continue
                 response, data, need_chunked, ws_ok = self.handle_response_headers(response)

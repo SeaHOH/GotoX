@@ -133,11 +133,11 @@ class GC:
     if CFW_WORKER.find('.') < 1:
         CFW_WORKER = None
     CFW_PASSWORD = CONFIG.get('cfw', 'password').strip()
+    CFW_IPLIST = CONFIG.getlist('cfw', 'iplist') or None
     CFW_DECODEEMAIL = CONFIG.getboolean('cfw', 'decodeemail', fallback=False)
     CFW_TIMEOUT = max(CONFIG.getint('cfw', 'timeout', fallback=10), 3)
     CFW_KEEPALIVE = CONFIG.getboolean('cfw', 'keepalive', fallback=True)
     CFW_KEEPTIME = CONFIG.getint('cfw', 'keeptime', fallback=180)
-    CFW_MAXPERIP = min(CONFIG.getint('cfw', 'maxperip', fallback=4), 8)
     CFW_FETCHMAX = CONFIG.getint('cfw', 'fetchmax', fallback=2)
 
     GAE_APPIDS = re.findall(r'[\w\-\.]+', CONFIG.get('gae', 'appid').replace('.appspot.com', ''))
@@ -263,7 +263,7 @@ class GC:
     DNS_OVER_HTTPS = CONFIG.getboolean('dns', 'overhttps', fallback=True)
     DNS_OVER_HTTPS_SERVERS = CONFIG.gettuple('dns', 'overhttpsservers', fallback='cloudflare-dns.com')
     DNS_IP_API = CONFIG.gettuple('dns', 'ipapi')
-    DNS_PRIORITY = CONFIG.getlist('dns', 'priority', fallback='system|overhttps|remote')
+    DNS_PRIORITY = CONFIG.getlist('dns', 'priority', fallback='overhttps|remote|system')
     DNS_BLACKLIST = set(CONFIG.getlist('dns', 'blacklist'))
 
     DNS_DEF_PRIORITY = ['system', 'remote', 'overhttps']

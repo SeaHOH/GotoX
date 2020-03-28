@@ -2,7 +2,7 @@
 
 const about = `
 /******************************************************************************
- *  GotoX remote server 0.3 in Cloudflare Workers
+ *  GotoX remote server 0.4 in CloudFlare Workers
  *  https://github.com/SeaHOH/GotoX
  *  The MIT License - Copyright (c) 2020 SeaHOH
  *
@@ -51,8 +51,10 @@ const about = `
  *
  *    Notices
  *
- *      If succeed, then return a normal response, or returned response has a
- *      header "X-Fetch-Status: fail" and has the reason in body.
+ *      If succeed, returned normal response with a header "X-Fetch-Status: ok",
+ *      or returned response with a header "X-Fetch-Status: fail" and has the
+ *      reason in body. If no header "X-Fetch-Status" in, that maybe a Workers
+ *      error page response.
  *
  *      Those headers should be removed in local server:
  *
@@ -148,17 +150,22 @@ async function handleRequest(request) {
                         cacheTtl: -1
                     }
                 })
+                let body = response.body
+                const headers = new Headers(response.headers)
+                headers.set('X-Fetch-Status', 'ok')
                 if (fetchOptions.decodeemail) {
                 // https://support.cloudflare.com/hc/en-us/articles/200170016-What-is-Email-Address-Obfuscation-
                 // cf.scrapeShield 参数无法关闭 Email Address Obfuscation，解码替换恢复
-                    const ct = response.headers.has('Content-Type') ? response.headers.get('Content-Type') : ''
+                    const ct = headers.has('Content-Type') ? headers.get('Content-Type') : ''
                     if (ct.includes('text/html') || ct.includes('application/xhtml+xml')) {
-                        let html = await response.text()
-                        html = html.replace(/<a .+?(?:email-protection#|data-cfemail=")([a-f\d]+)".+?<\/a>/gi, cfDecodeEmail)
-                        return new Response(html, response)
+                        const html = await response.text()
+                        body = html.replace(/<a .+?(?:email-protection#|data-cfemail=")([a-f\d]+)".+?<\/a>/gi, cfDecodeEmail)
                     }
                 }
-                return response
+                return new Response(body, {
+                    ...response,
+                    headers: headers
+                })
             } catch (error) {
                 const errString = error.toString()
                 if (status != 400 && errString.substring(0, 11) === 'Bad request')
@@ -184,7 +191,13 @@ async function handleRequest(request) {
                 const wsUrl = new URL(fetchOptions.url)
                 wsHeaders.set('Host', wsUrl.host)
                 // 获取代理请求响应
-                return await fetch(new Request(wsUrl, wsInit))
+                const response = await fetch(new Request(wsUrl, wsInit))
+                const headers = new Headers(response.headers)
+                headers.set('X-Fetch-Status', 'ok')
+                return new Response(response.body, {
+                    ...response,
+                    headers: headers
+                })
             } catch (error) {
                 return new Response(error.toString(), {
                     status: status || 502,
@@ -247,12 +260,15 @@ async function readRequest(request, fetchOptions) {
         requestHeaders.append(...headerString.split('\t'))
 
     if (fetchOptions.decodeemail && requestHeaders.has('Accept-Encoding')) {
-    // 出于替换文本的需求，当文本编码为 brotli 时，Worker 无法解码，需禁用 Accept-Encoding: br
+    // 出于文本编辑的需求，当压缩编码为 brotli 时，Worker 无法解码，需禁用 Accept-Encoding: br
         let ae = requestHeaders.get('Accept-Encoding').split(/, */)
         for (let i = ae.length; --i + 1;)
             if (ae[i].includes('br'))
                 ae.splice(i, 1)
-        requestHeaders.set('Accept-Encoding', ae.join(', '))
+        if (ae.length)
+            requestHeaders.set('Accept-Encoding', ae.join(', '))
+        else
+            fetchOptions.decodeemail = false
     }
 
     // 新建代理请求参数

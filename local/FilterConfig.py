@@ -109,10 +109,10 @@ class ACTION_FILTERS:
                 if path[:1] == '@':
                     path = re.compile(path[1:]).search
                 v = v.rstrip()
-                if filters.action == FAKECERT:
+                if filters.action in (FAKECERT, CFW):
                     if not v:
                         v = None
-                elif filters.action in (BLOCK, GAE, CFW):
+                elif filters.action in (BLOCK, GAE):
                     v = None
                 elif filters.action in (FORWARD, DIRECT):
                     if v[:1] == '@':

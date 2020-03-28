@@ -7,7 +7,7 @@
 
 # 可用性（2020/02/19）
 - 由于谷歌政策调整，未绑定信用卡的 Cloud 账户 5 月 31 日后将无法使用其免费 GAE 服务，因此不再继续改进 GAE 服务端。
-- 增加 Cloudflare Workers 作为新的远程代理服务器，测试中。
+- 增加 CloudFlare Workers 作为新的远程代理服务器，测试中。
 
 # 安全性
 - 由于平台限制，对于通过 GAE 的 https 流量，GotoX 使用自动生成的证书作为凭证，采取中间人方法进行代理；对于需要修改（某些自动代理规则需要）的 https 流量也是如此，不论其是否通过 GAE。
@@ -23,7 +23,7 @@
 - 注册和部署时，可尝试直接以默认配置运行本代理使用；如果无法顺利进行，请使用 VPN、Shadowsocks 等其它代理重新开始。
     - **警告**：不建议使用未知来源的兼容服务端，它们**可能会记录你的各种信息，甚至更改你的流量**以达到更危险的目的。
 - **相关链接**
-    - 简易教程 https://github.com/SeaHOH/GotoX/wiki/简易部署教程：Cloudflare-Workers
+    - 简易教程 https://github.com/SeaHOH/GotoX/wiki/简易部署教程：CloudFlare-Workers
     - 常见问题 https://github.com/SeaHOH/GotoX/wiki/常见问题 （待更新）
 
 # 使用
@@ -117,7 +117,7 @@
     - 尽量不要在 GAE 代理中使用多线程下载工具下载大于 32MB 的文件，会导致 Urlfetch 流量浪费（每日 5GB），针对通过 GAE 代理的大文件下载可以使用内建 **autorange** 功能（具体配置见 `Config.ini`）。
 
 # 兼容性
-- CPython 3.5/3.6/3.7/3.8 已测试，其它版本则无法保证持续运行正常。
+- CPython 3.6/3.7/3.8 已测试，其它版本则无法保证持续运行正常。
 - 必须组件：
     - gevent 1.3.0 及以上
     - pyOpenSSL 16.0.0 及以上

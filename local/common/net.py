@@ -115,6 +115,25 @@ def isipv6(ip, AF_INET6=socket.AF_INET6, inet_pton=socket.inet_pton):
     else:
         return True
 
+def explode_ip(ip):
+    if isipv4(ip):
+        return explode_ipv4(ip)
+    elif isipv6(ip):
+        return explode_ipv6(ip)
+    else:
+        return []
+
+def explode_ipv4(ip):
+    nw24 = ip.rpartition('.')[0]
+    return [f'{nw24:s}.{i:d}'for i in range(256)]
+
+def explode_ipv6(ip):
+    if '.' in ip:
+        return explode_ipv4(ip)
+    nw112, _, ar16 = ip.rpartition(':')
+    nw120 = f'{nw112:s}:{ar16[:-2]:s}'
+    return [f'{nw120:s}{i:x}'for i in range(256)]
+
 def get_parent_domain(host):
     ip = isip(host)
     if not ip:
