@@ -62,7 +62,7 @@ def check_response(response):
     if response:
         if response.headers.get('Server') == 'cloudflare':
             if response.headers.get('X-Fetch-Status'):  # ok / fail
-                return True
+                return 'ok'
             elif response.status == 429:  # a burst rate limit of 1000 requests per minute.
                 if lock.acquire(timeout=1):
                     try:
@@ -70,14 +70,23 @@ def check_response(response):
                         sleep(30)
                     finally:
                         lock.release()
+            elif response.status in (302, 530) or 400 <= response.status < 500:
+                with lock:
+                    try:
+                        cfw_iplist.remove(response.xip[0])
+                        logging.test('CFW 移除 %s', response.xip[0])
+                    except:
+                        pass
             else:
                 #打印收集未知异常状态
                 logging.warning('CFW %r 工作异常：%d %s', cfw_params.host, response.status, response.reason)
-                return True
+                return 'ok'
         else:
             logging.error('CFW %r 工作异常：%r 可能不是可用的 CloudFlare 节点', cfw_params.host, response.xip[0])
+        return 'retry'
     else:
         logging.warning('CFW %r 连接失败', cfw_params.host)
+        return 'fail'
 
 def cfw_ws_fetch(url, headers):
     options = cfw_options.copy()
@@ -87,10 +96,12 @@ def cfw_ws_fetch(url, headers):
         'X-Fetch-Options': json.dumps(options),
     })
     realurl = 'CFW-' + url
-    response = http_cfw.request(cfw_ws_params, headers=headers,
-                                connection_cache_key=cfw_params.connection_cache_key,
-                                realurl=realurl)
-    if check_response(response):
+    while True:
+        response = http_cfw.request(cfw_ws_params, headers=headers,
+                                    connection_cache_key=cfw_params.connection_cache_key,
+                                    realurl=realurl)
+        if check_response(response) == 'retry':
+            continue
         return response
 
 def cfw_fetch(method, url, headers, payload=b'', options=None):
@@ -128,11 +139,15 @@ def cfw_fetch(method, url, headers, payload=b'', options=None):
         'X-Fetch-Options': options_str,
     }
     realurl = 'CFW-' + url
-    response = http_cfw.request(cfw_params, payload, request_headers,
-                                connection_cache_key=cfw_params.connection_cache_key,
-                                realmethod=method,
-                                realurl=realurl)
-    if check_response(response):
-        response.http_util = http_cfw
-        response.connection_cache_key = cfw_params.connection_cache_key
+    while True:
+        response = http_cfw.request(cfw_params, payload, request_headers,
+                                    connection_cache_key=cfw_params.connection_cache_key,
+                                    realmethod=method,
+                                    realurl=realurl)
+        status = check_response(response)
+        if status == 'ok':
+            response.http_util = http_cfw
+            response.connection_cache_key = cfw_params.connection_cache_key
+        elif status == 'retry':
+            continue
         return response
