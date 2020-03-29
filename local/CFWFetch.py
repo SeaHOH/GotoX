@@ -49,7 +49,8 @@ def set_dns():
         else:
             iplist = dns_resolve('cloudflare.com')
             if not iplist:
-                logging.warning('无法解析 CFWorker 域名 %r，使用默认 IP 列表' + cfw_params.host)
+                logging.warning('无法解析 cloudflare.com，使用默认 IP 列表')
+                # https://www.cloudflare.com/ips/
                 # 百度云加速与 CloudFlare 合作节点，保证可用
                 iplist = ['162.159.208.0', '162.159.209.0', '162.159.210.0', '162.159.211.0']
         # 每个 IP 会自动扩展为 256 个，即填满最后 8 bit 子网
