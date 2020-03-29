@@ -58,7 +58,7 @@ def set_dns():
         random.shuffle(cfw_iplist)
     dns.set(cfw_params.hostname, cfw_iplist, expire=False)
 
-def check_response(response):
+def check_response(response, host):
     if response:
         if response.headers.get('Server') == 'cloudflare':
             if response.headers.get('X-Fetch-Status'):  # ok / fail
@@ -70,8 +70,9 @@ def check_response(response):
                         sleep(30)
                     finally:
                         lock.release()
-            elif response.status in (302, 530) or 400 <= response.status < 500:
-                with lock:
+            elif response.status == 302 or 400 <= response.status < 500 or \
+                     response.status == 530 and dns_resolve(host):
+                 with lock:
                     try:
                         cfw_iplist.remove(response.xip[0])
                         logging.test('CFW 移除 %s', response.xip[0])
@@ -79,16 +80,18 @@ def check_response(response):
                         pass
             else:
                 #打印收集未知异常状态
-                logging.warning('CFW %r 工作异常：%d %s', cfw_params.host, response.status, response.reason)
+                logging.warning('CFW %r 工作异常：%d %s',
+                                cfw_params.host, response.status, response.reason)
                 return 'ok'
         else:
-            logging.error('CFW %r 工作异常：%r 可能不是可用的 CloudFlare 节点', cfw_params.host, response.xip[0])
+            logging.error('CFW %r 工作异常：%r 可能不是可用的 CloudFlare 节点',
+                          cfw_params.host, response.xip[0])
         return 'retry'
     else:
-        logging.warning('CFW %r 连接失败', cfw_params.host)
+        logging.test('CFW %r 连接失败', cfw_params.host)
         return 'fail'
 
-def cfw_ws_fetch(url, headers):
+def cfw_ws_fetch(host, url, headers):
     options = cfw_options.copy()
     options['url'] = 'http' + url[2:]
     headers.update({
@@ -100,16 +103,16 @@ def cfw_ws_fetch(url, headers):
         response = http_cfw.request(cfw_ws_params, headers=headers,
                                     connection_cache_key=cfw_params.connection_cache_key,
                                     realurl=realurl)
-        if check_response(response) == 'retry':
+        if check_response(response, host) == 'retry':
             continue
         return response
 
-def cfw_fetch(method, url, headers, payload=b'', options=None):
+def cfw_fetch(method, host, url, headers, payload=b'', options=None):
     set_dns()
     with lock:
         pass
     if url[:2] == 'ws':
-        return cfw_ws_fetch(url, headers)
+        return cfw_ws_fetch(host, url, headers)
     metadata = ['%s %s' % (method, url)]
     metadata += ['%s\t%s' % header for header in headers.items()]
     metadata = '\n'.join(metadata).encode()
@@ -144,7 +147,7 @@ def cfw_fetch(method, url, headers, payload=b'', options=None):
                                     connection_cache_key=cfw_params.connection_cache_key,
                                     realmethod=method,
                                     realurl=realurl)
-        status = check_response(response)
+        status = check_response(response, host)
         if status == 'ok':
             response.http_util = http_cfw
             response.connection_cache_key = cfw_params.connection_cache_key

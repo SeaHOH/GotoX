@@ -655,7 +655,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             response = None
             self.close_connection = self.cc
             try:
-                response = cfw_fetch(self.command, self.url, request_headers, payload, options)
+                response = cfw_fetch(self.command, self.host, self.url, request_headers, payload, options)
                 if not response:
                     continue
                 response, data, need_chunked, ws_ok = self.handle_response_headers(response)
