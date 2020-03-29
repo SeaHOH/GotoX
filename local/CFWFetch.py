@@ -78,6 +78,8 @@ def check_response(response, host):
                         logging.test('CFW 移除 %s', response.xip[0])
                     except:
                         pass
+            elif response.status in (500, 530):
+                return 'ok'
             else:
                 #打印收集未知异常状态
                 logging.warning('CFW %r 工作异常：%d %s',
