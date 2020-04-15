@@ -263,8 +263,8 @@ def download(req):
         if os.path.exists(ca1):
             context.load_verify_locations(ca1)
         context.load_verify_locations(ca2)
-    retry_delay = 2
-    max_retries = 10
+    retry_delay = 10
+    max_retries = 2
     retry_times = 0
     timeout = 8
     l = 0

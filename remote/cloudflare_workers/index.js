@@ -268,7 +268,7 @@ async function readRequest(request, fetchOptions) {
         if (ae.length)
             requestHeaders.set('Accept-Encoding', ae.join(', '))
         else
-            fetchOptions.decodeemail = false
+            requestHeaders.delete('Accept-Encoding')
     }
 
     // 新建代理请求参数

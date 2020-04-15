@@ -459,7 +459,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             data = need_chunked = None
             length = 0
         else:
-            if response.status == 206:
+            if response.status == 206 and not response.length:
                 content_range = response.headers.get('Content-Range')
                 content_range = getrange(content_range)
                 if content_range:
@@ -1115,7 +1115,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             ssl_sock.do_handshake_server_side()
             self.fakecert = True
         except Exception as e:
-            if e.args[0] not in bypass_errno:
+            if not e.args or e.args[0] not in bypass_errno:
                 logging.exception('%s 伪造加密连接失败：host=%r，%r', self.address_string(), self.host, e)
             return
         #停止非加密读写
