@@ -35,6 +35,13 @@ ProxyOverride = ';'.join(
     ['172.%d.*' % (16 + n) for n in range(1 << 4)])
 
 hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+CreateEvent = ctypes.windll.kernel32.CreateEventA
+SetEvent = ctypes.windll.kernel32.SetEvent
+WaitForSingleObject = ctypes.windll.kernel32.WaitForSingleObject
+RegNotifyChangeKeyValue = ctypes.windll.advapi32.RegNotifyChangeKeyValue
+ShowWindow = ctypes.windll.user32.ShowWindow
+MessageBox = ctypes.windll.user32.MessageBoxW
+IsWindowVisible = ctypes.windll.user32.IsWindowVisible
 
 def reg_notify():
     assert RegNotifyChangeKeyValue(
@@ -48,10 +55,6 @@ def reg_notify():
 try:
     ACCESS = winreg.KEY_QUERY_VALUE | winreg.KEY_NOTIFY | winreg.KEY_SET_VALUE
     SETTINGS = winreg.OpenKey(winreg.HKEY_CURRENT_USER, SET_PATH, access=ACCESS)
-    CreateEvent = ctypes.windll.kernel32.CreateEventA
-    SetEvent = ctypes.windll.kernel32.SetEvent
-    RegNotifyChangeKeyValue = ctypes.windll.advapi32.RegNotifyChangeKeyValue
-    WaitForSingleObject = ctypes.windll.kernel32.WaitForSingleObject
     INFINITE = -1
 
     notifyHandle = CreateEvent(
@@ -175,9 +178,9 @@ def refresh_proxy_state(enable=None):
 GotoX_app = None
 
 def load_config():
-    global LISTEN_GAE, LISTEN_AUTO
-    _LISTEN_GAE, _LISTEN_AUTO = _load_config()
-    LISTEN_GAE = proxy_server(_LISTEN_GAE, True)
+    global LISTEN_AUTO, LISTEN_ACT, LISTEN_ACTTYPE
+    _LISTEN_AUTO, _LISTEN_ACT, LISTEN_ACTTYPE = _load_config()
+    LISTEN_ACT = proxy_server(_LISTEN_ACT, True)
     LISTEN_AUTO = proxy_server(_LISTEN_AUTO, True)
 
 def start_GotoX():
@@ -197,10 +200,10 @@ def stop_GotoX():
             logging.warning('GotoX 进程已经结束，code：%s。', retcode)
 
 def on_show(systray):
-    ctypes.windll.user32.ShowWindow(hwnd, 1)
+    ShowWindow(hwnd, 1)
 
 def on_hide(systray):
-    ctypes.windll.user32.ShowWindow(hwnd, 0)
+    ShowWindow(hwnd, 0)
 
 def on_create_shortcut(systray):
     os.system(create_shortcut_js)
@@ -213,15 +216,15 @@ def on_reset_autorule(systray):
     urlopen('http://localhost/docmd?cmd=reset_autorule')
 
 def on_refresh(systray):
-    if ctypes.windll.user32.MessageBoxW(None,
+    if MessageBox(None,
             '是否重新载入 GotoX？', '请确认', 4 | 48) == 6:
         stop_GotoX()
         start_GotoX()
-        ctypes.windll.user32.ShowWindow(hwnd, 8)
+        ShowWindow(hwnd, 8)
 
 def on_about(systray):
     about = 'GotoX v%s\n\nhttps://github.com/SeaHOH/GotoX' % gotoxver
-    ctypes.windll.user32.MessageBoxW(None, about, '关于', 0)
+    MessageBox(None, about, '关于', 0)
 
 def on_quit(systray):
     global running
@@ -279,16 +282,16 @@ def enable_proxy(ProxyServer):
 def on_enable_auto_proxy(systray):
     enable_proxy(LISTEN_AUTO)
 
-def on_enable_gae_proxy(systray):
-    enable_proxy(LISTEN_GAE)
+def on_enable_act_proxy(systray):
+    enable_proxy(LISTEN_ACT)
 
 def on_left_click(systray):
     build_menu(systray)
     systray._show_menu()
 
 def on_right_click(systray):
-    visible = ctypes.windll.user32.IsWindowVisible(hwnd)
-    ctypes.windll.user32.ShowWindow(hwnd, visible^1)
+    visible = IsWindowVisible(hwnd)
+    ShowWindow(hwnd, visible^1)
 
 from winsystray import SysTrayIcon, win32_adapter
 import buildipdb
@@ -366,17 +369,17 @@ def build_menu(systray):
     disable_ftp_state = disable_state or proxy_state.type & 2 and not proxy_state.ftp and fixed_fState or MFS_ENABLED
     disable_socks_state = disable_state or proxy_state.type & 2 and not proxy_state.socks and fixed_fState or MFS_ENABLED
     auto_state = proxy_state.type == 2 and LISTEN_AUTO in proxy_state and fixed_fState or MFS_ENABLED
-    gae_state = proxy_state.type == 2 and LISTEN_GAE in proxy_state  and fixed_fState or MFS_ENABLED
+    act_state = proxy_state.type == 2 and LISTEN_ACT in proxy_state  and fixed_fState or MFS_ENABLED
     sub_menu4 = (
                  ('使用自动代理', on_enable_auto_proxy, auto_state, MFT_RADIOCHECK),
-                 ('使用 GAE 代理', on_enable_gae_proxy, gae_state, MFT_RADIOCHECK),
+                 ('使用 %s 代理' % LISTEN_ACTTYPE, on_enable_act_proxy, act_state, MFT_RADIOCHECK),
                  ('完全禁用代理', on_disable_proxy, disable_state, MFT_RADIOCHECK),
                  (None, '-'),
                  ('禁用 HTTP 代理', on_disable_http_proxy, disable_http_state, MFT_RADIOCHECK),
                  ('禁用 HTTPS 代理', on_disable_https_proxy, disable_https_state, MFT_RADIOCHECK),
                  ('禁用 FTP 代理', on_disable_ftp_proxy, disable_ftp_state, MFT_RADIOCHECK),
                  ('禁用 SOCKS 代理', on_disable_socks_proxy, disable_socks_state, MFT_RADIOCHECK))
-    visible = ctypes.windll.user32.IsWindowVisible(hwnd)
+    visible = IsWindowVisible(hwnd)
     show_state = visible and fixed_fState or MFS_ENABLED
     hide_state = not visible and fixed_fState or MFS_ENABLED
     main_menu = (('GotoX 设置', sub_menu1, icon_gotox, MFS_DEFAULT),
@@ -457,5 +460,3 @@ else:
             break
         notify_proxy_changed()
         reg_notify()
-
-sleep(0.1)

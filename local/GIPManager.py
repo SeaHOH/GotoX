@@ -652,6 +652,11 @@ class IPManager:
         b'Host: gweb-cloudblog-publish.appspot.com\r\n'
         b'Connection: Close\r\n\r\n'
     )
+    pick_gws_req = (
+        b'HEAD / HTTP/1.1\r\n'
+        b'Host: www.google.com\r\n'
+        b'Connection: Close\r\n\r\n'
+    )
     pick_gae_code = b'404', b'405', b'502'
     pick_gae_verify_code  = b'500', b'302'
     pick_gws_res = (
@@ -703,6 +708,7 @@ class IPManager:
             max_timeout = GC.PICKER_GWS_MAXTIMEOUT
             max_threads = GC.PICKER_GWS_MAXTHREADS
         self.enable = enable
+        self.strict = GC.PICKER_STRICT
         self.min_recheck_time = min_recheck_time
         self.min_cnt = min_cnt
         self.max_cnt = int(min_cnt * 1.4)
@@ -860,7 +866,8 @@ class IPManager:
                     sock.close()
             if server_name is self.server_name and domain == self.com_domain:
                 domain = '*.google.com'
-            if type is 'gae' and not self.test_ip_gae(ip):
+            if type is 'gae' and not self.test_ip_gae(ip) or \
+                    type is 'gws' and not self.test_ip_gws(ip):
                 type = None
             return domain, ssl_time, type
 
@@ -894,13 +901,13 @@ class IPManager:
         if type:
             return True
         gae = self.gae
-        if gae.enable:
-            gae.remove_ip(ip)
-        else:
-            try:
-                gae.ip_list.remove_ip(ip)
-            except:
-                pass
+        try:
+            if gae.enable:
+                gae.remove_ip(ip)
+            else:
+                gae.ip_list.remove(ip)
+        except (KeyError, ValueError):
+            pass
         if type is False:
             #无法使用的 IP
             gae.ip_source.remove_ip(ip)
@@ -909,6 +916,37 @@ class IPManager:
         else:
             #无法肯定判断，但是可先加入
             gae.ip_source.add_ip(ip)
+
+    def check_gws_status(self, conn, ip):
+        try:
+            conn.send(self.pick_gws_req)
+            conn.read(9)
+            return conn.read(3) == b'200'  # HEAD -> 200, GET -> 302
+        except CertificateError:
+            return False
+        except:
+            pass
+
+    def test_ip_gws(self, ip):
+        _, _, type = self.get_ip_info(ip, callback=self.check_gws_status)
+        if type:
+            return True
+        gws = self.gws
+        try:
+            if gws.enable:
+                gws.remove_ip(ip)
+            else:
+                gws.ip_list.remove(ip)
+        except (KeyError, ValueError):
+            pass
+        if type is False:
+            #无法使用的 IP
+            gws.ip_source.remove_ip(ip)
+            gws.ip_source.del_ip(ip)
+            self.logger.debug('从 gws 分类移除 %s', ip)
+        else:
+            #无法肯定判断，但是可先加入
+            gws.ip_source.add_ip(ip)
 
     def pick_ip_worker(self):
         while True:
@@ -919,17 +957,18 @@ class IPManager:
                 if ip is None:
                     sleep(10)
                     continue
+                checked = False
                 if type is None:
                     domain, ssl_time, type = self.get_ip_info(ip)
                     if type:
                         self.ip_source.add_ip(ip, type)
                         checked = domain and ssl_time <= self.get_timeout(type)
-                    else:
-                        checked = False
+                elif not self.strict:
+                    checked = True
                 elif type is 'gae':
                     checked = self.test_ip_gae(ip)
-                else:
-                    checked = True
+                elif type is 'gws':
+                    checked = self.test_ip_gws(ip)
                 if type is not self.type and checked:
                     self.ip_source.push_ip(ip, type)
                     continue

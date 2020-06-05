@@ -34,7 +34,7 @@ def parse_dnsmasq_domains(fd, ds):
             if len(linesp) == 3:
                 ds.itemlist.append(linesp[1])
     except Exception as e:
-        logging.warning('parse_apnic_iplist 解析出错：%s', e)
+        logging.warning('parse_dnsmasq_domains 解析出错：%s', e)
     return read
 
 def download_domains_as_txt(txt, p=1):

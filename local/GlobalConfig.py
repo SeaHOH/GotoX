@@ -87,8 +87,10 @@ class GC:
             LISTEN_IPHOST = '::1'
         else:
             LISTEN_IPHOST = LISTEN_IP
-    LISTEN_GAE_PORT = CONFIG.getint('listen', 'gae_port', fallback=8086)
-    LISTEN_AUTO_PORT = CONFIG.getint('listen', 'auto_port', fallback=8087)
+    LISTEN_AUTOPORT = CONFIG.getint('listen', 'autoport', fallback=8087)
+    LISTEN_ACTPORT = CONFIG.getint('listen', 'actport', fallback=8086)
+    LISTEN_ACT = CONFIG.get('listen', 'act', fallback='cfw').upper()
+    LISTEN_ACTNAME = 'do_' + LISTEN_ACT
     LISTEN_AUTH = min(CONFIG.getint('listen', 'auth', fallback=0), 2)
     LISTEN_AUTHWHITELIST = CONFIG.gettuple('listen', 'authwhitelist')
     LISTEN_AUTHUSER = CONFIG.gettuple('listen', 'authuser', fallback=':')
@@ -195,6 +197,7 @@ class GC:
 
     PICKER_SERVERNAME = CONFIG.get('picker', 'servername', fallback='fonts.googleapis.com')
     PICKER_COMDOMAIN = CONFIG.get('picker', 'comdomain', fallback='*.googleapis.com')
+    PICKER_STRICT = CONFIG.getboolean('picker', 'strict', fallback=False)
     PICKER_BLOCKTIME = CONFIG.getfloat('picker', 'blocktime', fallback=0.3)
     PICKER_TIMESBLOCK = CONFIG.getint('picker', 'timesblock', fallback=3)
     PICKER_TIMESDEL = CONFIG.getint('picker', 'timesdel', fallback=10)
@@ -202,7 +205,7 @@ class GC:
     PICKER_STATDAYS = max(min(CONFIG.getint('picker', 'statdays', fallback=4), 5), 2)
     PICKER_SORTSTAT = CONFIG.getboolean('picker', 'sortstat', fallback=False)
     PICKER_BLOCK = CONFIG.gettuple('picker', 'block')
-    PICKER_GAE_ENABLE = CONFIG.getboolean('picker/gae', 'enable', fallback=True)
+    PICKER_GAE_ENABLE = LISTEN_ACT == 'GAE' and CONFIG.getboolean('picker/gae', 'enable', fallback=True)
     PICKER_GAE_MINRECHECKTIME = CONFIG.getint('picker/gae', 'minrechecktime', fallback=40)
     PICKER_GAE_MINCNT = CONFIG.getint('picker/gae', 'mincnt', fallback=5)
     PICKER_GAE_MAXTIMEOUT = CONFIG.getint('picker/gae', 'maxtimeout', fallback=3000)

@@ -132,7 +132,7 @@ def match_path_filter(filter, path):
     return filter(path)
 
 REDIRECTS = 'do_REDIRECT', 'do_IREDIRECT'
-TEMPGAE = 'do_GAE', None
+TEMPACT = GC.LISTEN_ACTNAME, None
 #默认规则
 filter_DEF = '', numToAct[GC.FILTER_ACTION], None
 ssl_filter_DEF = numToSSLAct[GC.FILTER_SSLACTION], None
@@ -144,8 +144,8 @@ def set_temp_action(host):
     except KeyError:
         filters_cache[host] = filters = [filter_DEF]
     action = filters[0][1]
-    if action != 'TEMPGAE':
-        filter = '', 'TEMPGAE', mtime() + GC.LINK_TEMPTIME
+    if action != 'TEMPACT':
+        filter = '', 'TEMPACT', mtime() + GC.LINK_TEMPTIME
         filters.insert(0, filter)
         return True
 
@@ -165,17 +165,17 @@ def get_action(scheme, host, path, url):
     if filters:
         #是否临时规则
         _, action, expire = filters[0]
-        if action is 'TEMPGAE':
+        if action is 'TEMPACT':
             if mtime() > expire:
                 del filters[0]
                 logging.warning('%r 的临时 "GAE" 规则已经失效。', key)
             #符合自动多线程时不使用临时 GAE 规则，仍尝试默认规则
             #是否包含元组元素（媒体文件）
             elif not any(path.endswith(x) for x in GC.AUTORANGE_FAST_ENDSWITH):
-                return TEMPGAE
+                return TEMPACT
         #以缓存规则进行匹配
         for pathfilter, action, target in filters:
-            if action is 'TEMPGAE':
+            if action is 'TEMPACT':
                 continue
             if match_path_filter(pathfilter, path):
                 #计算重定向网址

@@ -190,6 +190,7 @@ if __name__ == '__main__':
 useless_exes = '''\
 pythonw.exe
 vcruntime140.dll
+vcruntime140_1.dll
 _msi.pyd
 _distutils_findvs.pyd
 winsound.pyd
@@ -292,7 +293,7 @@ def download(url, filepath=None, sum=None):
         filepath = name_parts.pop()
         while not filepath and name_parts:
             filepath = name_parts.pop()
-    print(f'start download {url:r} to {filepath:r}.')
+    print(f'start download {url!r} to {filepath!r}.')
 
     f = file(filepath, sum)
     ok = False
@@ -302,7 +303,7 @@ def download(url, filepath=None, sum=None):
         try:
             ok = _download(url, f)
         except Exception as e:
-            print(f'download {url:r} error: {e}.', file=sys.stderr)
+            print(f'download {url!r} error: {e}.', file=sys.stderr)
             err = e
         else:
             if not ok and retry == max_retry:
@@ -326,10 +327,10 @@ def download(url, filepath=None, sum=None):
         err = 'response status is wrong'
     f.close()
     if ok:
-        print(f'download {url:r} to {filepath:r} over.')
+        print(f'download {url!r} to {filepath!r} over.')
         return res
     else:
-        print(f'download {url:r} fail: {err}.', file=sys.stderr)
+        print(f'download {url!r} fail: {err}.', file=sys.stderr)
         sys.exit(-1)
 
 
@@ -484,8 +485,8 @@ def package(name):
                     newname = f'{filename[:-3]}{dll_tag}.pyd'
                     os.rename(os.path.join(dirpath, filename),
                               os.path.join(dirpath, newname))
-                    print(f'Warning: filename {filename:r} does not match the dll_tag {dll_tag:r}, '
-                          f'rename it as {newname:r}.')
+                    print(f'Warning: filename {filename!r} does not match the dll_tag {dll_tag!r}, '
+                          f'rename it as {newname!r}.')
                     filename =  newname
                 filename = filename.split(dll_tag)[0] + 'py'
                 filepath = os.path.join(dirpath, filename)

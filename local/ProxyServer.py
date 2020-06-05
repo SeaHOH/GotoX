@@ -134,12 +134,12 @@ class LocalProxyServer(socketserver.TCPServer):
     def process_request(self, request, client_address):
         start_new_thread(self.process_request_thread, (request, client_address))
 
-from .ProxyHandler import AutoProxyHandler, GAEProxyHandler
+from .ProxyHandler import AutoProxyHandler, ACTProxyHandler
 
 if GC.LISTEN_AUTH > 0:
-    from .ProxyAuthHandler import AutoProxyAuthHandler, GAEProxyAuthHandler
-    AutoProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_AUTO_PORT), AutoProxyAuthHandler)
-    GAEProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_GAE_PORT), GAEProxyAuthHandler)
+    from .ProxyAuthHandler import AutoProxyAuthHandler, ACTProxyAuthHandler
+    AutoProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_AUTOPORT), AutoProxyAuthHandler)
+    GAEProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_ACTPORT), ACTProxyAuthHandler)
 else:
-    AutoProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_AUTO_PORT), AutoProxyHandler)
-    GAEProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_GAE_PORT), GAEProxyHandler)
+    AutoProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_AUTOPORT), AutoProxyHandler)
+    GAEProxy = LocalProxyServer((GC.LISTEN_IP, GC.LISTEN_ACTPORT), ACTProxyHandler)

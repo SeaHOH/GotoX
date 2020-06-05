@@ -3,7 +3,7 @@ sudo: false
 
 language: python
 python:
-  - 3.7
+  - 3.6
 
 git:
   depth: 1
@@ -14,8 +14,8 @@ addons:
       - p7zip-full
 
 script:
-  - export PYTHON_VERSION=3.7.6
-  - export PYTHON_IMPL_VERSION=cp37
+  - export PYTHON_VERSION=3.8.3
+  - export PYTHON_IMPL_VERSION=cp38
   - export RELEASE_VERSION=$(grep -oP '[0-9\.ab]+' local/__init__.py)
 
 before_deploy:

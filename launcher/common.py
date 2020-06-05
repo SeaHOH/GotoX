@@ -60,17 +60,18 @@ def load_config():
         if LINK_PROFILE not in ('ipv4', 'ipv6', 'ipv46'):
             LINK_PROFILE = 'ipv4'
         LISTEN_IP = '127.0.0.1' if '4' in LINK_PROFILE else '::1'
-    LISTEN_GAE_PORT = CONFIG.getint('listen', 'gae_port', fallback=8086)
-    LISTEN_AUTO_PORT = CONFIG.getint('listen', 'auto_port', fallback=8087)
-    LISTEN_GAE = '%s:%d' % (LISTEN_IP, LISTEN_GAE_PORT)
-    LISTEN_AUTO = '%s:%d' % (LISTEN_IP, LISTEN_AUTO_PORT)
+    LISTEN_AUTOPORT = CONFIG.getint('listen', 'autoport', fallback=8087)
+    LISTEN_ACTPORT = CONFIG.getint('listen', 'actport', fallback=8086)
+    LISTEN_ACTTYPE = CONFIG.get('listen', 'act', fallback='cfw').upper()
+    LISTEN_AUTO = '%s:%d' % (LISTEN_IP, LISTEN_AUTOPORT)
+    LISTEN_ACT = '%s:%d' % (LISTEN_IP, LISTEN_ACTPORT)
     LOG_PRINT = CONFIG.getboolean('log', 'print', fallback=True)
     LOG_LEVEL = _LOGLv[min(CONFIG.getint('log', 'level', fallback=1), 3)]
     log_config = {'level': LOG_LEVEL}
     if not LOG_PRINT:
         log_config['stream'] = logging.NULL_STREAM
     logging.basicConfig(**log_config)
-    return LISTEN_GAE, LISTEN_AUTO
+    return LISTEN_AUTO, LISTEN_ACT, LISTEN_ACTTYPE
 
 def getlogger(use_print=False):
     global logging

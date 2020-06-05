@@ -2,7 +2,7 @@
 
 import logging
 from .GlobalConfig import GC
-from .ProxyHandler import AutoProxyHandler, GAEProxyHandler
+from .ProxyHandler import AutoProxyHandler, ACTProxyHandler
 from .common.util import LRUCache
 
 if GC.LISTEN_AUTH == 2:
@@ -296,12 +296,12 @@ class AutoProxyAuthHandler(ProxyAuthHandler, AutoProxyHandler):
         if self.check_auth():
             AutoProxyHandler.do_METHOD(self)
 
-class GAEProxyAuthHandler(ProxyAuthHandler, GAEProxyHandler):
+class ACTProxyAuthHandler(ProxyAuthHandler, ACTProxyHandler):
 
     def do_CONNECT(self):
         if self.check_auth():
-            GAEProxyHandler.do_CONNECT(self)
+            ACTProxyHandler.do_CONNECT(self)
 
     def do_METHOD(self):
         if self.check_auth():
-            GAEProxyHandler.do_METHOD(self)
+            ACTProxyHandler.do_METHOD(self)

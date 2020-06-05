@@ -73,8 +73,8 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
 
     fwd_timeout = GC.LINK_FWDTIMEOUT
     fwd_keeptime = GC.LINK_FWDKEEPTIME
-    listen_port = {GC.LISTEN_GAE_PORT, str(GC.LISTEN_GAE_PORT),
-                   GC.LISTEN_AUTO_PORT, str(GC.LISTEN_AUTO_PORT)}
+    listen_port = {GC.LISTEN_AUTOPORT, str(GC.LISTEN_AUTOPORT),
+                   GC.LISTEN_ACTPORT, str(GC.LISTEN_ACTPORT)}
     request_compress = GC.LINK_REQUESTCOMPRESS
 
     #可修改
@@ -549,17 +549,20 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                         return
                     #非默认规则、直连 IP
                     elif self.target or isdirect(self.host):
-                        logging.warning('%s do_DIRECT "%s %s" 没有正确响应，重试。', self.address_string(), self.command, self.url)
+                        logging.warning('%s do_DIRECT "%s %s" 没有正确响应，重试。',
+                                        self.address_string(), self.command, self.url)
                         continue
                     else:
-                        logging.warn('%s do_DIRECT "%s %s" 失败，尝试使用 "GAE" 规则。', self.address_string(), self.command, self.url)
-                        return self.go_GAE()
+                        logging.warn('%s do_DIRECT "%s %s" 失败，尝试使用 "%s" 规则。',
+                                     self.address_string(), self.command, self.url, GC.LISTEN_ACT)
+                        return self.go_TEMPACT()
                 #发生错误时关闭连接
                 if response.status >= 400:
                     noerror = False
                 #拒绝服务、非直连 IP
                 if response.status == 403 and not isdirect(self.host):
-                    logging.warn('%s do_DIRECT "%s %s" 连接被拒绝，尝试使用 "GAE" 规则。', self.address_string(response), self.command, self.url)
+                    logging.warn('%s do_DIRECT "%s %s" 连接被拒绝，尝试使用 "%s" 规则。',
+                                 self.address_string(response), self.command, self.url, GC.LISTEN_ACT)
                     return self.go_GAE()
                 response, data, need_chunked, ws_ok = self.handle_response_headers(response)
                 headers_sent = True
@@ -572,8 +575,10 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 return
             except CertificateError as e:
                 noerror = False
-                logging.warn('%s do_DIRECT "%s %s" 证书验证失败，返回 522', self.address_string(e), self.command, self.url)
-                c = message_html('522 证书错误', '无法验证 %s 的证书：' % self.host, e.args[1]).encode()
+                logging.warn('%s do_DIRECT "%s %s" 证书验证失败，返回 522',
+                             self.address_string(e), self.command, self.url)
+                c = message_html('522 证书错误', '无法验证 %s 的证书：'
+                                 % self.host, e.args[1]).encode()
                 self.write(b'HTTP/1.1 522 Certificate Error\r\n'
                            b'Content-Type: text/html\r\n'
                            b'Content-Length: %d\r\n\r\n' % len(c))
@@ -586,13 +591,16 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 #连接重置
                 if e.args[0] in reset_errno:
                     if isdirect(self.host):
-                        logging.warning('%s do_DIRECT "%s %s" 连接被重置，重试。', self.address_string(e), self.command, self.url)
+                        logging.warning('%s do_DIRECT "%s %s" 连接被重置，重试。',
+                                        self.address_string(e), self.command, self.url)
                         continue
                     else:
-                        logging.warning('%s do_DIRECT "%s %s" 连接被重置，尝试使用 "GAE" 规则。', self.address_string(e), self.command, self.url)
-                        return self.go_GAE()
+                        logging.warning('%s do_DIRECT "%s %s" 连接被重置，尝试使用 "%s" 规则。',
+                                        self.address_string(e), self.command, self.url, GC.LISTEN_ACT)
+                        return self.go_TEMPACT()
                 elif e.args[0] not in bypass_errno:
-                    logging.warning('%s do_DIRECT "%s %s" 失败：%r', self.address_string(response or e), self.command, self.url, e)
+                    logging.warning('%s do_DIRECT "%s %s" 失败：%r',
+                                    self.address_string(response or e), self.command, self.url, e)
                     raise e
             finally:
                 if self.ws:
@@ -983,13 +991,15 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         if remote is None:
             if not limited and not isdirect(host):
                 if self.command == 'CONNECT':
-                    logging.warning('%s%s do_FORWARD 连接远程主机 (%r, %r) 失败，尝试使用 "FAKECERT & GAE" 规则。', self.address_string(), hostip or '', host, port)
-                    self.go_FAKECERT_GAE()
+                    logging.warning('%s%s do_FORWARD 连接远程主机 (%r, %r) 失败，尝试使用 "FAKECERT & %s" 规则。',
+                                    self.address_string(), hostip or '', host, port, GC.LISTEN_ACT)
+                    self.go_FAKECERT_TEMPACT()
                 elif self.headers.get('Upgrade') == 'websocket':
                     logging.warning('%s%s do_FORWARD websocket 连接远程主机 (%r, %r) 失败。', self.address_string(), hostip or '', host, port)
                 else:
-                    logging.warning('%s%s do_FORWARD 连接远程主机 (%r, %r) 失败，尝试使用 "GAE" 规则。', self.address_string(), hostip or '', host, port)
-                    self.go_GAE()
+                    logging.warning('%s%s do_FORWARD 连接远程主机 (%r, %r) 失败，尝试使用 %r 规则。',
+                                    self.address_string(), hostip or '', host, port, GC.LISTEN_ACT)
+                    self.go_TEMPACT()
             return
         remote.settimeout(self.fwd_timeout)
         if self.command == 'CONNECT':
@@ -1270,7 +1280,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             self.write(b'Content-Length: 0\r\n\r\n')
         logging.warning('%s "%s %s" 已经被拦截', self.address_string(), self.command, self.url or self.host)
 
-    def _set_temp_GAE(self):
+    def _set_temp_ACT(self):
         host = 'http%s://%s' % ('s' if self.ssl else '', self.host)
         #最近是否失败（缓存设置超时两分钟）
         try:
@@ -1279,7 +1289,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 self.badhost[host] |= 4
             elif f == 4:
                 if set_temp_action(host):
-                    logging.warning('将 %r 加入 "GAE" 规则%s。', host, GC.LINK_TEMPTIME_S)
+                    logging.warning('将 %r 加入 %r 规则%s。', host, GC.LISTEN_ACT, GC.LINK_TEMPTIME_S)
                 self.badhost[host] |= 8
         except KeyError:
             self.badhost[host] = 4
@@ -1298,11 +1308,11 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         except KeyError:
             self.badhost[host] = 1
 
-    def go_GAE(self):
-        if self.command not in self.gae_fetcmds:
+    def go_TEMPACT(self):
+        if GC.LISTEN_ACT == 'GAE' and self.command not in self.gae_fetcmds:
             return self.go_BAD()
-        self._set_temp_GAE()
-        self.action = 'do_GAE'
+        self._set_temp_ACT()
+        self.action = GC.LISTEN_ACTNAME
         self.do_action()
 
     def go_FAKECERT(self):
@@ -1310,16 +1320,17 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         self.action = 'do_FAKECERT'
         self.do_action()
 
-    def go_FAKECERT_GAE(self):
+    def go_FAKECERT_TEMPACT(self):
         self.path = '/'
-        self._set_temp_GAE()
-        self._set_temp_GAE()
+        self._set_temp_ACT()
+        self._set_temp_ACT()
         self.go_FAKECERT()
 
     def go_BAD(self):
         self.close_connection = False
         logging.warn('%s request "%s %s" 失败, 返回 404', self.address_string(), self.command, self.url)
-        c = message_html('404 无法访问', '无法访问', '不能 "%s %s"<p>无论是通过 GAE 还是 DIRECT 都无法访问成功' % (self.command, self.url)).encode()
+        c = message_html('404 无法访问', '无法访问', '不能 "%s %s"<p>无论是通过 %s 还是 DIRECT 都无法访问成功'
+                         % (self.command, GC.LISTEN_ACT, self.url)).encode()
         self.write(b'HTTP/1.0 404\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n' % len(c))
         self.write(c)
 
@@ -1463,7 +1474,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         else:
             return '%s%s:%s' % (self.address_str, xip0, xip1)
 
-class GAEProxyHandler(AutoProxyHandler):
+class ACTProxyHandler(AutoProxyHandler):
 
     def do_CONNECT(self):
         #处理 CONNECT 请求，使用伪造证书进行连接
@@ -1473,11 +1484,11 @@ class GAEProxyHandler(AutoProxyHandler):
         self.do_action()
 
     def do_METHOD(self):
-        #处理其它请求，转发到 GAE 代理
+        #处理其它请求，转发到活动代理
         if self._do_METHOD():
             return
-        self.action = 'do_GAE'
+        self.action = GC.LISTEN_ACTNAME
         self.do_action()
 
-    def go_GAE(self):
+    def go_TEMPACT(self):
         self.go_BAD()
