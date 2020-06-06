@@ -95,6 +95,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
     url_parts = None
     conaborted = False
     action = ''
+    target = None
 
     def __init__(self, request, client_address, server):
         self.client_address = client_address
@@ -563,7 +564,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 if response.status == 403 and not isdirect(self.host):
                     logging.warn('%s do_DIRECT "%s %s" 连接被拒绝，尝试使用 "%s" 规则。',
                                  self.address_string(response), self.command, self.url, GC.LISTEN_ACT)
-                    return self.go_GAE()
+                    return self.go_TEMPACT()
                 response, data, need_chunked, ws_ok = self.handle_response_headers(response)
                 headers_sent = True
                 if ws_ok:
