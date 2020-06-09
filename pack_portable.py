@@ -68,7 +68,7 @@ def set_path():
         eggs_cache = os.path.join(home, 'Eggs-Cache')
         if prompt:
             sys.ps1 = prompt + ' >>> '
-            sys.ps2 = '.' * (len(prompt) + 4) + ' '
+            sys.ps2 = ' ' * len(prompt) + ' ... '
     else:
         if not (py_dir == sys.prefix == sys.base_prefix == sys.exec_prefix == sys.base_exec_prefix):
             set_prefix()
@@ -135,6 +135,8 @@ set PYTHONNOUSERSITE=
 set PYTHONHOME=%VIRTUAL_ENV%
 set _PYTHON_PROJECT_BASE=%VIRTUAL_ENV%
 set PATH=%VIRTUAL_ENV%Scripts;{exe_dir};%VIRTUAL_ENV%;%PATH%
+if not defined PROMPT set PROMPT=$P$G
+set PROMPT=({prompt}) %PROMPT%
 echo on
 """
 

@@ -238,11 +238,10 @@ def main():
                     error = '\n'.join(displaystr)
                     logging.warning(error)
                     ctypes.windll.user32.MessageBoxW(None, error, title, 48)
-        try:
-            GC.GAE_APPIDS.remove('gotox')
-        except:
-            pass
-        if GC.LISTEN_ACT == 'GAE':
+        if GC.LISTEN_ACT == 'CFW':
+            if not GC.CFW_WORKER:
+                logging.critical('请编辑 %r 文件，添加可用的 CFWorker 域名到 [cfw] 配置中，否则无法使用 CFW 代理！', GC.CONFIG_FILENAME)
+        elif GC.LISTEN_ACT == 'GAE':
             logging.critical('GAE 代理已弃用，用户需自行完成服务端部署！')
             if not GC.GAE_APPIDS:
                 logging.critical('请编辑 %r 文件，添加可用的 AppID 到 [gae] 配置中，否则无法使用 GAE 代理！', GC.CONFIG_FILENAME)

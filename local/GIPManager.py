@@ -1054,10 +1054,12 @@ ip_manager_gae = IPManager(ip_source_gae)
 ip_manager_gws = IPManager(ip_source_gws)
 
 test_ip_gae = ip_manager_gae.test_ip_gae
+test_ip_gws = ip_manager_gae.test_ip_gws
 
 def test_ip_type(ip):
     _, _, type = ip_manager_gae.get_ip_info(ip)
-    if type is 'gae' and not test_ip_gae(ip):
+    if type is 'gae' and not test_ip_gae(ip) or \
+            type is 'gws' and not test_ip_gws(ip):
         type = None
     return type
 
@@ -1072,23 +1074,37 @@ def stop_ip_check():
 def fixed_iplist():
     list_gae = []
     list_gws = []
+    list_unknown = []
+    cnt_gae = 0
+    cnt_gws = 0
     while True:
-        sleep(3600)
         for ip in ip_source.ip_set_used:
-            type = None
             if ip in ip_source_gae.ip_set:
                 type = 'gae'
-            if not type:
-                _, _, type = ip_manager_gae.get_ip_info(ip)
+            elif ip in ip_source_gws.ip_set:
+                type = 'gws'
+            else:
+                type = test_ip_type(ip)
             if type is 'gae':
                 ip_source_gae.ip_set.add(ip)
                 list_gae.append(ip)
-            else:
+            elif type is 'gws':
+                ip_source_gws.ip_set.add(ip)
                 list_gws.append(ip)
-        ip_manager_gae.logger.test('更新固定 IP 列表（共 %d 个 IP），'
-                                   '包含 GAE %d 个。',
-                len(ip_source.ip_set_used), len(list_gae))
-        GC.IPLIST_MAP['google_gae'][:] = list_gae
-        GC.IPLIST_MAP['google_gws'][:] = list_gws
+            else:
+                list_unknown.append(ip)
+        if len(list_gae) > cnt_gae:
+            ip_source_gae.save_source(True)
+            cnt_gae = len(list_gae)
+        if len(list_gws) > cnt_gws:
+            ip_source_gws.save_source(True)
+            cnt_gws = len(list_gws)
+        ip_manager_gae.logger.test('更新固定 GIP 列表（共 %d 个 IP），'
+                                   '包含 GAE %d 个，GWS %d 个。',
+                len(ip_source.ip_set_used), cnt_gae, cnt_gws)
+        GC.IPLIST_MAP['google_gae'][:] = list_gae + list_unknown
+        GC.IPLIST_MAP['google_gws'][:] = list_gws + list_unknown
         list_gae.clear()
         list_gws.clear()
+        list_unknown.clear()
+        sleep(3600)

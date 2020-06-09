@@ -38,7 +38,9 @@ def set_dns(host, iporname):
         else:
             return
     #尝试解析可能的域名
-    if isinstance(iporname, str) and iporname.find('.') > 0 and not iporname.startswith('cdn_'):
+    if isinstance(iporname, str) and \
+            iporname.find('.') > 0 and \
+            not iporname.startswith('cdn_'):
         _host = iporname.lower()
         if dns_resolve(_host):
             return _host
@@ -155,7 +157,7 @@ class doh_params:
         else:
             iporname, profile = None, None
         if iporname is None and host not in dns:
-            logging.warning('无法找到 DoH 域名 %r 的自定义 IP 列表，尝试使用系统 DNS 设置解析。' % host)
+            logging.warning('无法找到 DoH 域名 %r 的自定义 IP 列表，尝试使用系统 DNS 设置解析。', host)
             dns[host] = dns_system_resolve(host)
         self.hostname = set_dns(host, iporname)
         if self.hostname is None:
@@ -190,9 +192,11 @@ def _https_resolve(params):
             else:
                 raise DoHError((response.status, data))
     except DoHError as e:
-        logging.error('%s _https_resolve %r 失败：%r', address_string(response), qname, e)
+        logging.error('%s _https_resolve %r 失败：%r',
+                      address_string(response), qname, e)
     except Exception as e:
-        logging.debug('%s _https_resolve %r 失败：%r', address_string(response), qname, e)
+        logging.debug('%s _https_resolve %r 失败：%r',
+                      address_string(response), qname, e)
     finally:
         if response:
             response.close()
@@ -366,7 +370,8 @@ def get_dnsserver_list():
             return re.findall(r'(?m)^nameserver\s+(\S+)', fp.read())
     else:
         import sys
-        logging.warning('get_dnsserver_list 失败：不支持 "%s-%s" 平台', sys.platform, os.name)
+        logging.warning('get_dnsserver_list 失败：不支持 "%s-%s" 平台',
+                        sys.platform, os.name)
         return []
 
 local_dnsservers = set(ip for ip in get_dnsserver_list() if isip(ip))
@@ -385,12 +390,14 @@ def dns_system_resolve(host, qtypes=qtypes):
         if local_dnsservers:
             iplist = _dns_remote_resolve(host, local_dnsservers, timeout=2, qtypes=qtypes)
         # getaddrinfo 在 Windows 下无法并发，其它系统未知
-        elif AAAA not in qtypes:
-            iplist = list(set(socket.gethostbyname_ex(host)[-1]) - GC.DNS_BLACKLIST)
-        elif A in qtypes:
-            iplist = list(set(ipaddr[4][0] for ipaddr in socket.getaddrinfo(host, None)) - GC.DNS_BLACKLIST)
         else:
-            iplist = list(set(ipaddr[4][0] for ipaddr in socket.getaddrinfo(host, None, socket.AF_INET6)) - GC.DNS_BLACKLIST)
+            if AAAA not in qtypes:
+                iplist = socket.gethostbyname_ex(host)[-1]
+            elif A in qtypes:
+                iplist = [ipaddr[4][0] for ipaddr in socket.getaddrinfo(host, None)]
+            else:
+                iplist = [ipaddr[4][0] for ipaddr in socket.getaddrinfo(host, None, socket.AF_INET6)]
+            iplist = list(set(iplist) - GC.DNS_BLACKLIST)
     except:
         iplist = None
     cost = int((time() - start) * 1000)

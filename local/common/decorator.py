@@ -3,6 +3,7 @@
 import time
 import _thread
 import threading
+from functools import partial
 
 def dummy(*args, **kwargs): pass
 
@@ -20,25 +21,23 @@ def clean_after_invoked(func):
 
     return newfunc
 
-def make_sole_decorator(block=False):
+def sole_invoked(func=None, blocking=False):
 
-    def sole_decorator(func):
-        running = False
+    def newfunc(*args, **kwargs):
+        nonlocal result
+        if lock.acquire(blocking=blocking):
+            try:
+                result = func(*args, **kwargs)
+            finally:
+                lock.release()
+        return result
+
+    if callable(func):
         result = None
-        def newfunc(*args, **kwargs):
-            nonlocal running, result
-            while block and running:
-                time.sleep(0.1)
-            if not running:
-                running = True
-                try:
-                    result = func(*args, **kwargs)
-                finally:
-                    running = False
-            return result
+        lock = threading.Lock()
         return newfunc
-
-    return sole_decorator
+    else:
+        return partial(sole_invoked, blocking=blocking)
 
 _lock_decorator_cache = {}
 
