@@ -109,7 +109,7 @@ def isipv6(ip, AF_INET6=socket.AF_INET6, inet_pton=socket.inet_pton):
     if ':' not in ip:
         return False
     try:
-        inet_pton(AF_INET6, ip)
+        inet_pton(AF_INET6, ip.strip('[]'))
     except:
         return False
     else:

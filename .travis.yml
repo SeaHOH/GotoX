@@ -5,6 +5,9 @@ language: python
 python:
   - 3.6
 
+install:
+  - pip install pycurl
+
 git:
   depth: 1
 
@@ -14,13 +17,11 @@ addons:
       - p7zip-full
 
 script:
-  - export PYTHON_VERSION=3.8.3
+  - export PYTHON_VERSION=3.8.4
   - export PYTHON_IMPL_VERSION=cp38
   - export RELEASE_VERSION=$(grep -oP '[0-9\.ab]+' local/__init__.py)
 
 before_deploy:
-  - pip install pycurl
-
   - curl -L -o cert/cacerts/mozilla.pem https://curl.haxx.se/ca/cacert.pem
   - curl -L -o cert/cacerts/google.pem https://pki.google.com/roots.pem
   - python launcher/buildipdb.py -u -d --17mon
@@ -59,14 +60,14 @@ before_deploy:
 
 deploy:
   provider: releases
-  api_key:
-    secure: ${DEPLOY_TOKEN}
+  api_key: ${DEPLOY_TOKEN}
   file_glob: true
   file: 
     - "*.zip"
     - "*.7z"
     - "*sum"
   skip_cleanup: true
+  draft: true
   on:
     tags: true
     repo: SeaHOH/GotoX

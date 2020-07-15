@@ -12,7 +12,7 @@ import pycurl
 from io import BytesIO
 from configparser import ConfigParser
 from distutils.version import StrictVersion
-from distutils.versionpredicate import VersionPredicate
+from distutils.versionpredicate import VersionPredicate, split_provision
 
 
 sitecustomize = b'''\
@@ -401,6 +401,10 @@ StrictVersion.version_re = re.compile(r'^(\d+) \. (\d+) (\. (\d+))? (\.?[a-z]+(\
 
 def extract(project, version):
     data = download(pypi_api(project), JSON)
+    try:
+        project_sub, version = split_provision(version)
+    except ValueError:
+        project_sub = None
     if version:
         version = VersionPredicate(f'{project}({version})')
         if version.pred:
@@ -427,8 +431,10 @@ def extract(project, version):
             if dist['python_version'] == 'source':
                 dist_type = dist['packagetype']
                 break
-    url =dist['url']
+    url = dist['url']
     filename = fn = dist['filename']
+    if project_sub:
+        filename = fn = filename.replace(project, project_sub)
     while True:
         fn = fn.rpartition('.')[0]
         if not fn.endswith('.tar'):
@@ -439,14 +445,18 @@ def extract(project, version):
                 break
     sum = '|'.join(('sha256', dist['digests']['sha256']))
     filepath = download(url, filename, sum)
-    if filepath.endswith('tar.gz'):
+    if filepath.endswith(('tar.gz', 'tar.xz', 'tar.bz2')):
         os.system(f'{_7z} e {filepath} {to_null}')
         os.remove(filepath)
-        filepath = filepath[:-3]
+        filepath = filepath.rpartition('.')[0]
     if filepath.endswith(('whl', 'egg', 'tar', 'zip')):
-        os.system(f'{_7z} x {filepath} {to_null}')
+        os.system(f'{_7z} x -y {filepath} {to_null}')
+        try:
+            os.remove('@PaxHeader')
+        except FileNotFoundError:
+            pass
         os.remove(filepath)
-    if filepath.endswith('tar'):
+    if filepath.endswith(('tar', 'zip')):
         # This is source code, may require a complicated installation process.
         # But in most cases, just pack it is okay.
         name = filepath[:-4]
@@ -460,14 +470,26 @@ def extract(project, version):
                 new = os.path.join(dirpath, updir, dirname)
                 os.rename(old, new)
             for filename in filenames:
-                if filename.startswith('setup.') or \
-                        filename.endswith('.sh'):
+                if filename.startswith(('setup.', 'fuzz.')) or \
+                        not filename.endswith('.py'):
                     continue
                 old = os.path.join(dirpath, filename)
                 new = os.path.join(dirpath, updir, filename)
                 os.rename(old, new)
         shutil.rmtree(filepath[:-4])
-    return filepath.rpartition('.')[0]
+    name = filepath.rpartition('.')[0]
+    if project_sub:
+        for dirpath, dirnames, filenames in os.walk('.'):
+            for dirname in dirnames:
+                if dirname != project_sub:
+                    filepath = os.path.join(dirpath, dirname)
+                    shutil.rmtree(filepath, True)
+            for filename in filenames:
+                if not filename.endswith('.egg'):
+                    filepath = os.path.join(dirpath, filename)
+                    os.remove(filepath)
+            break
+    return name
 
 def package(name):
     if not name:

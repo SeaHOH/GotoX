@@ -54,8 +54,11 @@ def start_proxyserver():
         start_new_thread(AutoProxy.serve_forever, ())
         start_new_thread(GAEProxy.serve_forever, ())
     except SystemError as e:
-        if '(libev) select: Unknown error' in repr(e):
-            wait_exit('如果出现此错误请告诉作者，谢谢！\nhttps://github.com/SeaHOH/GotoX/issues', exc_info=True)
+        if 'select: Unknown error' in repr(e):
+            logging.exception('Select loop error: %s', e)
+            wait_exit('如果出现此错误请告诉作者，谢谢！\n'
+                      'https://github.com/SeaHOH/GotoX/issues',
+                      exc_info=True)
     AutoProxyHandler.bufsize = AutoProxy.socket.getsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF)
 
 def stop_proxyserver():

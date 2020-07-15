@@ -486,7 +486,10 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 self.response_length = response.length or 0
             #明确设置 Accept-Ranges
             if response_headers.get('Accept-Ranges') != 'bytes':
-                response_headers['Accept-Ranges'] = 'none'
+                if response.status == 206:
+                    response_headers['Accept-Ranges'] = 'bytes'
+                else:
+                    response_headers['Accept-Ranges'] = 'none'
             #解压缩请求不支持的编码
             ce = response_headers.get('Content-Encoding')
             if ce:
