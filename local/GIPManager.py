@@ -619,10 +619,10 @@ class IPPoolSource:
         m = getattr(self, type or self.type, self)
         m.ip_list_ed.appendleft(ip)
 
-    def save_source(self):
+    def save_source(self, force=False):
         now = time()
         self.save_cmd_times += 1
-        if self.save_cmd_times >= self.save_per_save_cmd or \
+        if force or self.save_cmd_times >= self.save_per_save_cmd or \
                 now - self.last_save_time > self.save_interval:
             self.save_cmd_times = 0
             self._save_source(self.ip_set | self.ip_set_block, self.ip_file)

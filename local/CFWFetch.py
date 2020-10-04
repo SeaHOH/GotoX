@@ -65,7 +65,9 @@ def check_response(response, host):
         if response.headers.get('Server') == 'cloudflare':
             if response.headers.get('X-Fetch-Status'):  # ok / fail
                 return 'ok'
-            elif response.status == 429:  # a burst rate limit of 1000 requests per minute.
+            elif response.status == 429:
+                # https://developers.cloudflare.com/workers/about/limits/
+                # a burst rate limit of 1000 requests per minute.
                 if lock.acquire(timeout=1):
                     try:
                         logging.warning('CFW %r 超限，暂停使用 30 秒', cfw_params.host)
@@ -74,6 +76,8 @@ def check_response(response, host):
                         lock.release()
             elif response.status == 302 or 400 <= response.status < 500 or \
                      response.status == 530 and dns_resolve(host):
+                 # https://support.cloudflare.com/hc/zh-cn/articles/360029779472-Cloudflare-1XXX-错误故障排除
+                 # https://support.cloudflare.com/hc/zh-cn/articles/115003011431-Cloudflare-5XX-错误故障排除
                  with lock:
                     try:
                         cfw_iplist.remove(response.xip[0])

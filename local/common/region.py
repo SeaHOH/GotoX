@@ -110,7 +110,7 @@ class IPv4Database:
     #    | b'end' and update info |      <- end verify
     #    +------------------------+
     def __init__(self, filename):
-        from struct import unpack
+        from struct import unpack, iter_unpack
         with open(filename, 'rb') as f:
             #读取 IP 范围数据长度 BE Ulong -> int
             data_len, = unpack('>L', f.read(4))
@@ -124,11 +124,12 @@ class IPv4Database:
             #读取更新信息
             self.update = f.read().decode('ascii')
         #格式化并缓存索引数据
-        #使用 struct.unpack 一次性分割数据效率更高
         #每 4 字节为一个索引范围 fip：BE short -> int，对应 IP 范围序数
-        self.index = unpack('>%dh' % (224 * 2), index)
+        #self.index = unpack('>%dh' % (224 * 2), index)
+        self.index = [i for i, in iter_unpack('>h', index)]
         #每 8 字节对应一段直连 IP 范围和一段非直连 IP 范围
-        self.data = unpack('4s' * (data_len // 4), data)
+        #self.data = unpack('4s' * (data_len // 4), data)
+        self.data = [d for d, in iter_unpack('4s', data)]
 
     def __contains__(self, ip, inet_aton=socket.inet_aton):
         #转换 IP 为 BE Uint32，实际类型 bytes

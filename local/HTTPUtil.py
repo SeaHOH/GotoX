@@ -993,6 +993,7 @@ gws_ciphers = (
     'RSA+AESGCM:'
     'RSA+HIGH:'
     'HIGH:MEDIUM:'
+    'TLSv1.2:'
     '!AES128-GCM-SHA256:'
     '!ECDHE-RSA-AES128-GCM-SHA256:'
     '!ECDHE-RSA-AES128-SHA:'

@@ -462,11 +462,15 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         log =  logging.info
         if self.action == 'do_CFW':
             response_headers = {k: v for k, v in response_headers.items()
-                                    if not k.startswith('Cf-')}
+                                if not (k.startswith('Cf-') or
+                                        k in ('Nel', 'Report-To', 'Server'))}
             if response_headers.pop('X-Fetch-Status', None) != 'ok':
                 log = logging.warning
             else:
-                del response_headers['Server']
+                sheaders = tuple((k[7:], v) for k, v in response_headers.items()
+                                 if k.startswith('Source-'))
+                for k, v in sheaders:
+                    response_headers.setdefault(k, v)
         cookies = response.headers.get_all('Set-Cookie')
         if cookies and self.action == 'do_CFW':
             cookies = [cookie for cookie in cookies if '.workers.dev' not in cookie]

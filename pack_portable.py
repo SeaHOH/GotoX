@@ -12,7 +12,7 @@ import pycurl
 from io import BytesIO
 from configparser import ConfigParser
 from distutils.version import StrictVersion
-from distutils.versionpredicate import VersionPredicate, split_provision
+from distutils.versionpredicate import VersionPredicate
 
 
 sitecustomize = b'''\
@@ -395,27 +395,26 @@ if not os.path.exists('site-packages'):
 os.chdir('site-packages')
 
 stable_sp = True
-NOTSTABLE = re.compile('[a-z]').search
-StrictVersion.version_re = re.compile(r'^(\d+) \. (\d+) (\. (\d+))? (\.?[a-z]+(\d+))?$',
-                            re.VERBOSE | re.ASCII)
+StrictVersion.version_re = re.compile(r'^(\d+)\.(\d+)(\.(\d+))?(?:\.?([a-z]+)(\d+))?$')
 
 def extract(project, version):
     data = download(pypi_api(project), JSON)
-    try:
-        project_sub, version = split_provision(version)
-    except ValueError:
+    if version and version[0] not in '<>!=':
+        project_sub, version = f'{version} '.split(' ', 1)
+    else:
         project_sub = None
-    if version:
-        version = VersionPredicate(f'{project}({version})')
-        if version.pred:
-            releases = sorted(data['releases'].keys(),
-                              key=lambda r: StrictVersion(r), reverse=True)
-            for release in releases:
-                if stable_sp and NOTSTABLE(release):
-                    continue
-                if version.satisfied_by(release):
-                    dists = data['releases'][release]
-                    break
+    if version.strip():
+        version = f'({version})'
+    version = VersionPredicate(f'{project}{version}')
+    if version.pred:
+        releases = sorted(((StrictVersion(key), key) for key in data['releases']),
+                          key=lambda r: r[0], reverse=True)
+        for release, key in releases:
+            if stable_sp and release.prerelease:
+                continue
+            if version.satisfied_by(release):
+                dists = data['releases'][key]
+                break
     else:
         dists = data['urls']
     dist_type = None
