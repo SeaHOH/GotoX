@@ -135,6 +135,7 @@ class GC:
     if CFW_WORKER.find('.') < 1:
         CFW_WORKER = None
     CFW_PASSWORD = CONFIG.get('cfw', 'password').strip()
+    CFW_EXPLODEIP = CONFIG.getboolean('cfw', 'explodeip')
     CFW_IPLIST = CONFIG.getlist('cfw', 'iplist') or None
     CFW_DECODEEMAIL = CONFIG.getboolean('cfw', 'decodeemail', fallback=False)
     CFW_TIMEOUT = max(CONFIG.getint('cfw', 'timeout', fallback=10), 3)

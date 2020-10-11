@@ -55,8 +55,11 @@ def set_dns():
                 # https://www.cloudflare.com/ips/
                 # 百度云加速与 CloudFlare 合作节点，保证可用
                 iplist = ['162.159.208.0', '162.159.209.0', '162.159.210.0', '162.159.211.0']
-        # 每个 IP 会自动扩展为 256 个，即填满最后 8 bit 子网
-        cfw_iplist[:] = sum([explode_ip(ip) for ip in iplist], [])
+        if GC.CFW_EXPLODEIP:
+            # 每个 IP 会自动扩展为 256 个，即填满最后 8 bit 子网
+            cfw_iplist[:] = sum([explode_ip(ip) for ip in iplist], [])
+        else:
+            cfw_iplist[:] = iplist
         random.shuffle(cfw_iplist)
     dns.set(cfw_params.hostname, cfw_iplist, expire=False)
 
