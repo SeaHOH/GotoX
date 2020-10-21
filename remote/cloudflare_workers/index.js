@@ -2,7 +2,7 @@
 
 const about = `
 /******************************************************************************
- *  GotoX remote server 0.4 in CloudFlare Workers
+ *  GotoX remote server 0.5 in CloudFlare Workers
  *  https://github.com/SeaHOH/GotoX
  *  The MIT License - Copyright (c) 2020 SeaHOH
  *
@@ -111,16 +111,20 @@ function parseFetch(request, ws) {
  *   <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="543931142127353935313e352e7a373b39">[email&#160;protected]</a>
  *   <a href="/cdn-cgi/l/email-protection#5f323a1f2a2c3e323e3a353e25713c3032"><i class="svg-icon email"></i></a>
  */
-function cfDecodeEmail(match, encoded) {
+function cfDecodeEmail(match, origin, encoded) {
     let email = '', r = parseInt(encoded.substring(0, 2), 16)
     for (let i = 2; encoded.length - i; i += 2)
         email += String.fromCharCode(parseInt(encoded.substring(i, i + 2), 16) ^ r)
-    // 无法判断原始文本是否为超链接，统一保留超链接
-    return match.replace('"/cdn-cgi/l/email-protection', `"mailto:${email}`)
-                .replace(/#[a-f\d]+"/i, '"')
-                .replace(' class="__cf_email__"', '')
-                .replace(/ data-cfemail="[a-f\d]+"/i, '')
-                .replace(/\[email.+?protected\]/i, email)
+    // class="__cf_email__" 和 data-cfemail 原始文本为文本
+    // email-protection# 为超链接
+    try {
+        email = decodeURIComponent(escape(email))
+    } catch (e) {}
+    if (origin == 'email-protection#') {
+        email = email.replace(/"/g, '&quot;')
+        return match.replace(/[^"]+email-protection#[^"]+/, `mailto:${email}`)
+    }
+    return email
 }
 
 /*
@@ -142,7 +146,7 @@ async function handleRequest(request) {
                 const response = await fetch(await readRequest(request, fetchOptions), {
                     redirect: fetchOptions.redirect ? 'follow' : 'manual',
                     cf: {
-                        scrapeShield: false,
+                        scrapeShield: false,  // 设置无效果
                         polish: 'off',
                         minify: {javascript: false, css: false, html: false},
                         mirage: false,
@@ -159,7 +163,7 @@ async function handleRequest(request) {
                     const ct = headers.has('Content-Type') ? headers.get('Content-Type') : ''
                     if (ct.includes('text/html') || ct.includes('application/xhtml+xml')) {
                         const html = await response.text()
-                        body = html.replace(/<a .+?(?:email-protection#|data-cfemail=")([a-f\d]+)".+?<\/a>/gi, cfDecodeEmail)
+                        body = html.replace(/<a .+?(email-protection#|data-cfemail=")([a-f\d]+)".+?<\/a>/gi, cfDecodeEmail)
                     }
                 }
                 return new Response(body, {
