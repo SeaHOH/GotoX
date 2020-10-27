@@ -58,10 +58,16 @@ const about = `
  *
  *      Those headers should be removed in local server:
  *
- *        "Expect-CT" not allowed, we use self-sign CA in local server
+ *        "X-Fetch-Status" is private/self use
+ *        "Expect-CT" is not allowed, we use self-sign CA in local server
+ *        "Nel", "Report-To" are not allowed, this is a proxy server
  *        "Set-Cookie" which includes "domain=.*.workers.dev"
  *        "Server" is always "cloudflare"
- *        "CF-" which name starts with it
+ *        "CF-", "Source-" which name starts with it
+ *
+ *      Those headers should be added in local server:
+ *
+ *        <Source> of response header "Source-<Source>" which not in response
  *
  ******************************************************************************/
 `
@@ -103,29 +109,44 @@ function parseFetch(request, ws) {
 }
 
 /*
- * Replacement function to decode Scrape Shield Email Address Obfuscation
- * @param {String} match
- * @param {String} encoded
+ * Functions of object to decode Scrape Shield Email Address Obfuscation
+ * function cfEmail.decode
+ * @param {String} html
  * @return {String}
  * e.g.
  *   <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="543931142127353935313e352e7a373b39">[email&#160;protected]</a>
- *   <a href="/cdn-cgi/l/email-protection#5f323a1f2a2c3e323e3a353e25713c3032"><i class="svg-icon email"></i></a>
+ *   <a href="/cdn-cgi/l/email-protection#5f323a1f2a2c3e323e3a353e25713c3032"><i class="svg-icon email">[email&#160;protected]</i></a>
  */
-function cfDecodeEmail(match, origin, encoded) {
-    let email = '', r = parseInt(encoded.substring(0, 2), 16)
-    for (let i = 2; encoded.length - i; i += 2)
-        email += String.fromCharCode(parseInt(encoded.substring(i, i + 2), 16) ^ r)
-    // class="__cf_email__" 和 data-cfemail 原始文本为文本
-    // email-protection# 为超链接
-    try {
-        email = decodeURIComponent(escape(email))
-    } catch (e) {}
-    if (origin == 'email-protection#') {
-        email = email.replace(/"/g, '&quot;')
-        return match.replace(/[^"]+email-protection#[^"]+/, `mailto:${email}`)
+const cfEmail = {
+    reLink: /<[aA] .+?(email-protection#)([a-f\d]+).+?<\/[aA]>/g,
+    reLinkSub: /[^"]+email-protection#[^"]+/,
+    reText: /<[^<]+(data-cfemail=")([a-f\d]+)[^>]+>[^>]+>/g,
+    decodeEmail: function (match, type, encoded) {
+        let email = '', r = parseInt(encoded.substring(0, 2), 16)
+        for (let i = 2; encoded.length - i; i += 2)
+            email += String.fromCharCode(parseInt(encoded.substring(i, i + 2), 16) ^ r)
+        // class="__cf_email__" 和 data-cfemail 原始文本为文本
+        // email-protection# 为超链接
+        try {
+            email = decodeURIComponent(escape(email))
+        } catch (e) {}
+        if (type == 'email-protection#') {
+            email = email.replace(/"/g, '&quot;')
+            return match.replace(this.reLinkSub, `mailto:${email}`)
+        }
+        return email
+    },
+    decode: function (html) {
+        return html.replace(this.reText, this.decodeEmail)
+                   .replace(this.reLink, this.decodeEmail)
+    },
+    bindAll: function() {
+        for (let key in this)
+            if (typeof this[key] === 'function')
+                this[key] = this[key].bind(this)
     }
-    return email
 }
+cfEmail.bindAll()
 
 /*
  * Main request handler
@@ -163,7 +184,7 @@ async function handleRequest(request) {
                     const ct = headers.has('Content-Type') ? headers.get('Content-Type') : ''
                     if (ct.includes('text/html') || ct.includes('application/xhtml+xml')) {
                         const html = await response.text()
-                        body = html.replace(/<a .+?(email-protection#|data-cfemail=")([a-f\d]+)".+?<\/a>/gi, cfDecodeEmail)
+                        body = cfEmail.decode(html)
                     }
                 }
                 return new Response(body, {
