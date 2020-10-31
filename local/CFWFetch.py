@@ -63,13 +63,25 @@ def set_dns():
         random.shuffle(cfw_iplist)
     dns.set(cfw_params.hostname, cfw_iplist, expire=False)
 
+def remove_badip(ip):
+    with lock:
+        try:
+            cfw_iplist.remove(ip)
+            return True
+        except:
+            pass
+
 def check_response(response, host):
     if response:
         if response.headers.get('Server') == 'cloudflare':
-            if response.headers.get('X-Fetch-Status'):  # ok / fail
+            # https://support.cloudflare.com/hc/zh-cn/articles/115003014512-4xx-客户端错误
+            # https://support.cloudflare.com/hc/zh-cn/articles/115003011431-Cloudflare-5XX-错误故障排除
+            # https://support.cloudflare.com/hc/zh-cn/articles/360029779472-Cloudflare-1XXX-错误故障排除
+            if response.headers.get('X-Fetch-Status') or \
+                    response.status in (403, 414) or response.status >= 500:
                 return 'ok'
             elif response.status == 429:
-                # https://developers.cloudflare.com/workers/about/limits/
+                # https://developers.cloudflare.com/workers/platform/limits#request
                 # a burst rate limit of 1000 requests per minute.
                 if lock.acquire(timeout=1):
                     try:
@@ -77,24 +89,9 @@ def check_response(response, host):
                         sleep(30)
                     finally:
                         lock.release()
-            elif response.status == 302 or 400 <= response.status < 500 or \
-                     response.status == 530 and dns_resolve(host):
-                 # https://support.cloudflare.com/hc/zh-cn/articles/360029779472-Cloudflare-1XXX-错误故障排除
-                 # https://support.cloudflare.com/hc/zh-cn/articles/115003011431-Cloudflare-5XX-错误故障排除
-                 with lock:
-                    try:
-                        cfw_iplist.remove(response.xip[0])
-                        logging.test('CFW 移除 %s', response.xip[0])
-                    except:
-                        pass
-            elif response.status in (500, 530):
-                return 'ok'
-            else:
-                #打印收集未知异常状态
-                logging.warning('CFW %r 工作异常：%d %s',
-                                cfw_params.host, response.status, response.reason)
-                return 'ok'
-        else:
+            elif remove_badip(response.xip[0]):
+                logging.test('CFW %d 移除 %s', response.status, response.xip[0])
+        elif remove_badip(response.xip[0]):
             logging.error('CFW %r 工作异常：%r 可能不是可用的 CloudFlare 节点',
                           cfw_params.host, response.xip[0])
         return 'retry'
@@ -114,6 +111,8 @@ def cfw_ws_fetch(host, url, headers):
         response = http_cfw.request(cfw_ws_params, headers=headers,
                                     connection_cache_key=cfw_params.connection_cache_key,
                                     realurl=realurl)
+        if 'X-Fetch-Status' not in response.headers:
+            response.headers['X-Fetch-Status'] = 'ok'
         if check_response(response, host) == 'retry':
             continue
         return response
@@ -150,7 +149,7 @@ def cfw_fetch(method, host, url, headers, payload=b'', options=None):
         options_str = cfw_options_str
     request_headers = {
         'Host': cfw_params.host,
-        'User-Agent': 'GotoX/ls/0.4',
+        'User-Agent': 'GotoX/ls/0.5',
         'Accept-Encoding': ae,
         'Content-Length': str(len(payload)),
         'X-Fetch-Options': options_str,

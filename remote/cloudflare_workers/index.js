@@ -53,8 +53,8 @@ const about = `
  *
  *      If succeed, returned normal response with a header "X-Fetch-Status: ok",
  *      or returned response with a header "X-Fetch-Status: fail" and has the
- *      reason in body. If no header "X-Fetch-Status" in, that maybe a Workers
- *      error page response.
+ *      reason in body. For WebSocket, whether it is a connected response, just
+ *      check the status equal to 101.
  *
  *      Those headers should be removed in local server:
  *
@@ -206,23 +206,15 @@ async function handleRequest(request) {
             try {
                 let [fetchOptions, status, err] = parseFetch(request, true)
                 if (err) throw err
-                // 新建代理请求参数
+                // 新建代理请求 Headers
                 const wsHeaders = new Headers()
-                const wsInit = {...request, headers: wsHeaders}
+                wsHeaders.set('Host', new URL(fetchOptions.url).host)
                 for (let [key, value] of request.headers.entries())
                     // 排除 headers 中保存的请求 IP 等信息
                     if (!['cf', 'x'].includes(key.substring(0, key.indexOf('-'))))
                         wsHeaders.append(key, value)
-                const wsUrl = new URL(fetchOptions.url)
-                wsHeaders.set('Host', wsUrl.host)
                 // 获取代理请求响应
-                const response = await fetch(new Request(wsUrl, wsInit))
-                const headers = new Headers(response.headers)
-                headers.set('X-Fetch-Status', 'ok')
-                return new Response(response.body, {
-                    ...response,
-                    headers: headers
-                })
+                return fetch(new Request(fetchOptions.url, {headers: wsHeaders}))
             } catch (error) {
                 return new Response(error.toString(), {
                     status: status || 502,
