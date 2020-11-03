@@ -12,6 +12,7 @@ from gzip import GzipFile
 from .GlobalConfig import GC
 from .FilterUtil import get_action
 from .HTTPUtil import http_cfw
+from .common.decompress import decompress_readers
 from .common.dns import dns, dns_resolve
 from .common.net import explode_ip
 
@@ -19,6 +20,7 @@ from .common.net import explode_ip
 http_cfw.max_per_ip = 1
 lock = threading.Lock()
 cfw_iplist = []
+cfw_530_ignore = f'<title>Origin DNS error | {GC.CFW_WORKER} | Cloudflare</title>'.encode()
 
 class cfw_params:
     port = 443
@@ -77,10 +79,21 @@ def check_response(response, host):
             # https://support.cloudflare.com/hc/zh-cn/articles/115003014512-4xx-客户端错误
             # https://support.cloudflare.com/hc/zh-cn/articles/115003011431-Cloudflare-5XX-错误故障排除
             # https://support.cloudflare.com/hc/zh-cn/articles/360029779472-Cloudflare-1XXX-错误故障排除
-            if response.headers.get('X-Fetch-Status') or \
-                    response.status in (403, 414) or response.status >= 500:
+            if response.headers.get('X-Fetch-Status'):  # ok / fail
                 return 'ok'
-            elif response.status == 429:
+            content = None
+            if response.status == 530:
+                ce = response.headers.get('Content-Encoding')
+                if ce and ce in decompress_readers:
+                    del response.headers['Content-Encoding']
+                    response = decompress_readers[ce](response)
+                content = response.read()
+                response.fp = BytesIO(content)
+                response.chunked = False
+                response.length = len(content)
+            if content and (cfw_530_ignore not in content or not dns_resolve(GC.CFW_WORKER)):
+                return 'ok'
+            if response.status == 429:
                 # https://developers.cloudflare.com/workers/platform/limits#request
                 # a burst rate limit of 1000 requests per minute.
                 if lock.acquire(timeout=1):
@@ -89,6 +102,8 @@ def check_response(response, host):
                         sleep(30)
                     finally:
                         lock.release()
+            elif response.status in (502, 503, 504):
+                sleep(5)
             elif remove_badip(response.xip[0]):
                 logging.test('CFW %d 移除 %s', response.status, response.xip[0])
         elif remove_badip(response.xip[0]):
@@ -113,7 +128,8 @@ def cfw_ws_fetch(host, url, headers):
                                     realurl=realurl)
         if 'X-Fetch-Status' not in response.headers:
             response.headers['X-Fetch-Status'] = 'ok'
-        if check_response(response, host) == 'retry':
+        status = check_response(response, host)
+        if status == 'retry':
             continue
         return response
 
