@@ -193,7 +193,7 @@ async function handleRequest(request) {
                 })
             } catch (error) {
                 const errString = error.toString()
-                if (status != 400 && errString.substring(0, 11) === 'Bad request')
+                if (status !== 400 && errString.substring(0, 11) === 'Bad request')
                     status = 400
                 return new Response(errString, {
                     status: status || 502,

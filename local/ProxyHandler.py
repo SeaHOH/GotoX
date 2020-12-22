@@ -635,7 +635,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             finally:
                 if self.ws:
                     return
-                if not noerror:
+                if not noerror or not response:
                     self.close_connection = True
                 if response:
                     response.close()
@@ -720,7 +720,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             finally:
                 if self.ws:
                     return
-                if not noerror:
+                if not noerror or not response:
                     self.close_connection = True
                 if response:
                     response.close()
@@ -1434,8 +1434,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                    b'Content-Length: %d\r\n\r\n' % len(c))
         self.write(c)
 
-    def forward_websocket(self, remote, timeout=108):
-        #实测  ping-pong 54
+    def forward_websocket(self, remote, timeout=90):
         logging.info('%s 转发 "%s %s %s"',
                      self.address_string(remote), self.action[3:], self.command, self.url)
         try:
