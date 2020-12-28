@@ -17,7 +17,7 @@ addons:
       - p7zip-full
 
 script:
-  - export PYTHON_VERSION=3.8.6
+  - export PYTHON_VERSION=3.8.7
   - export PYTHON_IMPL_VERSION=cp38
   - export RELEASE_VERSION=$(grep -oP '[0-9\.ab]+' local/__init__.py)
 

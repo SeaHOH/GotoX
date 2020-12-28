@@ -22,23 +22,28 @@ import glob
 import _imp
 import builtins
 
-py_dir = os.path.dirname(sys.executable)
+py_dir = os.path.abspath(os.path.dirname(sys.executable))
 
 def pkgdll_get_path(loader, path, name):
-    dll_name = name.split('.')[-1] + dll_tag_ext
-    dll_path = os.path.join(os.path.dirname(path), dll_name)
-    if 'zipimporter object' in str(loader):
-        path = os.path.join(eggs_cache,
-                            os.path.basename(loader.archive) + '-tmp',
-                            loader.prefix,
-                            dll_name)
-        if not os.path.exists(path):
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, 'wb') as f:
-                f.write(loader.get_data(dll_path))
-    else:
-        path = dll_path
-    return path
+    for dll_ext in _imp.extension_suffixes():
+        dll_name = name.split('.')[-1] + dll_ext
+        if hasattr(loader, 'archive'):
+            dll_path = loader.prefix + dll_name
+            if dll_path not in loader._files:
+                continue
+            path = os.path.join(eggs_cache,
+                                os.path.basename(loader.archive) + '-tmp',
+                                dll_path)
+            if not os.path.exists(path):
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, 'wb') as f:
+                    f.write(loader.get_data(dll_path))
+        else:
+            dll_path = os.path.join(os.path.dirname(path), dll_name)
+            if not os.path.exists(dll_path):
+                continue
+            path = dll_path
+        return os.path.abspath(path)
 
 def set_prefix():
     for name in ('PYTHONPATH', 'PYTHONHOME', 'PYTHONUSERBASE'):
@@ -82,11 +87,6 @@ def set_path():
         eggs_cache = os.path.join(py_dir, 'Eggs-Cache')
 
 def main():
-    global dll_tag_ext
-    for dll_ext in _imp.extension_suffixes():
-        if dll_ext[:3] == '.cp':
-            dll_tag_ext = dll_ext
-            break
     builtins.pkgdll_get_path = pkgdll_get_path
     set_path()
 
@@ -396,6 +396,8 @@ os.chdir('site-packages')
 
 stable_sp = True
 StrictVersion.version_re = re.compile(r'^(\d+)\.(\d+)(\.(\d+))?(?:\.?([a-z]+)(\d+))?$')
+is_supported_tags_1 = re.compile(f'(?:cp|py)3(?:[0-{py_ver[1]}])?-(?:cp{py_ver}m?|none)-(?:{py_arch}|any)').search
+is_supported_tags_2 = re.compile(f'cp3(?:[2-{py_ver[1]}])-abi3-{py_arch}').search
 
 def extract(project, version):
     data = download(pypi_api(project), JSON)
@@ -413,16 +415,16 @@ def extract(project, version):
             if stable_sp and release.prerelease:
                 continue
             if version.satisfied_by(release):
-                dists = data['releases'][key]
+                dists = sorted(data['releases'][key],
+                               key=lambda d: d['python_version'], reverse=True)
                 break
     else:
         dists = data['urls']
     dist_type = None
     for dist in dists:
-        if ((py_ver in dist['python_version'].replace('.', '') and
-                py_arch in dist['filename']) or 
-                'py3-none-any' in dist['filename']) and \
-                dist['packagetype'] in ('bdist_wheel', 'bdist_egg'):
+        if dist['packagetype'] in ('bdist_wheel', 'bdist_egg') and (
+                is_supported_tags_1(dist['filename']) or
+                is_supported_tags_2(dist['filename'])):
             dist_type = dist['packagetype']
             break
     if not dist_type:
@@ -431,19 +433,19 @@ def extract(project, version):
                 dist_type = dist['packagetype']
                 break
     url = dist['url']
-    filename = fn = dist['filename']
+    filename = dist['filename']
     if project_sub:
-        filename = fn = filename.replace(project, project_sub)
+        filename = filename.replace(project, project_sub)
     while True:
-        fn = fn.rpartition('.')[0]
-        if not fn.endswith('.tar'):
-            fn += '.egg'
-            if os.path.exists(fn):
+        filename = filename.rpartition('.')[0]
+        if not filename.endswith('.tar'):
+            filename += '.egg'
+            if os.path.exists(filename):
                 return
             else:
                 break
     sum = '|'.join(('sha256', dist['digests']['sha256']))
-    filepath = download(url, filename, sum)
+    filepath = download(url, dist['filename'], sum)
     if filepath.endswith(('tar.gz', 'tar.xz', 'tar.bz2')):
         os.system(f'{_7z} e {filepath} {to_null}')
         os.remove(filepath)
@@ -478,6 +480,7 @@ def extract(project, version):
         shutil.rmtree(filepath[:-4])
     name = filepath.rpartition('.')[0]
     if project_sub:
+        name = name.replace(project, project_sub)
         for dirpath, dirnames, filenames in os.walk('.'):
             for dirname in dirnames:
                 if dirname != project_sub:
@@ -493,6 +496,7 @@ def extract(project, version):
 def package(name):
     if not name:
         return
+    abi3 = 'abi3' in name
     for dirpath, dirnames, filenames in os.walk('.'):
         for dirname in dirnames:
             if dirname in ('test', 'tests', 'testing'):
@@ -504,14 +508,18 @@ def package(name):
                     (filename != '__init__.py' and os.path.getsize(filepath) == 0):
                 os.remove(filepath)
             elif filename.endswith('pyd'):
-                if dll_tag not in filename:
-                    newname = f'{filename[:-3]}{dll_tag}.pyd'
-                    os.rename(os.path.join(dirpath, filename),
-                              os.path.join(dirpath, newname))
-                    print(f'Warning: filename {filename!r} does not match the dll_tag {dll_tag!r}, '
-                          f'rename it as {newname!r}.')
-                    filename =  newname
-                filename = filename.split(dll_tag)[0] + 'py'
+                if abi3:
+                    filename = filename[:-3]
+                else:
+                    if dll_tag not in filename:
+                        newname = f'{filename[:-3]}{dll_tag}.pyd'
+                        os.rename(os.path.join(dirpath, filename),
+                                  os.path.join(dirpath, newname))
+                        print(f'Warning: filename {filename!r} does not match the dll_tag {dll_tag!r}, '
+                              f'rename it as {newname!r}.')
+                        filename =  newname
+                    filename = filename.split(dll_tag)[0]
+                filename += 'py'
                 filepath = os.path.join(dirpath, filename)
                 with open(filepath, 'wb') as f:
                     f.write(dllpy)
