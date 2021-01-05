@@ -51,6 +51,12 @@ from . import compat
 compat.single_instance('gotox.server')
 compat.init()
 
+from OpenSSL import SSL
+try:
+    SSL.OP_NO_TLSv1_3
+except AttributeError:
+    GC._SSLv['TLSv1.3'] = GC._SSLv['TLSv1.2']
+
 import logging
 from .GlobalConfig import GC
 

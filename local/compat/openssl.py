@@ -11,6 +11,7 @@ try:
     from ssl import _inet_paton as ip_address # py3.7+
 except ImportError:
     from ipaddress import ip_address
+SSL.TLSv1_3_METHOD = SSL.TLSv1_2_METHOD + 1
 _DEFAULT_CIPHERS += ':!SSLv3'
 _RESTRICTED_SERVER_CIPHERS += ':!SSLv3'
 zero_errno = errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTSOCK

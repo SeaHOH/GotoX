@@ -1500,15 +1500,23 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             return self.context_cache[host]
         except KeyError:
             certfile = cert.get_cert(host, ip)
-            self.context_cache[host] = context = SSL.Context(GC.LINK_LOCALSSL)
+            ssl_method = GC.LINK_LOCALSSL
+            ssl_options = 0
+            #使用兼容模式来指定 TLSv1.3
+            if ssl_method == SSL.TLSv1_3_METHOD:
+                ssl_method = SSL.SSLv23_METHOD
+                ssl_options |= SSL.OP_NO_TLSv1
+                ssl_options |= SSL.OP_NO_TLSv1_1
+                ssl_options |= SSL.OP_NO_TLSv1_2
             #兼容模式 TLS 禁用 SSLv3 及以下版本
-            if GC.LINK_LOCALSSL == SSL.SSLv23_METHOD:
-                context.set_options(SSL.OP_NO_SSLv2)
-                context.set_options(SSL.OP_NO_SSLv3)
+            if ssl_method == SSL.SSLv23_METHOD:
+                ssl_options |= SSL.OP_NO_SSLv2
+                ssl_options |= SSL.OP_NO_SSLv3
+            context = SSL.Context(ssl_method)
             #不使用压缩
-            context.set_options(SSL.OP_NO_COMPRESSION)
+            ssl_options |= SSL.OP_NO_COMPRESSION
             #通用问题修复
-            context.set_options(SSL.OP_ALL)
+            ssl_options |= SSL.OP_ALL
             #假证书
             context.use_privatekey_file(cert.sub_keyfile)
             context.use_certificate_file(certfile)
@@ -1516,10 +1524,13 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             context.set_verify(SSL.VERIFY_NONE, callback)
             #加密选择
             context.set_cipher_list(res_ciphers)
-            context.set_options(SSL.OP_CIPHER_SERVER_PREFERENCE)
+            ssl_options |= SSL.OP_CIPHER_SERVER_PREFERENCE
             #会话重用
             context.set_session_id(os.urandom(16))
             context.set_session_cache_mode(SSL.SESS_CACHE_SERVER)
+            #应用设置
+            context.set_options(ssl_options)
+            self.context_cache[host] = context
             return context
 
     def send_CA(self):

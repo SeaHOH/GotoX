@@ -11,7 +11,6 @@ import collections
 import OpenSSL
 import logging
 import threading
-from select import select
 from time import time, sleep
 from queue import Queue
 from threading import _start_new_thread as start_new_thread
@@ -202,19 +201,26 @@ class BaseHTTPUtil:
         except KeyError:
             pass
         if self.gws:
-            #强制 GWS 使用 TLSv1.2
-            context = SSL.Context(SSL.TLSv1_2_METHOD)
+            #强制 GWS 使用 TLSv1.3
+            ssl_method = SSL.TLSv1_3_METHOD
         else:
-            context = SSL.Context(GC.LINK_REMOTESSL)
-            #兼容模式 TLS 禁用 TLSv1 及以下版本
-            if GC.LINK_REMOTESSL == SSL.SSLv23_METHOD:
-                context.set_options(SSL.OP_NO_SSLv2)
-                context.set_options(SSL.OP_NO_SSLv3)
-                context.set_options(SSL.OP_NO_TLSv1)
+            ssl_method = GC.LINK_REMOTESSL
+        ssl_options = 0
+        #使用兼容模式来指定 TLSv1.3
+        if ssl_method == SSL.TLSv1_3_METHOD:
+            ssl_method = SSL.SSLv23_METHOD
+            ssl_options |= SSL.OP_NO_TLSv1_2
+        #兼容模式 TLS 禁用 TLSv1 及以下版本
+        if ssl_method == SSL.SSLv23_METHOD:
+            ssl_options |= SSL.OP_NO_SSLv2
+            ssl_options |= SSL.OP_NO_SSLv3
+            ssl_options |= SSL.OP_NO_TLSv1
+            ssl_options |= SSL.OP_NO_TLSv1_1
+        context = SSL.Context(ssl_method)
         #不使用压缩
-        context.set_options(SSL.OP_NO_COMPRESSION)
+        ssl_options |= SSL.OP_NO_COMPRESSION
         #通用问题修复
-        context.set_options(SSL.OP_ALL)
+        ssl_options |= SSL.OP_ALL
         #会话重用
         context.set_session_cache_mode(SSL.SESS_CACHE_CLIENT)
         context.lock = threading.Lock()
@@ -223,6 +229,8 @@ class BaseHTTPUtil:
         context.set_verify(SSL.VERIFY_PEER, self._verify_callback)
         #加密选择
         context.set_cipher_list(self.ssl_ciphers)
+        #应用设置
+        context.set_options(ssl_options)
         self.context_cache[server_hostname] = context
         return context
 
@@ -982,10 +990,11 @@ class HTTPUtil(BaseHTTPUtil):
 # CBC
 # AES128-SHA
 # ECDHE-RSA-AES128-SHA
-# http://docs.python.org/dev/library/ssl.html
+# https://docs.python.org/dev/library/ssl.html
 # https://www.openssl.org/docs/manmaster/man1/openssl-ciphers.html
-# 以下 GWS ciphers 设置用于 TLS v1.2 连接
+# 以下 GWS ciphers 设置用于 TLS v1.3 连接
 gws_ciphers = (
+    'TLSv1.3:'
     'ECDHE+AES256+AESGCM:'
     'ECDHE+AESGCM:'
     'ECDHE+HIGH:'
@@ -993,7 +1002,6 @@ gws_ciphers = (
     'RSA+AESGCM:'
     'RSA+HIGH:'
     'HIGH:MEDIUM:'
-    'TLSv1.2:'
     '!AES128-GCM-SHA256:'
     '!ECDHE-RSA-AES128-GCM-SHA256:'
     '!ECDHE-RSA-AES128-SHA:'

@@ -21,13 +21,13 @@ _LOGLv = {
     }
 
 _SSLv = {
-    'SSLv2'   : 1,
-    'SSLv3'   : 2,
-    'SSLv23'  : 3,
-    'TLS'     : 3,
-    'TLSv1'   : 4,
+    'TLSv1.3' : 7,
+    'TLSv1.2' : 6,
     'TLSv1.1' : 5,
-    'TLSv1.2' : 6
+    'TLSv1'   : 4,
+    'TLS'     : 3,
+    'SSLv3'   : 2,
+    'SSLv2'   : 1
     }
 
 def _servers_2_addresses(servers, default_port):
@@ -115,9 +115,14 @@ class GC:
     LINK_RECVBUFFER = max(min(CONFIG.getint('link', 'recvbuffer', fallback=1024 * 128), 1024 * 1024 *4), 1024 * 32)
     LINK_VERIFYGPK = CONFIG.getboolean('link', 'verifygpk', fallback=True)
     LINK_LOCALSSLTXT = CONFIG.get('link', 'localssl', fallback='TLS')
-    LINK_REMOTESSLTXT = CONFIG.get('link', 'remotessl', fallback='TLSv1.2')
+    LINK_REMOTESSLTXT = CONFIG.get('link', 'remotessl', fallback='TLS')
     LINK_LOCALSSL = _SSLv[LINK_LOCALSSLTXT]
     LINK_REMOTESSL = max(_SSLv[LINK_REMOTESSLTXT], _SSLv['TLS'])
+    for k, v in _SSLv.items():
+        if LINK_LOCALSSL == v:
+            LINK_REMOTESSLTXT = k
+        if LINK_REMOTESSL == v:
+            LINK_REMOTESSLTXT = k
     LINK_REQUESTCOMPRESS = _brotli and CONFIG.getboolean('link', 'requestcompress', fallback=False)
     LINK_TIMEOUT = max(CONFIG.getint('link', 'timeout', fallback=5), 3)
     LINK_FWDTIMEOUT = max(CONFIG.getint('link', 'fwdtimeout', fallback=8), 3)
