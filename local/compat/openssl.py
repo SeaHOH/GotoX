@@ -189,9 +189,14 @@ def match_hostname(cert, hostname):
     # The subject is only checked when there is no dNSName entry in subjectAltName
     # XXX according to RFC 2818, the most specific Common Name must be used.
         value = cert.get_subject().commonName
-        if _dnsname_match(value, hostname):
+        if value is not None:
+            if _dnsname_match(value, hostname):
+                return
+            dnsnames.append(value)
+        elif cert.get_issuer().organizationName == hostname:
+            # If there is no common name, then check issuer's organization name
+            # e.g. CloudFlare ddos-guard
             return
-        dnsnames.append(value)
     if len(dnsnames) > 1:
         raise CertificateError(-1, "hostname %r doesn't match either of %s"
                 % (hostname, ', '.join(map(repr, dnsnames))))
