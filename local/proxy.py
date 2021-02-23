@@ -245,7 +245,7 @@ def main():
                     logging.warning(error)
                     ctypes.windll.user32.MessageBoxW(None, error, title, 48)
         if GC.LISTEN_ACT == 'CFW':
-            if not GC.CFW_WORKER:
+            if not (GC.CFW_SUBDOMAIN and GC.CFW_WORKERS or GC.CFW_WORKER):
                 logging.critical('请编辑 %r 文件，添加可用的 CFWorker 域名到 [cfw] 配置中，否则无法使用 CFW 代理！', GC.CONFIG_FILENAME)
         elif GC.LISTEN_ACT == 'GAE':
             logging.critical('GAE 代理已弃用，用户需自行完成服务端部署！')
@@ -255,23 +255,23 @@ def main():
             resolve_iplist()
 
     info = ['=' * 80]
-    info.append(' GotoX  版 本 : %s (python/%s gevent(%s)/%s pyOpenSSL/%s)' % (__version__, sys.version.split(' ')[0], GC.GEVENT_LOOP, geventver, opensslver))
+    info.append(' GotoX 版 本 : %s (python/%s gevent(%s)/%s pyOpenSSL/%s)' % (__version__, sys.version.split(' ')[0], GC.GEVENT_LOOP, geventver, opensslver))
     if GC.LISTEN_ACT == 'GAE':
-        info.append('\n GAE    AppID : %s' % ('|'.join(GC.GAE_APPIDS) or '请填入 AppID'))
-        info.append('\n GAE 远程验证 : %s启用' % '已' if GC.GAE_SSLVERIFY else '未')
+        info.append('\n GAE   AppID : %s' % ('|'.join(GC.GAE_APPIDS) or '请填入 AppID'))
+        info.append('\n GAE  验  证 : %s启用' % '已' if GC.GAE_SSLVERIFY else '未')
     elif GC.LISTEN_ACT == 'CFW':
-        info.append('\n CFW    域 名 : %s' % (GC.CFW_WORKER or '请填入完整域名'))
-    info.append('\n  监 听 地 址 : 自动代理 - %s:%d' % (GC.LISTEN_IP, GC.LISTEN_AUTOPORT))
-    info.append('                %s 代理 - %s:%d' % (GC.LISTEN_ACT, GC.LISTEN_IP, GC.LISTEN_ACTPORT))
-    info.append('\n  代 理 认 证 : %s认证' % (GC.LISTEN_AUTH == 0 and '无需' or (GC.LISTEN_AUTH == 2 and 'IP ') or 'Basic '))
-    info.append('\n  调 试 信 息 : %s' % logging.getLevelName(GC.LOG_LEVEL))
-    info.append('\n  保 存 日 志 : %s' % GC.LOG_FILE if GC.LOG_SAVE else '否')
-    info.append('\n  连 接 模 式 : 远程 - %s' % GC.LINK_REMOTESSLTXT)
-    info.append('                本地 - %s' % GC.LINK_LOCALSSLTXT)
-    info.append('\n  网 络 配 置 : %s' % GC.LINK_PROFILE)
-    info.append('\n  IP 数 据 库 : %s' % IPDBVer)
-    info.append('\n  直 连 域 名 : %s' % DDTVer)
-    info.append('\n  安 装 证 书 : 设置代理后访问 http://gotox.go/')
+        info.append('\n CF  Workers : %s' % (GC.CFW_SUBDOMAIN and f'{" | ".join(GC.CFW_WORKERS)} @ {GC.CFW_SUBDOMAIN}' or GC.CFW_WORKER or '请填入 Workers'))
+    info.append('\n 监 听 地 址 : 自动代理 - %s:%d' % (GC.LISTEN_IP, GC.LISTEN_AUTOPORT))
+    info.append('               %s 代理 - %s:%d' % (GC.LISTEN_ACT, GC.LISTEN_IP, GC.LISTEN_ACTPORT))
+    info.append('\n 代 理 认 证 : %s认证' % (GC.LISTEN_AUTH == 0 and '无需' or (GC.LISTEN_AUTH == 2 and 'IP ') or 'Basic '))
+    info.append('\n 调 试 信 息 : %s' % logging.getLevelName(GC.LOG_LEVEL))
+    info.append('\n 保 存 日 志 : %s' % GC.LOG_FILE if GC.LOG_SAVE else '否')
+    info.append('\n 连 接 模 式 : 远程 - %s' % GC.LINK_REMOTESSLTXT)
+    info.append('               本地 - %s' % GC.LINK_LOCALSSLTXT)
+    info.append('\n 网 络 配 置 : %s' % GC.LINK_PROFILE)
+    info.append('\n IP 数 据 库 : %s' % IPDBVer)
+    info.append('\n 直 连 域 名 : %s' % DDTVer)
+    info.append('\n 安 装 证 书 : 设置代理后访问 http://gotox.go/')
     info.append('=' * 80)
     info = '\n'.join(info)
     print(info)

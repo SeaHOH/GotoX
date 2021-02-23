@@ -9,18 +9,20 @@ import threading
 from time import sleep
 from io import BytesIO
 from gzip import GzipFile
+from collections import deque
 from .GlobalConfig import GC
 from .FilterUtil import get_action
 from .HTTPUtil import http_cfw
 from .common.decompress import decompress_readers
+from .common.decorator import make_lock_decorator
 from .common.dns import dns, dns_resolve
 from .common.net import explode_ip
 
 # IP 数相比请求数极为巨大，无需重复连接同一 IP
 http_cfw.max_per_ip = 1
 lock = threading.Lock()
+_lock_worker = make_lock_decorator(lock)
 cfw_iplist = []
-cfw_530_ignore = f'<title>Origin DNS error | {GC.CFW_WORKER} | Cloudflare</title>'.encode()
 
 class cfw_params:
     port = 443
@@ -28,9 +30,15 @@ class cfw_params:
     command = 'POST'
     host = GC.CFW_WORKER
     path = '/gh'
-    url = 'https://%s%s' % (host, path)
+    url = f'https://{host}{path}'
     hostname = 'cloudflare_workers|'
-    connection_cache_key = '%s:%d' % (hostname, port)
+    connection_cache_key = f'{hostname}:{port}'
+    ignore_530 = f'<title>Origin DNS error | {GC.CFW_WORKER} | Cloudflare</title>'.encode()
+
+    def __init__(self, worker):
+        self.host = f'{worker}.{GC.CFW_SUBDOMAIN}.workers.dev'
+        self.url = f'https://{self.host}{self.path}'
+        self.ignore_530 = f'<title>Origin DNS error | {self.host} | Cloudflare</title>'.encode()
 
 class cfw_ws_params(cfw_params):
     command = 'GET'
@@ -42,6 +50,20 @@ if GC.CFW_PASSWORD:
 if GC.CFW_DECODEEMAIL:
     cfw_options['decodeemail'] = GC.CFW_DECODEEMAIL
 cfw_options_str = json.dumps(cfw_options)
+
+if GC.CFW_SUBDOMAIN and GC.CFW_WORKERS:
+    cfw_paramses = deque(cfw_params(worker) for worker in GC.CFW_WORKERS)
+    cfw_ws_paramses = deque(cfw_ws_params(worker) for worker in GC.CFW_WORKERS)
+else:
+    cfw_paramses = [cfw_params]
+    cfw_ws_paramses = [cfw_ws_params]
+
+@_lock_worker
+def get_worker_params(f=None):
+    worker_paramses = f == 'ws' and cfw_ws_paramses or cfw_paramses
+    if len(worker_paramses) > 1:
+        worker_paramses.append(worker_paramses.popleft())
+    return worker_paramses[0]
 
 def set_dns():
     if dns.gettill(cfw_params.hostname):
@@ -73,7 +95,7 @@ def remove_badip(ip):
         except:
             pass
 
-def check_response(response, host):
+def check_response(response, worker_params):
     if response:
         if response.headers.get('Server') == 'cloudflare':
             # https://support.cloudflare.com/hc/zh-cn/articles/115003014512-4xx-客户端错误
@@ -91,14 +113,14 @@ def check_response(response, host):
                 response.fp = BytesIO(content)
                 response.chunked = False
                 response.length = len(content)
-            if content and (cfw_530_ignore not in content or not dns_resolve(GC.CFW_WORKER)):
+            if content and (worker_params.ignore_530 not in content or not dns_resolve(worker_params.host)):
                 return 'ok'
             if response.status == 429:
                 # https://developers.cloudflare.com/workers/platform/limits#request
                 # a burst rate limit of 1000 requests per minute.
                 if lock.acquire(timeout=1):
                     try:
-                        logging.warning('CFW %r 超限，暂停使用 30 秒', cfw_params.host)
+                        logging.warning('CFW %r 超限，暂停使用 30 秒', worker_params.host)
                         sleep(30)
                     finally:
                         lock.release()
@@ -108,35 +130,34 @@ def check_response(response, host):
                 logging.test('CFW %d 移除 %s', response.status, response.xip[0])
         elif remove_badip(response.xip[0]):
             logging.error('CFW %r 工作异常：%r 可能不是可用的 CloudFlare 节点',
-                          cfw_params.host, response.xip[0])
+                          worker_params.host, response.xip[0])
         return 'retry'
     else:
-        logging.test('CFW %r 连接失败', cfw_params.host)
+        logging.test('CFW %r 连接失败', worker_params.host)
         return 'fail'
 
 def cfw_ws_fetch(host, url, headers):
     options = cfw_options.copy()
     options['url'] = 'http' + url[2:]
+    worker_params = get_worker_params('ws')
     headers.update({
-        'Host': cfw_params.host,
+        'Host': worker_params.host,
         'X-Fetch-Options': json.dumps(options),
     })
     realurl = 'CFW-' + url
     while True:
-        response = http_cfw.request(cfw_ws_params, headers=headers,
-                                    connection_cache_key=cfw_params.connection_cache_key,
+        response = http_cfw.request(worker_params, headers=headers,
+                                    connection_cache_key=worker_params.connection_cache_key,
                                     realurl=realurl)
         if 'X-Fetch-Status' not in response.headers:
             response.headers['X-Fetch-Status'] = 'ok'
-        status = check_response(response, host)
+        status = check_response(response, worker_params)
         if status == 'retry':
             continue
         return response
 
 def cfw_fetch(method, host, url, headers, payload=b'', options=None):
     set_dns()
-    with lock:
-        pass
     if url[:2] == 'ws':
         return cfw_ws_fetch(host, url, headers)
     ae = headers.get('Accept-Encoding', '')
@@ -163,8 +184,9 @@ def cfw_fetch(method, host, url, headers, payload=b'', options=None):
         options_str = json.dumps(_options)
     else:
         options_str = cfw_options_str
+    worker_params = get_worker_params()
     request_headers = {
-        'Host': cfw_params.host,
+        'Host': worker_params.host,
         'User-Agent': 'GotoX/ls/0.5',
         'Accept-Encoding': ae,
         'Content-Length': str(len(payload)),
@@ -172,14 +194,14 @@ def cfw_fetch(method, host, url, headers, payload=b'', options=None):
     }
     realurl = 'CFW-' + url
     while True:
-        response = http_cfw.request(cfw_params, payload, request_headers,
-                                    connection_cache_key=cfw_params.connection_cache_key,
+        response = http_cfw.request(worker_params, payload, request_headers,
+                                    connection_cache_key=worker_params.connection_cache_key,
                                     realmethod=method,
                                     realurl=realurl)
-        status = check_response(response, host)
+        status = check_response(response, worker_params)
         if status == 'ok':
             response.http_util = http_cfw
-            response.connection_cache_key = cfw_params.connection_cache_key
+            response.connection_cache_key = worker_params.connection_cache_key
             if response.status == 206 and response.headers.get('Content-Encoding') == 'gzip':
                 if response.headers['Content-Range'].startswith('bytes 0-'):
                     response.fp = gzipfp = GzipFile(fileobj=BytesIO(response.read()))

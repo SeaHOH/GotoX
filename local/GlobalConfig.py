@@ -139,6 +139,8 @@ class GC:
     CFW_WORKER = CONFIG.get('cfw', 'worker').strip()
     if CFW_WORKER.find('.') < 1:
         CFW_WORKER = None
+    CFW_SUBDOMAIN = CONFIG.get('cfw', 'subdomain').split('.')[0]
+    CFW_WORKERS = CONFIG.gettuple('cfw', 'workers')
     CFW_PASSWORD = CONFIG.get('cfw', 'password').strip()
     CFW_EXPLODEIP = CONFIG.getboolean('cfw', 'explodeip')
     CFW_IPLIST = CONFIG.getlist('cfw', 'iplist') or None

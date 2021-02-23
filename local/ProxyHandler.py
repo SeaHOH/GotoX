@@ -1013,7 +1013,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                         response.sock.close()
 
     #未配置 CFWorker
-    if not GC.CFW_WORKER:
+    if not (GC.CFW_SUBDOMAIN and GC.CFW_WORKERS or GC.CFW_WORKER):
         def do_GFW(self):
             noworker = '请编辑 %r 文件，添加可用的 CFWorker 域名到 [cfw] 配置中并重启 GotoX！' % GC.CONFIG_FILENAME
             logging.critical(noworker)
