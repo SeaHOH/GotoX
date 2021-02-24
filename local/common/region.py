@@ -1,14 +1,14 @@
 # coding:utf-8
 
 import os
-import re
 import socket
 import logging
 from time import sleep
+from ipaddress import IPv6Address
 from threading import _start_new_thread as start_new_thread
-from .net import isip, isipv4, isipv6
+from .net import isipv4, isipv6
 from .path import data_dir, launcher_dir
-from .util import LRUCache
+from .util import LRUCache, DomainsTree
 from local.GlobalConfig import GC
 
 direct_ipdb = os.path.join(data_dir, 'directip.db')
@@ -155,107 +155,6 @@ class IPv4Database:
         #根据位置序数奇偶确定是否属于直连 IP
         return lo & 1
 
-class DomainsTree:
-    leaf = object()
-    check_domain = re.compile(r'^[a-zA-z0-9\-\.]+$').match
-
-    def __init__(self):
-        self.root = {}
-        self.ips = set()
-        self.update = 'N/A'
-        self.count_dm = 0
-
-    @property
-    def count_ip(self):
-        return len(self.ips)
-
-    def add(self, domain):
-        if not domain or not isinstance(domain, str) or \
-                len(domain) > 253 or \
-                self.add_ip(domain) or \
-                self.check_domain(domain) is None:
-            return
-
-        def clear_node(node, pname):
-            for k, v in node.items():
-                lname = '%s.%s' % (k, pname)
-                if v is self.leaf:
-                    logging.debug('移除直连域名：%s', lname)
-                    self.count_dm -= 1
-                else:
-                    clear_node(v, lname)
-
-        if domain[0] == '.':
-            domain = domain[1:]
-        domain = domain.lower()
-        names = domain.split('.')
-        node = self.root
-        while names:
-            name = names.pop()
-            try:
-                child = node[name]
-            except KeyError:
-                if names:
-                    node[name] = child = {}
-                else:
-                    node[name] = self.leaf
-                    break
-            else:
-                if child is self.leaf:
-                    lname = domain[domain.find(name):]
-                    logging.test('发现重复直连域名：%s < %s', domain, lname)
-                    return
-                elif not names:
-                    node[name] = self.leaf
-                    lname = domain[domain.find(name):]
-                    logging.test('发现重复直连域名：%s > *.%s', domain, lname)
-                    clear_node(child, lname)
-            node = child
-        self.count_dm += 1
-
-    def add_ip(self, ip):
-        if isipv6(ip):
-            ip = socket.inet_pton(socket.AF_INET6, ip)
-        elif not isipv4(ip):
-            return
-        self.ips.add(ip)
-        return True
-
-    def add_file(self, file):
-        with open(file, 'r') as fd:
-            has_update = None
-            line = fd.readline()
-            if line[:1] in '#;' and 'pdate:' in line:
-                self.update = line.split('pdate:')[-1].strip()
-                has_update = True
-            elif line[:1] not in '#;':
-                domain = line.strip()
-                self.add(domain)
-            for line in fd:
-                if line[:1] not in '#;':
-                    domain = line.strip()
-                    self.add(domain)
-            if has_update and line[:4] != '#end':
-                logging.warning('直连域名列表文件 %r 不完整，请更新', file)
-
-    def __contains__(self, host):
-        if isipv6(host):
-            host = socket.inet_pton(socket.AF_INET6, host)
-        elif not isipv4(host):
-            names = host.lower().split('.')
-            node = self.root
-            while names:
-                name = names.pop()
-                try:
-                    child = node[name]
-                except KeyError:
-                    return False
-                if child is self.leaf:
-                    return True
-                node = child
-            return False
-        return host in self.ips
-
 def isdirect(host):
     if islocal(host):
         return True
@@ -292,15 +191,18 @@ else:
     from .dns import _dns_resolve, A
 
     def dns_resolve(host, qtypes=[A]):
-        if isip(host):
-            return host,
-        return _dns_resolve(host, qtypes=qtypes, local=False)
+        if isipv6(host):
+            ipaddr = IPv6Address(host)
+            host = ipaddr.ipv4_mapped or ipaddr.teredo or ipaddr.sixtofour or host
+        elif not isipv4(host):
+            return _dns_resolve(host, qtypes=qtypes, local=False)
+        return host,
 
-direct_domains_temp_tree = DomainsTree()
+direct_domains_temp_tree = DomainsTree('直连/临时规则白名单')
 for domain in GC.LINK_TEMPWHITELIST:
     direct_domains_temp_tree.add(domain)
 
-direct_domains_black_tree = DomainsTree()
+direct_domains_black_tree = DomainsTree('直连/本地 DNS 黑名单')
 for domain in GC.DNS_LOCAL_BLACKLIST:
     direct_domains_black_tree.add(domain)
 
@@ -318,7 +220,7 @@ def load_ipdb():
 
 def load_domains():
     global direct_domains_tree, DDTVer
-    domains_tree = DomainsTree()
+    domains_tree = DomainsTree('直连/白名单')
     if os.path.exists(direct_domains):
         domains_tree.add_file(direct_domains)
         DDTVer = '%s, domains count: %d, IPs count: %d' % (

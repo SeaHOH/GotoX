@@ -1,6 +1,7 @@
 # coding:utf-8
 
 import os
+import re
 import string
 import weakref
 import threading
@@ -9,6 +10,7 @@ import logging
 from time import mtime, sleep
 from threading import _start_new_thread as start_new_thread
 from .decorator import make_lock_decorator
+from .net import isipv4, isipv6
 
 
 _lock_i_lock = make_lock_decorator('lock')
@@ -214,6 +216,110 @@ class LRUCache:
     def clear(self):
         self.cache.clear()
         self.key_order.clear()
+
+class DomainsTree:
+    leaf = object()
+    check_domain = re.compile(r'^[a-zA-z0-9\-\.]+$').match
+
+    def __init__(self, logger):
+        self.root = {}
+        self.ips = set()
+        self.update = 'N/A'
+        self.count_dm = 0
+        self.logger = logging.getLogger(f'[{logger}]')
+
+    @property
+    def count_ip(self):
+        return len(self.ips)
+
+    def add(self, domain):
+        if not domain or not isinstance(domain, str) or \
+                len(domain) > 253 or \
+                self.add_ip(domain) or \
+                self.check_domain(domain) is None:
+            return
+
+        def clear_node(node, pname):
+            for k, v in node.items():
+                lname = '%s.%s' % (k, pname)
+                if v is self.leaf:
+                    self.logger.debug('移除域名：%s', lname)
+                    self.count_dm -= 1
+                else:
+                    clear_node(v, lname)
+
+        if domain[0] == '.':
+            domain = domain[1:]
+        domain = domain.lower()
+        names = domain.split('.')
+        node = self.root
+        while names:
+            name = names.pop()
+            try:
+                child = node[name]
+            except KeyError:
+                if names:
+                    node[name] = child = {}
+                else:
+                    node[name] = self.leaf
+                    break
+            else:
+                if child is self.leaf:
+                    lname = domain[domain.find(name):]
+                    self.logger.test('发现重复域名：%s < %s', domain, lname)
+                    return
+                elif not names:
+                    node[name] = self.leaf
+                    lname = domain[domain.find(name):]
+                    self.logger.test('发现重复域名：%s > *.%s', domain, lname)
+                    clear_node(child, lname)
+            node = child
+        self.count_dm += 1
+
+    def add_ip(self, ip):
+        if isipv6(ip):
+            ip = socket.inet_pton(socket.AF_INET6, ip)
+        elif not isipv4(ip):
+            return
+        self.ips.add(ip)
+        return True
+
+    def add_file(self, file):
+        def add_line(line):
+            domain = line.split()
+            if domain:
+                self.add(domain[0])
+
+        with open(file, 'r') as fd:
+            has_update = None
+            line = fd.readline()
+            if line[:1] in '#;' and 'pdate:' in line:
+                self.update = line.split('pdate:')[-1].strip()
+                has_update = True
+            elif line[:1] not in '#;':
+                add_line(line)
+            for line in fd:
+                add_line(line)
+            if has_update and line[:4] != '#end':
+                self.logger.warning('域名列表文件 %r 不完整，请更新', file)
+
+    def __contains__(self, host):
+        if isipv6(host):
+            host = socket.inet_pton(socket.AF_INET6, host)
+        elif not isipv4(host):
+            names = host.lower().split('.')
+            node = self.root
+            while names:
+                name = names.pop()
+                try:
+                    child = node[name]
+                except KeyError:
+                    return False
+                if child is self.leaf:
+                    return True
+                node = child
+            return False
+        return host in self.ips
 
 class LimiterFull(OSError):
     pass
@@ -427,7 +533,7 @@ class LimitDictBase:
         else:
             return limiter.full()
 
-MESSAGE_TEMPLATE = '''\
+MESSAGE_TEMPLATE = string.Template('''\
 <html><head>
 <meta http-equiv="content-type" content="text/html;charset=utf-8">
 <title>$title</title>
@@ -463,8 +569,7 @@ $detail
 </blockquote></div>
 <div class=foot><span></span></div>
 </body></html>
-'''
-MESSAGE_TEMPLATE = string.Template(MESSAGE_TEMPLATE).substitute
+''').substitute
 
 def message_html(title, banner, detail=''):
     return MESSAGE_TEMPLATE(title=title, banner=banner, detail=detail)

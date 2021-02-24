@@ -1556,6 +1556,9 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             reset_dns()
         elif cmd == 'reset_autorule':
             #重置自动规则
+            action_filters.mtime = 0
+        elif cmd == 'reset_autorule_cache':
+            #重置自动规则缓存
             action_filters.reset = True
         elif cmd in ('quit', 'exit', 'off', 'close', 'shutdown'):
             #关闭退出

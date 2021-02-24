@@ -8,7 +8,8 @@ from time import sleep
 from configparser import ConfigParser
 from threading import _start_new_thread as start_new_thread
 from .common.net import isip, isipv4, isipv6
-from .common.path import config_dir
+from .common.path import config_dir, data_dir
+from .common.util import DomainsTree
 from .GlobalConfig import GC
 
 BLOCK     = 1
@@ -99,15 +100,31 @@ class ACTION_FILTERS:
             filters.action = actToNum[action]
             for k, v in self.CONFIG._sections[section].items():
                 scheme = ''
-                if k.find('://', 0, 9) > 0 :
-                    scheme, _, k = k.partition('://')
-                host, _, path = k.partition('/')
-                if host[:1] == '@':
-                    host = re.compile(host[1:]).search
+                if k.startswith('list@'):
+                    file = k[5:]
+                    if file.startswith('file://'):
+                        file = file[7:].lstrip('/')
+                    else:
+                        file = os.path.join(data_dir, file)
+                    if not os.path.exists(file):
+                        file += '.txt'
+                    if os.path.exists(file):
+                        host = DomainsTree(os.path.basename(file))
+                        host.add_file(file)
+                    else:
+                        logging.warning('没有找到列表文件 %r !', k[5:])
+                        continue
+                    path = ''
                 else:
-                    host = host.lower()
-                if path[:1] == '@':
-                    path = re.compile(path[1:]).search
+                    if k.find('://', 0, 9) > 0 :
+                        scheme, _, k = k.partition('://')
+                    host, _, path = k.partition('/')
+                    if host[:1] == '@':
+                        host = re.compile(host[1:]).search
+                    else:
+                        host = host.lower()
+                    if path[:1] == '@':
+                        path = re.compile(path[1:]).search
                 v = v.rstrip()
                 if filters.action in (FAKECERT, CFW):
                     if not v:
@@ -177,7 +194,10 @@ class ACTION_FILTERS:
                     self.readconfig()
                     self.mtime = mtime
                     self.reset = True
+                    logging.warning('%r 内容被修改，已重新加载自动规则配置。',
+                                    self.CONFIG_FILENAME)
                 except Exception as e:
-                    logging.warning('%r 内容被修改，重新加载时出现错误，请检查后重新修改：\n%r', self.CONFIG_FILENAME, e)
+                    logging.warning('%r 内容被修改，重新加载时出现错误，'
+                                    '请检查后重新修改：\n%r', self.CONFIG_FILENAME, e)
 
 action_filters = ACTION_FILTERS()

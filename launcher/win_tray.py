@@ -215,6 +215,9 @@ def on_reset_dns(systray):
 def on_reset_autorule(systray):
     urlopen('http://localhost/docmd?cmd=reset_autorule')
 
+def on_reset_autorule_cache(systray):
+    urlopen('http://localhost/docmd?cmd=reset_autorule_cache')
+
 def on_refresh(systray):
     if MessageBox(None,
             '是否重新载入 GotoX？', '请确认', 4 | 48) == 6:
@@ -391,7 +394,8 @@ def build_menu(systray):
                  ('创建桌面快捷方式', on_create_shortcut),
                  ('设置系统（IE）代理', sub_menu4),
                  ('重置 DNS 缓存', on_reset_dns),
-                 ('重置自动规则缓存', on_reset_autorule),
+                 ('重置自动规则缓存', on_reset_autorule_cache),
+                 ('重置自动规则', on_reset_autorule),
                  ('重启 GotoX', on_refresh),
                  (None, '-'),
                  ('关于', on_about))

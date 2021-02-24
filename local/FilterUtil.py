@@ -9,7 +9,7 @@ from urllib import parse
 from .common.dns import reset_dns
 from .common.net import random_hostname
 from .common.path import config_dir
-from .common.util import LRUCache
+from .common.util import LRUCache, DomainsTree
 from .GlobalConfig import GC
 from .FilterConfig import (
     FAKECERT, numToAct, numToSSLAct, action_filters as _action_filters )
@@ -56,8 +56,7 @@ def _check_reset():
                 for reset_method in reset_method_list:
                     reset_method()
                 _action_filters.reset = False
-                logging.warning('%r 内容被修改，已重新加载自动代理配置。',
-                                _action_filters.CONFIG_FILENAME)
+                logging.warning('自动规则缓存已重置。')
 
 start_new_thread(check_reset, ())
 
@@ -115,6 +114,8 @@ def match_host_filter(filter, host):
                 if filter[0] != '.':
                     return host.startswith(filter)
         return filter in host
+    elif isinstance(filter, DomainsTree):
+        return host in filter
     return filter(host)
 
 def match_path_filter(filter, path):
