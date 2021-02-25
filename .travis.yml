@@ -37,7 +37,7 @@ before_deploy:
   - mv *.zip ..
   - cd ..
 
-  - function pack{
+  - pack() {
     cp -r GotoX GotoX-${3};
     cd GotoX-${3};
     python pack_portable.py ${1}-${3};
