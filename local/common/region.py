@@ -21,13 +21,15 @@ direct_tlds = (
     # http://gtldresult.icann.org/application-result/applicationstatus
     # https://www.icann.org/resources/pages/registries/registries-agreements-en
     # Country code top-level domains
-    'cn', 'hk', 'mo',
+    'cn',
+    #'hk',  # rthk.hk
+    'mo',
     # Internationalized country code top-level domains
-    'xn--fiqs8s',  #中国
-    'xn--fiqz9s',  #中國
-    'xn--j6w193g', #香港
-    'xn--mix082f', #澳门
-    'xn--mix891f', #澳門
+    'xn--fiqs8s',   #中国
+    'xn--fiqz9s',   #中國
+    #'xn--j6w193g', #香港
+    'xn--mix082f',  #澳门
+    'xn--mix891f',  #澳門
     # Internationalized geographic top-level domains
     'xn--1qqw23a', #佛山 Guangzhou YU Wei Information Technology Co., Ltd.
     'xn--xhq521b', #广东 Guangzhou YU Wei Information Technology Co., Ltd.
@@ -100,6 +102,7 @@ class IPv4Database:
     #载入 IPv4 保留地址和 CN 地址数据库，数据来源：
     #    https://ftp.apnic.net/apnic/stats/apnic/delegated-apnic-latest
     #    https://github.com/17mon/china_ip_list/raw/master/china_ip_list.txt
+    #    https://github.com/gaoyifan/china-operator-ip/raw/ip-lists/china.txt
     #    +---------+
     #    | 4 bytes |                     <- data length
     #    +---------------+
@@ -196,7 +199,7 @@ else:
             host = ipaddr.ipv4_mapped or ipaddr.teredo or ipaddr.sixtofour or host
         elif not isipv4(host):
             return _dns_resolve(host, qtypes=qtypes, local=False)
-        return host,
+        return str(host),
 
 direct_domains_temp_tree = DomainsTree('直连/临时规则白名单')
 for domain in GC.LINK_TEMPWHITELIST:
