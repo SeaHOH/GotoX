@@ -160,6 +160,8 @@ class InternetActiveCheck:
         self.dns_servers = None
 
     def set_dns_servers_v6(self):
+        if '6' not in GC.LINK_PROFILE:
+            return
         addr6 = get_wan_ipv6()
         if addr6:
             if addr6.teredo:
@@ -217,45 +219,49 @@ class InternetActiveCheck:
         ins = True
         sent = []
         check_times = 0
-        #清理过期响应
-        while ins:
-            ins, _, _ = select([self.sock], [], [], 0)
-            if ins:
-                self.sock.recvfrom(512)
-        while ok is None:
-            check_times += 1
-            if check_times > self.max_check_times:
-                if not haserr:
-                    if not keep_on:
-                        ok = False
-                        break
-                    haserr = True
-                    try:
-                        keep_on = abs(int(keep_on))
-                    except:
-                        keep_on = 10
-                    logging.error('%s 网络现在不可用，将每 %d 秒检测一次……', self.type, keep_on)
-                sleep(keep_on)
-            if self._dns_servers is None:
-                check_times = self.max_check_times
-                continue
-            if not self.dns_servers:
-                self.dns_servers = self._dns_servers.copy()
-                self.qdata = self.qdata_list.pop()
-                self.qdata_list.appendleft(self.qdata)
-            dns_server = self.dns_servers.pop()
-            try:
-                self.sock.sendto(self.qdata, dns_server)
-                sent.append(dns_server)
-                ins, _, _ = select([self.sock], [], [], 0.5)
+        try:
+            #清理过期响应
+            while ins:
+                ins, _, _ = select([self.sock], [], [], 0)
                 if ins:
-                    _, peername = self.sock.recvfrom(512)
-                    if peername[:2] in sent:
-                        ok = True
-            except:
-                pass
-        self.last_stat = int(ok is True)
-        self.in_check = False
+                    self.sock.recvfrom(512)
+            while ok is None:
+                check_times += 1
+                if check_times > self.max_check_times:
+                    if not haserr:
+                        if not keep_on:
+                            ok = False
+                            break
+                        haserr = True
+                        try:
+                            keep_on = abs(int(keep_on))
+                        except:
+                            keep_on = 10
+                        logging.error('%s 网络现在不可用，将每 %d 秒检测一次……', self.type, keep_on)
+                    sleep(keep_on)
+                if self._dns_servers is None:
+                    check_times = self.max_check_times
+                    continue
+                if not self.dns_servers:
+                    self.dns_servers = self._dns_servers.copy()
+                    self.qdata = self.qdata_list.pop()
+                    self.qdata_list.appendleft(self.qdata)
+                dns_server = self.dns_servers.pop()
+                try:
+                    self.sock.sendto(self.qdata, dns_server)
+                    sent.append(dns_server)
+                    ins, _, _ = select([self.sock], [], [], 0.5)
+                    if ins:
+                        _, peername = self.sock.recvfrom(512)
+                        if peername[:2] in sent:
+                            ok = True
+                except:
+                    pass
+        except:
+            pass
+        finally:
+            self.last_stat = int(ok is True)
+            self.in_check = False
         if haserr:
             logging.warning('%s 网络恢复连接', self.type)
         return self.last_stat
