@@ -17,6 +17,8 @@ from local.GlobalConfig import GC
 A = dnslib.QTYPE.A
 AAAA = dnslib.QTYPE.AAAA
 OPT = dnslib.QTYPE.OPT
+NOERROR = dnslib.RCODE.NOERROR
+NXDOMAIN = dnslib.RCODE.NXDOMAIN
 qtypes = []
 if '4' in GC.LINK_PROFILE:
     qtypes.append(A)
@@ -85,6 +87,8 @@ def dns_resolve(host, qtypes=qtypes):
             dns[host] = iplist = list(set(iplist))
         else:
             dns.set(host, 0, 300)
+    if iplist == [NXDOMAIN]:
+        return []
     return iplist
 
 def _address_string(xip):
@@ -183,12 +187,15 @@ def _https_resolve(params):
             if response.status == 200:
                 reply = json.loads(data)
                 if reply:
-                    # NOERROR: 0
-                    ok = reply['Status'] == 0
-                    if ok and 'Answer' in reply:
-                        for answer in reply['Answer']:
-                            if answer['type'] == params.qtype:
-                                iplist.append(answer['data'])
+                    if reply['Status'] == NXDOMAIN:
+                        ok = True
+                        iplist.append(NXDOMAIN)
+                    else:
+                        ok = reply['Status'] == NOERROR
+                        if ok and 'Answer' in reply:
+                            for answer in reply['Answer']:
+                                if answer['type'] == params.qtype:
+                                    iplist.append(answer['data'])
             else:
                 raise DoHError((response.status, data))
     except DoHError as e:
@@ -255,10 +262,11 @@ def _dns_remote_resolve(qname, dnsservers, blacklist=[], timeout=2, qtypes=qtype
     query_datas = []
     #ids = []
     for qtype in qtypes:
-        query = dnslib.DNSRecord(q=dnslib.DNSQuestion(qname, qtype))
-        query.add_ar(remote_query_opt)
+        query = dnslib.DNSRecord(q=dnslib.DNSQuestion(qname, qtype),
+                                ar=[remote_query_opt])
         query_datas.append(query.pack())
         #ids.append(query.header.id)
+        del query
     dns_v4_servers = [x for x in dnsservers if isipv4(x[0])]
     dns_v6_servers = [x for x in dnsservers if isipv6(x[0])]
     socks = []

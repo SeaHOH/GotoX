@@ -258,7 +258,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 self.host = host
         else:
             self.host = host = chost
-        if host[0] == '[':
+        if host[:1] == '[':
             self.host = host[1:-1]
         #确定端口
         self.port = port = int(port or cport or self.ssl and 443 or 80)
@@ -577,7 +577,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                         self.write(c)
                         return
                     #非默认规则、直连 IP
-                    elif self.target or isdirect(self.host):
+                    elif self.target[0] or isdirect(self.host):
                         logging.warning('%s do_DIRECT "%s %s" 没有正确响应，重试。',
                                         self.address_string(), self.command, self.url)
                         continue
@@ -589,7 +589,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 if response.status >= 400:
                     noerror = False
                 #拒绝服务、非直连 IP
-                if response.status == 403 and not isdirect(self.host):
+                if response.status == 403 and not self.url_parts.path.endswith('favicon.ico') and not isdirect(self.host):
                     logging.warning('%s do_DIRECT "%s %s" 连接被拒绝，尝试使用 "%s" 规则。',
                                     self.address_string(response), self.command, self.url, GC.LISTEN_ACT)
                     return self.go_TEMPACT()

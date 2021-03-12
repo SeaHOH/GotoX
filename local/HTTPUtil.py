@@ -133,7 +133,7 @@ class LimitConnection(LimitDictBase):
 class LimitConnect(LimitDictBase):
     'A connect limiter for host cache key.'
 
-    maxsize = 2
+    maxsize = 3
     timeout = 8
 
 LimitConnection.init()
@@ -938,6 +938,7 @@ class HTTPUtil(BaseHTTPUtil):
             if 'Content-Length' not in headers:
                 headers['Content-Length'] = str(len(payload))
 
+        remote = None
         for i in range(self.max_retry):
             if hasattr(request_params, 'connection') and check_connection_dead(request_params.connection):
                 raise socket.error(errno.ECONNABORTED, '本地连接已断开')
@@ -949,10 +950,10 @@ class HTTPUtil(BaseHTTPUtil):
                     ssl_sock = self.create_ssl_connection(address, hostname, connection_cache_key, getfast=bool(getfast))
                 else:
                     sock = self.create_connection(address, hostname, connection_cache_key)
-                result = ssl_sock or sock
-                if result:
-                    result.settimeout(timeout)
-                    return self._request(result, method, request_params.path, self.protocol_version, headers, payload, bufsize=bufsize)
+                remote = ssl_sock or sock
+                if remote:
+                    remote.settimeout(timeout)
+                    return self._request(remote, method, request_params.path, self.protocol_version, headers, payload, bufsize=bufsize)
             except Exception as e:
                 if i < self.max_retry - 1 and isinstance(e, LimiterFull):
                     continue
@@ -971,7 +972,7 @@ class HTTPUtil(BaseHTTPUtil):
                     logging.warning('%s _request "%s %s" 失败：%r', ip and ip[0], realmethod, realurl or url, e)
                     if ip and realurl:
                         self.ssl_connection_time[ip] = self.timeout + 1
-                if not realurl and e.args[0] in bypass_errno or i == self.max_retry - 1 and isinstance(e, LimiterFull):
+                if not realurl and remote and e.args[0] in bypass_errno or i == self.max_retry - 1 and isinstance(e, LimiterFull):
                     if ip:
                         e.xip = ip
                     raise
