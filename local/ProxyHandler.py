@@ -577,7 +577,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                         self.write(c)
                         return
                     #非默认规则、直连 IP
-                    elif self.target[0] or isdirect(self.host):
+                    elif self.target and self.target[0] or isdirect(self.host):
                         logging.warning('%s do_DIRECT "%s %s" 没有正确响应，重试。',
                                         self.address_string(), self.command, self.url)
                         continue
