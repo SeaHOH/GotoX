@@ -122,7 +122,10 @@ class DoHError(Exception):
 class doh_params:
     ssl = True
     command = 'POST'
-    headers = {'Accept': 'application/dns-message'}
+    headers = {
+        'Accept': 'application/dns-message',
+        'Content-Type': 'application/dns-message'
+    }
 
     def __init__(self, host, port, path):
         self.host = host
@@ -172,7 +175,7 @@ def _https_resolve(server, qname, qtype, query_data):
     http_util = http_gws if server.hostname.startswith('google') else http_nor
     connection_cache_key = '%s:%d' % (server.hostname, server.port)
     try:
-        response = http_util.request(server, query_data, headers=server.headers, connection_cache_key=connection_cache_key)
+        response = http_util.request(server, query_data, headers=server.headers.copy(), connection_cache_key=connection_cache_key)
         if response:
             data = response.read()
             noerror = True

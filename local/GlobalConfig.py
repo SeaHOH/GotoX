@@ -272,7 +272,7 @@ class GC:
     DNS_LOCAL_WHITELIST = CONFIG.gettuple('dns', 'localwhitelist')
     DNS_LOCAL_BLACKLIST = CONFIG.gettuple('dns', 'localblacklist')
     DNS_OVER_HTTPS = CONFIG.getboolean('dns', 'overhttps', fallback=True)
-    DNS_OVER_HTTPS_SERVERS = CONFIG.gettuple('dns', 'overhttpsservers', fallback='odvr.nic.cz')
+    DNS_OVER_HTTPS_SERVERS = CONFIG.gettuple('dns', 'overhttpsservers', fallback='cloudflare-dns.com')
     DNS_IP_API = CONFIG.gettuple('dns', 'ipapi')
     DNS_PRIORITY = CONFIG.getlist('dns', 'priority', fallback='overhttps|remote|system')
     DNS_BLACKLIST = set(CONFIG.getlist('dns', 'blacklist'))
