@@ -116,17 +116,40 @@ from .region import islocal
 from local.FilterUtil import get_action
 from local.HTTPUtil import http_gws, http_nor
 
+class DoHError(Exception):
+    pass
+
+class doh_params:
+    ssl = True
+    command = 'POST'
+    headers = {'Accept': 'application/dns-message'}
+
+    def __init__(self, host, port, path):
+        self.host = host
+        self.port = port
+        self.path = path
+        self.url = 'https://%s%s' % (host, path)
+
+    def set_dns(self):
+        action, target = get_action('https', self.host, self.path, self.url)
+        if target and action in ('do_DIRECT', 'do_FORWARD'):
+            iporname, profile = target
+        else:
+            iporname, profile = None, None
+        if iporname is None and self.host not in dns:
+            logging.warning('无法找到 DoH 域名 %r 的自定义 IP 列表，尝试使用系统 DNS 设置解析。', self.host)
+            dns[self.host] = dns_system_resolve(self.host)
+        self.hostname = set_dns(self.host, iporname)
+        if self.hostname is None:
+            logging.error('无法解析 DoH 域名：' + self.host)
+
 doh_servers = set()
 doh_servers_bad = set()
 for _sv in GC.DNS_OVER_HTTPS_SERVERS:
     _sv = urlparse.urlsplit('http://' + _sv)
-    _sv = (_sv.hostname.encode('idna').decode(),
-           _sv.port or 443,
-           urlparse.quote(_sv.path) or '/dns-query')
-    doh_servers.add(_sv)
-
-class DoHError(Exception):
-    pass
+    doh_servers.add(doh_params(_sv.hostname.encode('idna').decode(),
+                    _sv.port or 443,
+                    urlparse.quote(_sv.path) or '/dns-query'))
 
 # add 方法在最后调用以避免丢失数据
 def mark_good_doh(server):
@@ -137,65 +160,33 @@ def mark_bad_doh(server):
     doh_servers.discard(server)
     doh_servers_bad.add(server)
 
-class doh_params:
-    ssl = True
-    command = 'GET'
-    __slots__ = 'qtype', 'host', 'port', 'path', 'query', 'url', 'headers', 'hostname'
-
-    def __init__(self, qname, qtype):
-        self.qtype = qtype
-        self.query = urlparse.urlencode({
-            'name': qname,
-            'type': qtype
-        })
-
-    def set_server(self, host, port, path):
-        self.host = host
-        self.port = port
-        self.path = '%s?%s' % (path, self.query)
-        self.url = 'https://%s%s' % (host, self.path)
-        self.headers = {'Accept': 'application/dns-json'}
-        action, target = get_action('https', host, path, self.url)
-        if target and action in ('do_DIRECT', 'do_FORWARD'):
-            iporname, profile = target
-        else:
-            iporname, profile = None, None
-        if iporname is None and host not in dns:
-            logging.warning('无法找到 DoH 域名 %r 的自定义 IP 列表，尝试使用系统 DNS 设置解析。', host)
-            dns[host] = dns_system_resolve(host)
-        self.hostname = set_dns(host, iporname)
-        if self.hostname is None:
-            logging.error('无法解析 DoH 域名：' + host)
-
-def _https_resolve(params):
+def _https_resolve(server, qname, qtype, query_data):
     '此函数功能实现仅限于解析为 A、AAAA 记录'
-    # https://developers.google.com/speed/public-dns/docs/doh/json
-    # https://developers.cloudflare.com/1.1.1.1/dns-over-https/json-format/
+    # https://developers.cloudflare.com/1.1.1.1/dns-over-https/wireformat/
 
     iplist = []
     xip = None
     response = None
     noerror = False
     ok = False
-    http_util = http_gws if params.hostname.startswith('google') else http_nor
-    connection_cache_key = '%s:%d' % (params.hostname, params.port)
+    http_util = http_gws if server.hostname.startswith('google') else http_nor
+    connection_cache_key = '%s:%d' % (server.hostname, server.port)
     try:
-        response = http_util.request(params, headers=params.headers, connection_cache_key=connection_cache_key)
+        response = http_util.request(server, query_data, headers=server.headers, connection_cache_key=connection_cache_key)
         if response:
-            data = response.read().decode()
+            data = response.read()
             noerror = True
             if response.status == 200:
-                reply = json.loads(data)
+                reply = dnslib.DNSRecord.parse(data)
                 if reply:
-                    if reply['Status'] == NXDOMAIN:
+                    if reply.header.rcode == NXDOMAIN:
                         ok = True
                         iplist.append(NXDOMAIN)
                     else:
-                        ok = reply['Status'] == NOERROR
-                        if ok and 'Answer' in reply:
-                            for answer in reply['Answer']:
-                                if answer['type'] == params.qtype:
-                                    iplist.append(answer['data'])
+                        ok = reply.header.rcode == NOERROR
+                        for r in reply.rr:
+                            if r.rtype == qtype:
+                                iplist.append(str(r.rdata))
             else:
                 raise DoHError((response.status, data))
     except DoHError as e:
@@ -216,10 +207,15 @@ def _https_resolve(params):
         return iplist, xip, ok
 
 def _dns_over_https_resolve(qname, qtypes=qtypes):
+
+    def get_hex():
+        return dnslib.DNSRecord(q=dnslib.DNSQuestion(qname, qtype)).pack()
+
     iplist = classlist()
     xips = []
     qtypes = list(qtypes)
-    params = doh_params(qname, qtypes.pop())
+    qtype = qtypes.pop()
+    query_data = get_hex()
     while True:
         try:
             servers = random.sample(doh_servers, len(doh_servers))
@@ -231,15 +227,16 @@ def _dns_over_https_resolve(qname, qtypes=qtypes):
     for server in servers:
         while True:
             ok = False
-            params.set_server(*server)
-            if params.hostname is None:
+            server.set_dns()
+            if server.hostname is None:
                 break
-            _iplist, xip, ok = _https_resolve(params)
+            _iplist, xip, ok = _https_resolve(server, qname, qtype, query_data)
             iplist += _iplist
             if xip and xip not in xips:
                 xips.append(xip)
             if ok and qtypes:
-                params = doh_params(qname, qtypes.pop())
+                qtype = qtypes.pop()
+                query_data = get_hex()
             else:
                 break
         if ok:
@@ -293,7 +290,7 @@ def _dns_remote_resolve(qname, dnsservers, blacklist=[], timeout=2, qtypes=qtype
                 sock_v6.sendto(query_data, dnsserver)
                 query_times += 1
     except socket.error as e:
-        logging.warning('send dns query=\n%s \nsocket: %r', query, e)
+        logging.warning('send dns qname=%r \nsocket: %r', qname, e)
     while time() < timeout_at and not (v4_resolved and v6_resolved) and query_times:
         try:
             ins, _, _ = select(socks, [], [], 0.1)
@@ -342,7 +339,9 @@ def _dns_remote_resolve(qname, dnsservers, blacklist=[], timeout=2, qtypes=qtype
                 if xip not in xips:
                     xips.append(xip)
         except socket.error as e:
-            logging.warning('receive dns query=\n%s \nsocket: %r', query, e)
+            logging.warning('receive dns qname=%r \nsocket: %r', qname, e)
+        except dnslib.dns.DNSError as e:
+            logging.debug('receive dns qname=%r \nerror: %r', qname, e)
     for sock in socks:
         sock.close()
     logging.debug('query qname=%r reply iplist=%s', qname, iplist)

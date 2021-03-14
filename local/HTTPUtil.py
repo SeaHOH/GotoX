@@ -22,7 +22,8 @@ from .compat.openssl import (
 from .common.dns import dns, dns_resolve
 from .common.internet_active import internet_v4, internet_v6
 from .common.net import (
-    NetWorkIOError, random_hostname, bypass_errno, isip, check_connection_dead )
+    NetWorkIOError, random_hostname, reset_errno, bypass_errno,
+    isip, check_connection_dead )
 from .common.decorator import make_lock_decorator
 from .common.path import cert_dir
 from .common.proxy import parse_proxy, proxy_no_rdns
@@ -933,7 +934,7 @@ class HTTPUtil(BaseHTTPUtil):
         if hasattr(payload, 'read'):
             pass
         elif payload:
-            if not isinstance(payload, bytes):
+            if isinstance(payload, str):
                 payload = payload.encode()
             if 'Content-Length' not in headers:
                 headers['Content-Length'] = str(len(payload))
@@ -972,7 +973,8 @@ class HTTPUtil(BaseHTTPUtil):
                     logging.warning('%s _request "%s %s" 失败：%r', ip and ip[0], realmethod, realurl or url, e)
                     if ip and realurl:
                         self.ssl_connection_time[ip] = self.timeout + 1
-                if not realurl and remote and e.args[0] in bypass_errno or i == self.max_retry - 1 and isinstance(e, LimiterFull):
+                if not realurl and (e.args[0] in reset_errno or (remote and e.args[0] in bypass_errno)) or \
+                        i == self.max_retry - 1 and isinstance(e, LimiterFull):
                     if ip:
                         e.xip = ip
                     raise
