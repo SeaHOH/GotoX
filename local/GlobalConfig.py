@@ -224,12 +224,6 @@ class GC:
     PICKER_GWS_MAXTIMEOUT = CONFIG.getint('picker/gws', 'maxtimeout', fallback=1000)
     PICKER_GWS_MAXTHREADS = CONFIG.getint('picker/gws', 'maxthreads', fallback=3)
 
-    if not PICKER_SERVERNAME or not PICKER_COMDOMAIN:
-        logging.warning('没有找到 [picker/servername|comdomain]，将使用默认值。'
-                        '请检查配置文件：%r，参考注释进行填写。', CONFIG_FILENAME)
-        PICKER_SERVERNAME = b'fonts.googleapis.com'
-        PICKER_COMDOMAIN = '*.googleapis.com'
-
     #PROXY_ENABLE = CONFIG.getboolean('proxy', 'enable', fallback=False)
     PROXY_ENABLE = False
     PROXY_AUTODETECT = CONFIG.getboolean('proxy', 'autodetect', fallback=False)

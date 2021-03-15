@@ -78,15 +78,12 @@ def patch_configparser():
     #去掉 lower 以支持选项名称大小写共存
     RawConfigParser.optionxform = lambda s, opt: opt
 
-    #添加空值（str）作为 get 的 fallback，不影响 _get_conv
+    #添加空值（str）作为 get 的 fallback
     #支持指定 get 结果空值的 fallback
     RawConfigParser._get = RawConfigParser.get
 
     def get(self, section, option, *, raw=False, vars=None, fallback=_UNSET):
-        try:
-            value = self._get(section, option, raw=raw, vars=vars)
-        except (NoSectionError, NoOptionError):
-            value = ''
+        value = self._get(section, option, raw=raw, vars=vars, fallback='')
         if not value and fallback is not _UNSET:
             return fallback
         return value
@@ -96,26 +93,26 @@ def patch_configparser():
     #支持指定 getint、getfloat、getboolean 非法值的 fallback
     def _get_conv(self, section, option, conv, *, raw=False, vars=None,
                   fallback=_UNSET, **kwargs):
+        value = self._get(section, option, raw=raw, vars=vars, fallback='')
         try:
-            value = self._get(section, option, raw=raw, vars=vars, **kwargs)
             value = conv(value)
-            if value or value in (0, False):
+            if value or value in (0, False) or fallback is _UNSET:
                 return value
-            if fallback is _UNSET:
-                return value
-            else:
-                raise ValueError
-        except (NoSectionError, NoOptionError, ValueError) as e:
-            if isinstance(e, ValueError) and value:
+        except ValueError as e:
+            if value:
                 logging.warning('配置错误 [%s/%s] = %r：%r',
                                 section, option, value, e)
             if fallback is _UNSET:
                 raise
         try:
             return conv(fallback)
-        except ValueError:
+        except ValueError as e:
             if conv == self._convert_to_boolean:
                 return bool(fallback)
+            elif not value:
+                logging.debug('默认值配置错误 [%s/%s] = %r：%r',
+                                section, option, fallback, e)
+                return value
             else:
                 raise
 
