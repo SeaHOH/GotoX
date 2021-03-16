@@ -86,7 +86,7 @@ from time import sleep
 from threading import _start_new_thread as start_new_thread
 from OpenSSL import __version__ as opensslver
 from .common.cert import check_ca
-from .common.dns import _dns_resolve as dns_resolve
+from .common.dns import _dns_resolve as dns_resolve, dns_system_servers, dns_remote_servers, dns_local_servers, doh_servers
 from .common.net import isip, isipv4, isipv6
 from .common.path import icon_gotox
 from .common.region import IPDBVer, DDTVer
@@ -254,26 +254,62 @@ def main():
         if not GC.PROXY_ENABLE:
             resolve_iplist()
 
-    info = ['=' * 80]
-    info.append(' GotoX 版 本 : %s (python/%s gevent(%s)/%s pyOpenSSL/%s)' % (__version__, sys.version.split(' ')[0], GC.GEVENT_LOOP, geventver, opensslver))
-    if GC.LISTEN_ACT == 'GAE':
-        info.append('\n GAE   AppID : %s' % ('|'.join(GC.GAE_APPIDS) or '请填入 AppID'))
-        info.append('\n GAE  验  证 : %s启用' % '已' if GC.GAE_SSLVERIFY else '未')
-    elif GC.LISTEN_ACT == 'CFW':
-        info.append('\n CF  Workers : %s' % (GC.CFW_SUBDOMAIN and f'{" | ".join(GC.CFW_WORKERS)} @ {GC.CFW_SUBDOMAIN}' or GC.CFW_WORKER or '请填入 Workers'))
-    info.append('\n 监 听 地 址 : 自动代理 - %s:%d' % (GC.LISTEN_IP, GC.LISTEN_AUTOPORT))
-    info.append('               %s 代理 - %s:%d' % (GC.LISTEN_ACT, GC.LISTEN_IP, GC.LISTEN_ACTPORT))
-    info.append('\n 代 理 认 证 : %s认证' % (GC.LISTEN_AUTH == 0 and '无需' or (GC.LISTEN_AUTH == 2 and 'IP ') or 'Basic '))
-    info.append('\n 调 试 信 息 : %s' % logging.getLevelName(GC.LOG_LEVEL))
-    info.append('\n 保 存 日 志 : %s' % GC.LOG_FILE if GC.LOG_SAVE else '否')
-    info.append('\n 连 接 模 式 : 远程 - %s' % GC.LINK_REMOTESSLTXT)
-    info.append('               本地 - %s' % GC.LINK_LOCALSSLTXT)
-    info.append('\n 网 络 配 置 : %s' % GC.LINK_PROFILE)
-    info.append('\n IP 数 据 库 : %s' % IPDBVer)
-    info.append('\n 直 连 域 名 : %s' % DDTVer)
-    info.append('\n 安 装 证 书 : 设置代理后访问 http://gotox.go/')
-    info.append('=' * 80)
-    info = '\n'.join(info)
+    info = f'''\
+===============================================================================
+ GotoX 版 本 : {__version__} (python/{sys.version.split(' ')[0]} gevent({GC.GEVENT_LOOP})/{geventver} pyOpenSSL/{opensslver})
+{GC.LISTEN_ACT == 'GAE' and f"""
+ GAE   AppID : {' | '.join(GC.GAE_APPIDS) or '请填入 AppID'}
+ 
+ GAE  验  证 : {'已' if GC.GAE_SSLVERIFY else '未'}启用
+""" or
+GC.LISTEN_ACT == 'CFW' and f"""
+ CF  Workers : {GC.CFW_SUBDOMAIN and f'@{GC.CFW_SUBDOMAIN} [{" | ".join(GC.CFW_WORKERS)}]' or GC.CFW_WORKER or '请填入 Workers'}
+"""}
+ 监 听 地 址 : 自动代理 - {GC.LISTEN_IP}:{GC.LISTEN_AUTOPORT}
+               {GC.LISTEN_ACT} 代理 - {GC.LISTEN_IP}:{GC.LISTEN_ACTPORT}
+
+ 代 理 认 证 : {GC.LISTEN_AUTH == 0 and '无需' or (GC.LISTEN_AUTH == 2 and 'IP ') or 'Basic '}
+
+ 调 试 信 息 : {logging.getLevelName(GC.LOG_LEVEL)}
+
+ 保 存 日 志 : {f'{GC.LOG_FILE} ({GC.LOG_FILESIZE//1024} KB x {GC.LOG_ROTATION})' if GC.LOG_SAVE else '否'}
+
+ 网 络 配 置 : {GC.LINK_PROFILE}
+               HTTP  - {str(GC.FILTER_ACTION).
+                        replace('1', '拦截').
+                        replace('2', '转发').
+                        replace('3', '直连').
+                        replace('4', '直连').
+                        replace('5', 'GAE 代理').
+                        replace('6', 'CFW 代理')}
+               HTTPS - {str(GC.FILTER_SSLACTION).
+                        replace('1', '拦截').
+                        replace('2', '转发').
+                        replace('3', '直连').
+                        replace('4', '直连').
+                        replace('5', 'GAE 代理').
+                        replace('6', 'CFW 代理')}
+
+ 连 接 模 式 : 远程 - {GC.LINK_REMOTESSLTXT}
+               本地 - {GC.LINK_LOCALSSLTXT}
+
+ 域 名 解 析 : 系统 - {' | '.join('[{}]:{}'.format(*sv) for sv in dns_system_servers)}
+               远程 - {' | '.join('[{}]:{}'.format(*sv) for sv in dns_remote_servers)}
+               本地 - {' | '.join('[{}]:{}'.format(*sv) for sv in dns_local_servers)}{GC.DNS_OVER_HTTPS and f"""
+                DoH - {' | '.join(sv.url for sv in doh_servers)}
+""" or ''}
+ 解 析 顺 序 : {' >> '.join(GC.DNS_PRIORITY).
+                        replace('system', '系统').
+                        replace('remote', '远程').
+                        replace('overhttps', 'DoH')}
+
+ IP 数 据 库 : {IPDBVer}
+
+ 直 连 域 名 : {DDTVer}
+
+ 安 装 证 书 : 设置代理后访问 http://gotox.go/
+===============================================================================
+'''
     print(info)
     if GC.LOG_SAVE:
         print(info, file=logfile)

@@ -30,29 +30,6 @@ _SSLv = {
     'SSLv2'   : 1
     }
 
-def _servers_2_addresses(servers, default_port):
-    for server in servers:
-        if server[:1] == '[':
-            addr, delim, port = server[1:].partition(']:')
-            if not delim:
-                addr = addr[:-1]
-        elif '.' in server:
-            addr, _, port = server.partition(':')
-        else:
-            if isipv6(server):
-                yield server, default_port
-            continue
-        if isip(addr):
-            try:
-                port = int(port)
-            except:
-                port = default_port
-            yield addr, port
-
-def servers_2_addresses(servers, default_port):
-    default_port = int(default_port)
-    return tuple(_servers_2_addresses(servers, default_port))
-
 #load config from proxy.ini
 #ENV_CONFIG_PREFIX = 'GOTOX_'
 CONFIG = ConfigParser(dict_type=dict, inline_comment_prefixes=('#', ';'))
@@ -200,8 +177,8 @@ class GC:
     if GAE_ENABLEPROXY:
         GAE_TESTGWSIPLIST = False
 
-    FILTER_ACTION = max(min(CONFIG.getint('filter', 'action', fallback=3), 4), 1)
-    FILTER_SSLACTION = max(min(CONFIG.getint('filter', 'sslaction', fallback=2), 4), 1)
+    FILTER_ACTION = max(min(CONFIG.getint('filter', 'action', fallback=3), 6), 1)
+    FILTER_SSLACTION = max(min(CONFIG.getint('filter', 'sslaction', fallback=2), 6), 1)
 
     PICKER_SERVERNAME = CONFIG.get('picker', 'servername', fallback='fonts.googleapis.com')
     PICKER_COMDOMAIN = CONFIG.get('picker', 'comdomain', fallback='*.googleapis.com')
@@ -260,16 +237,15 @@ class GC:
     AUTORANGE_BIG_SLEEPTIME = CONFIG.getint('autorange/big', 'sleeptime', fallback=5)
     AUTORANGE_BIG_LOWSPEED = CONFIG.getint('autorange/big', 'lowspeed', fallback=0)
 
-    DNS_SERVERS = servers_2_addresses(CONFIG.gettuple('dns', 'servers', fallback='8.8.8.8'), 53)
-    DNS_LOCAL_SERVERS = servers_2_addresses(CONFIG.gettuple('dns', 'localservers', fallback='114.114.114.114'), 53)
+    DNS_SERVERS = CONFIG.gettuple('dns', 'servers')
+    DNS_LOCAL_SERVERS = CONFIG.gettuple('dns', 'localservers')
+    DNS_TIME_THRESHOLD = min(CONFIG.getint('dns', 'timethreshold', fallback=50), 100)
     DNS_LOCAL_HOST = CONFIG.getboolean('dns', 'localhost', fallback=True)
     DNS_LOCAL_WHITELIST = CONFIG.gettuple('dns', 'localwhitelist')
     DNS_LOCAL_BLACKLIST = CONFIG.gettuple('dns', 'localblacklist')
     DNS_OVER_HTTPS = CONFIG.getboolean('dns', 'overhttps', fallback=True)
     DNS_OVER_HTTPS_SERVERS = CONFIG.gettuple('dns', 'overhttpsservers', fallback='cloudflare-dns.com')
-    DNS_IP_API = CONFIG.gettuple('dns', 'ipapi')
     DNS_PRIORITY = CONFIG.getlist('dns', 'priority', fallback='overhttps|remote|system')
-    DNS_BLACKLIST = set(CONFIG.getlist('dns', 'blacklist'))
 
     DNS_DEF_PRIORITY = ['system', 'remote', 'overhttps']
     for dnstype in DNS_PRIORITY.copy():

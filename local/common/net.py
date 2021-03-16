@@ -87,6 +87,29 @@ def random_hostname(wildcard_host=None):
         gtld = random.choice(gtlds)
         return '.'.join((subd, sld, gtld))
 
+def _servers_2_addresses(servers, default_port):
+    for server in servers:
+        if server[:1] == '[':
+            addr, delim, port = server[1:].partition(']:')
+            if not delim:
+                addr = addr[:-1]
+        elif '.' in server:
+            addr, _, port = server.partition(':')
+        else:
+            if isipv6(server):
+                yield server, default_port
+            continue
+        if isip(addr):
+            try:
+                port = int(port)
+            except:
+                port = default_port
+            yield addr, port
+
+def servers_2_addresses(servers, default_port):
+    default_port = int(default_port)
+    return tuple(_servers_2_addresses(servers, default_port))
+
 def isip(ip):
     if ':' in ip:
         return isipv6(ip)
