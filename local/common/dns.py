@@ -264,22 +264,22 @@ def _dns_over_https_resolve(qname, qtypes=qtypes):
     return iplist
 
 remote_query_opt = dnslib.EDNS0(flags='do', udp_len=1024)
+bv4_remote = 1 << 0
+bv6_remote = 1 << 1
+bv4_local = 1 << 2
+bv6_local = 1 << 3
+allresolved = (1 << 4) - 1
 
 def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
     # https://gfwrev.blogspot.com/2009/11/gfwdns.html
     # https://zh.wikipedia.org/wiki/域名服务器缓存污染
     # http://support.microsoft.com/kb/241352 (已删除)
 
-    query_datas = []
-    id2qtype = {}
-    for qtype in qtypes:
-        query = dnslib.DNSRecord(q=dnslib.DNSQuestion(qname, qtype),
-                                ar=[remote_query_opt])
-        query_datas.append(query.pack())
-        id2qtype[query.header.id] = qtype
-        del query
     dns_v4_servers = []
     dns_v6_servers = []
+    socks = []
+    id2qtype = {}
+    query_times = 0
     remote_resolve = dnsservers is dns_remote_servers
     if remote_resolve:
         local_servers = random.choice(dns_local_servers),
@@ -290,42 +290,39 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
             dns_v4_servers.append(x)
         else:
             dns_v6_servers.append(x)
-    socks = []
     if dns_v4_servers:
         sock_v4 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         socks.append(sock_v4)
     if dns_v6_servers:
         sock_v6 = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
         socks.append(sock_v6)
+    for qtype in qtypes:
+        query = dnslib.DNSRecord(q=dnslib.DNSQuestion(qname, qtype),
+                                ar=[remote_query_opt])
+        query_data = query.pack()
+        id2qtype[query.header.id] = qtype
+        try:
+            for dnsserver in dns_v4_servers:
+                sock_v4.sendto(query_data, dnsserver)
+                query_times += 1
+            for dnsserver in dns_v6_servers:
+                sock_v6.sendto(query_data, dnsserver)
+                query_times += 1
+        except socket.error as e:
+            logging.warning('send dns qname=%r \nsocket: %r', qname, e)
+        del query, query_data
+    del dns_v4_servers, dns_v6_servers
     timeout_st = time()
     timeout_at = timeout_st + timeout
     iplists = {'remote': [], 'local': []}
     iplist = []
     xips = []
-    bv4_remote = 1 << 0
-    bv6_remote = 1 << 1
-    bv4_local = 1 << 2
-    bv6_local = 1 << 3
-    allresolved = (1 << 4) - 1
+    pollution = False
     resolved = 0
     if A not in qtypes:
         resolved |= bv4_remote | bv4_local
     elif AAAA not in qtypes:
         resolved |= bv6_remote | bv6_local
-    query_times = 0
-    pollution = False
-    try:
-        for dnsserver in dns_v4_servers:
-            for query_data in query_datas:
-                sock_v4.sendto(query_data, dnsserver)
-                query_times += 1
-        for dnsserver in dns_v6_servers:
-            for query_data in query_datas:
-                sock_v6.sendto(query_data, dnsserver)
-                query_times += 1
-    except socket.error as e:
-        logging.warning('send dns qname=%r \nsocket: %r', qname, e)
-    del dns_v4_servers, dns_v6_servers
     while time() < timeout_at and (allresolved ^ resolved) and query_times:
         ins, _, _ = select(socks, [], [], 0.1)
         for sock in ins:
@@ -386,7 +383,6 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
     if xips:
         iplist = classlist(iplist)
         iplist.xip = xips
-    print(iplists)
     return iplist
 
 def get_dnsserver_list():
