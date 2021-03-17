@@ -333,24 +333,28 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
     elif AAAA not in qtypes:
         resolved |= bv6_remote | bv6_local
 
-    def is_resolved():
+    def is_resolved(qtype):
         if qtype is A:
             return resolved & (bv4_local if local else bv4_remote)
         elif qtype is AAAA:
             return resolved & (bv6_local if local else bv6_remote)
+        return True
 
     while time() < timeout_at and (allresolved ^ resolved) and query_times:
         ins, _, _ = select(socks, [], [], 0.1)
         for sock in ins:
             iplist.clear()
+            qtype = None
             try:
                 reply_data, xip = sock.recvfrom(remote_query_opt.edns_len)
                 local = xip in local_servers
-                if local and pollution or is_resolved():
+                if local and pollution:
                     continue
                 reply = dnslib.DNSRecord.parse(reply_data)
                 qtype = reply.q.qtype
                 rr_alone = len(reply.rr) == 1
+                if is_resolved(qtype):
+                    continue
                 if remote_resolve:
                     if not local:
                         if rr_alone and (not reply.ar or
@@ -362,7 +366,7 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
                             continue
                         elif not pollution and GC.DNS_LOCAL_PREFER:
                             resolved |= bv4_remote | bv6_remote
-                            if is_resolved():
+                            if is_resolved(qtype):
                                 continue
                 if reply.header.rcode is NOERROR:
                     for r in reply.rr:
@@ -370,7 +374,8 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
                             ip = str(r.rdata)
                             #一个简单排除 IPv6 污染定式的方法，有及其微小的机率误伤正常结果
                             #虽然没办法用于 IPv4，但这只是 check_edns_opt 的后备，聊胜于无
-                            if pollution and rr_alone and len(ip) == 15 and ip.startswith('2001::'):
+                            if qtype is AAAA and pollution and rr_alone and \
+                                    len(ip) == 15 and ip.startswith('2001::'):
                                 query_times += 1
                                 iplist.clear()
                                 break
@@ -393,6 +398,9 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
                     else:
                         resolved |= bv4_remote if qtype is A else bv6_remote
                         iplists['remote'].extend(iplist)
+                #大概率没有 AAAA 结果
+                elif qtype is AAAA and is_resolved(A):
+                    resolved |= bv6_local if local else bv6_remote
                 if xip not in xips:
                     xips.append(xip)
                 query_times -= 1
