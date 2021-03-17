@@ -121,7 +121,7 @@ def check_servers(servers, local, fallback):
     return tuple(server for server in servers
                  if not ipdb or isipv6(server) or (server in ipdb) is local) or (fallback, )
 
-dns_remote_servers = check_servers(GC.DNS_SERVERS, False, '8.8.8.8')
+dns_remote_servers = check_servers(GC.DNS_SERVERS, False, '1.1.1.1')
 dns_remote_servers = servers_2_addresses(dns_remote_servers, 53)
 dns_local_servers = check_servers(GC.DNS_LOCAL_SERVERS, True, '114.114.114.114')
 dns_local_servers = servers_2_addresses(dns_local_servers, 53)
@@ -270,6 +270,14 @@ bv4_local = 1 << 2
 bv6_local = 1 << 3
 allresolved = (1 << 4) - 1
 
+def check_edns_opt(ar):
+    opt = None
+    for r in ar:
+        if r.rtype is OPT:
+            opt = r
+            break
+    return opt and opt.edns_do and 0 <= opt.edns_len - remote_query_opt.edns_len <= 512
+
 def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
     # https://gfwrev.blogspot.com/2009/11/gfwdns.html
     # https://zh.wikipedia.org/wiki/域名服务器缓存污染
@@ -280,9 +288,11 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
     socks = []
     id2qtype = {}
     query_times = 0
+    iplists = {'remote': []}
     remote_resolve = dnsservers is dns_remote_servers
-    if remote_resolve:
+    if remote_resolve and GC.DNS_LOCAL_PREFER:
         local_servers = random.choice(dns_local_servers),
+        iplists['local'] = []
     else:
         local_servers = ()
     for x in dnsservers + local_servers:
@@ -314,7 +324,6 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
     del dns_v4_servers, dns_v6_servers
     timeout_st = time()
     timeout_at = timeout_st + timeout
-    iplists = {'remote': [], 'local': []}
     iplist = []
     xips = []
     pollution = False
@@ -323,6 +332,13 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
         resolved |= bv4_remote | bv4_local
     elif AAAA not in qtypes:
         resolved |= bv6_remote | bv6_local
+
+    def is_resolved():
+        if qtype is A:
+            return resolved & (bv4_local if local else bv4_remote)
+        elif qtype is AAAA:
+            return resolved & (bv6_local if local else bv6_remote)
+
     while time() < timeout_at and (allresolved ^ resolved) and query_times:
         ins, _, _ = select(socks, [], [], 0.1)
         for sock in ins:
@@ -330,33 +346,40 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
             try:
                 reply_data, xip = sock.recvfrom(remote_query_opt.edns_len)
                 local = xip in local_servers
-                if local and pollution:
+                if local and pollution or is_resolved():
                     continue
                 reply = dnslib.DNSRecord.parse(reply_data)
                 qtype = reply.q.qtype
+                rr_alone = len(reply.rr) == 1
                 if remote_resolve:
                     if not local:
-                        if (not reply.ar or
+                        if rr_alone and (not reply.ar or
                                 time() - timeout_st < dns_time_threshold or
-                                id2qtype[reply.header.id] != qtype):
+                                id2qtype[reply.header.id] != qtype or
+                                not check_edns_opt(reply.ar)):
                             query_times += 1
                             pollution = True
                             continue
-                        elif not pollution:
+                        elif not pollution and GC.DNS_LOCAL_PREFER:
                             resolved |= bv4_remote | bv6_remote
-                if qtype is A:
-                    _resolved = resolved & (bv4_local if local else bv4_remote)
-                elif qtype is AAAA:
-                    _resolved = resolved & (bv6_local if local else bv6_remote)
-                if _resolved:
-                    continue
-                if reply.header.rcode is NXDOMAIN:
+                            if is_resolved():
+                                continue
+                if reply.header.rcode is NOERROR:
+                    for r in reply.rr:
+                        if r.rtype is qtype:
+                            ip = str(r.rdata)
+                            #一个简单排除 IPv6 污染定式的方法，有及其微小的机率误伤正常结果
+                            #虽然没办法用于 IPv4，但这只是 check_edns_opt 的后备，聊胜于无
+                            if pollution and rr_alone and len(ip) == 15 and ip.startswith('2001::'):
+                                query_times += 1
+                                iplist.clear()
+                                break
+                            else:
+                                iplist.append(ip)
+                elif reply.header.rcode is NXDOMAIN:
                     timeout_at = 0
                     iplist.append(NXDOMAIN)
                     break
-                for r in reply.rr:
-                    if r.rtype is qtype:
-                        iplist.append(str(r.rdata))
             except socket.error as e:
                 logging.warning('receive dns qname=%r \nsocket: %r', qname, e)
             except dnslib.dns.DNSError as e:
@@ -376,13 +399,15 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
     for sock in socks:
         sock.close()
     logging.debug('query qname=%r reply iplist=%s', qname, iplists)
-    if pollution or not remote_resolve:
+    if pollution or not remote_resolve or not GC.DNS_LOCAL_PREFER:
         iplist = iplists['remote']
     else:
         iplist = iplists['local']
     if xips:
         iplist = classlist(iplist)
         iplist.xip = xips
+    if pollution:
+        logging.warning('发现 DNS 污染, 域名: %r, 解析结果:\n%r', qname, iplists)
     return iplist
 
 def get_dnsserver_list():

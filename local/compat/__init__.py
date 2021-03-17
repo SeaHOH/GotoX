@@ -138,6 +138,7 @@ def init():
     patch_time()
     patch_builtins()
     patch_configparser()
+    patch_dnslib()
 
     import logging
 

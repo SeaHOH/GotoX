@@ -240,12 +240,13 @@ class GC:
     DNS_SERVERS = CONFIG.gettuple('dns', 'servers')
     DNS_LOCAL_SERVERS = CONFIG.gettuple('dns', 'localservers')
     DNS_TIME_THRESHOLD = min(CONFIG.getint('dns', 'timethreshold', fallback=50), 100)
+    DNS_LOCAL_PREFER = CONFIG.getboolean('dns', 'localprefer', fallback=True)
     DNS_LOCAL_HOST = CONFIG.getboolean('dns', 'localhost', fallback=True)
     DNS_LOCAL_WHITELIST = CONFIG.gettuple('dns', 'localwhitelist')
     DNS_LOCAL_BLACKLIST = CONFIG.gettuple('dns', 'localblacklist')
     DNS_OVER_HTTPS = CONFIG.getboolean('dns', 'overhttps', fallback=True)
     DNS_OVER_HTTPS_SERVERS = CONFIG.gettuple('dns', 'overhttpsservers', fallback='cloudflare-dns.com')
-    DNS_PRIORITY = CONFIG.getlist('dns', 'priority', fallback='overhttps|remote|system')
+    DNS_PRIORITY = CONFIG.getlist('dns', 'priority', fallback='remote|overhttps|system')
 
     DNS_DEF_PRIORITY = ['system', 'remote', 'overhttps']
     for dnstype in DNS_PRIORITY.copy():
