@@ -129,7 +129,8 @@ dns_local_servers = servers_2_addresses(GC.DNS_LOCAL_SERVERS, 53)
 dns_local_servers = (dns_remote_local_servers + 
                      check_servers(dns_local_servers, True)
                     ) or (('114.114.114.114', 53), )
-dns_local_prefer = GC.DNS_LOCAL_PREFER and any(d == 53 for _, d in dns_remote_servers)
+dns_local_prefer = (GC.DNS_LOCAL_PREFER or dns_remote_local_servers) and \
+                    any(d == 53 for _, d in dns_remote_servers)
 dns_time_threshold = GC.DNS_TIME_THRESHOLD / 1000
 
 class DoHError(Exception):
