@@ -5,7 +5,7 @@ import queue
 import struct
 import logging
 from io import BytesIO
-from time import time, sleep, timezone, localtime, strftime, strptime, mktime
+from time import time, mtime, sleep, timezone, localtime, strftime, strptime, mktime
 from http.client import HTTPResponse, parse_headers
 from .FilterUtil import get_action
 from .GlobalConfig import GC
@@ -85,7 +85,7 @@ def check_appid_exists(appid):
                 if err is None:
                     exists = response.status in (200, 503)
                     if exists and GC.GAE_KEEPALIVE:
-                        http_util.ssl_connection_cache[connection_cache_key].append((time(), sock))
+                        http_util.ssl_connection_cache[connection_cache_key].append((mtime(), sock))
                     return exists
 
 @_lock_appid

@@ -11,7 +11,7 @@ import socks
 import logging
 import urllib.parse as urlparse
 from select import select
-from time import time, sleep
+from time import mtime, sleep
 from functools import partial
 from threading import _start_new_thread as start_new_thread
 from http.server import BaseHTTPRequestHandler, SimpleHTTPRequestHandler
@@ -643,13 +643,13 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                         #放入套接字缓存
                         if self.ssl:
                             if GC.GAE_KEEPALIVE or http_util is not http_gws:
-                                http_util.ssl_connection_cache[connection_cache_key].append((time(), response.sock))
+                                http_util.ssl_connection_cache[connection_cache_key].append((mtime(), response.sock))
                             else:
                                 #干扰严重时考虑不复用 google 连接
                                 response.sock.close()
                         else:
                             response.sock.used = None
-                            http_util.tcp_connection_cache[connection_cache_key].append((time(), response.sock))
+                            http_util.tcp_connection_cache[connection_cache_key].append((mtime(), response.sock))
                     else:
                         response.sock.close()
 
@@ -725,7 +725,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 if response:
                     response.close()
                     if noerror and GC.CFW_KEEPALIVE:
-                        response.http_util.ssl_connection_cache[response.connection_cache_key].append((time(), response.sock))
+                        response.http_util.ssl_connection_cache[response.connection_cache_key].append((mtime(), response.sock))
                     else:
                         response.sock.close()
 
@@ -1007,7 +1007,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                     response.close()
                     if noerror and GC.GAE_KEEPALIVE:
                         #放入套接字缓存
-                        response.http_util.ssl_connection_cache[response.connection_cache_key].append((time(), response.sock))
+                        response.http_util.ssl_connection_cache[response.connection_cache_key].append((mtime(), response.sock))
                     else:
                         #干扰严重时考虑不复用
                         response.sock.close()
@@ -1117,7 +1117,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             proxy_sock = http_nor.get_proxy_socket(proxyip, 8)
             proxy_sock.set_proxy(socks.PROXY_TYPES[proxytype], proxyip, proxyport, rdns, proxyuser, proxypass)
             if ipcnt > 1:
-                start_time = time()
+                start_time = mtime()
             try:
                 if self.fakecert:
                     proxy_sock = http_nor.get_ssl_socket(proxy_sock, None if isip(self.host) else self.host.encode())
@@ -1136,7 +1136,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                 continue
             else:
                 if ipcnt > 1:
-                    self.proxy_connection_time[proxyip] = time() - start_time
+                    self.proxy_connection_time[proxyip] = mtime() - start_time
             logging.info('%s%s:%d 转发 "%s %s" 到 [%s] 代理：%s',
                          self.address_string(), proxyip, proxyport, self.command, self.url or self.path, proxytype, self.target)
             proxy_sock.xip = proxyip, proxyport

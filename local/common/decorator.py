@@ -1,6 +1,5 @@
 # coding:utf-8
 
-import time
 import _thread
 import threading
 from functools import partial

@@ -8,7 +8,7 @@ import socket
 import collections
 from shutil import copyfile
 from copy import deepcopy
-from time import time, sleep, localtime, strftime
+from time import time, mtime, sleep, localtime, strftime
 from threading import _start_new_thread as start_new_thread
 from .common.internet_active import internet_v4, internet_v6
 from .common.net import NetWorkIOError, random_hostname, isip, isipv4, isipv6
@@ -690,7 +690,7 @@ class IPManager:
         ip_source._ip_source.ip_set_used = self.ip_set
         self.ip_source = ip_source
         self.load_config()
-        now = time()
+        now = mtime()
         self.last_update = now
         self.last_check = now - self.min_recheck_time
 
@@ -734,7 +734,7 @@ class IPManager:
                 f.write(' = ')
                 f.write('|'.join(m.ip_list))
                 f.write('\n')
-        self.last_update = time()
+        self.last_update = mtime()
 
     def add_ip(self, ip, type=None):
         m = getattr(self, type or self.type, self)
@@ -830,7 +830,7 @@ class IPManager:
         server_name = server_name or self.server_name
         callback = callback or self.check_type_status
         while True:
-            start_time = time()
+            start_time = mtime()
             ssl_time = 1e5
             type = None
             domain = None
@@ -845,7 +845,7 @@ class IPManager:
                 ssl_sock.settimeout(handshaketimeout)
                 ssl_sock.do_handshake()
                 ssl_sock.settimeout(timeout)
-                handshaked_time = time() - start_time
+                handshaked_time = mtime() - start_time
                 ssl_time = int(handshaked_time * 1000)
                 if handshaked_time > handshaketimeout:
                     raise socket.error('handshake 超时：%d ms' % ssl_time)
@@ -1009,11 +1009,11 @@ class IPManager:
                     self.kill_pick_worker_cnt = self.pick_worker_cnt
                     continue
                 self.check_pick_ip_worker()
-                pass_time = time() - self.last_check
+                pass_time = mtime() - self.last_check
                 if not self.ip_list:
                     if pass_time > self.min_recheck_time:
                         self.logger.warning('当前 %s IP 数量为 0', self.type)
-                        self.last_check = time()
+                        self.last_check = mtime()
                     continue
                 if pass_time < self.min_recheck_time or \
                         pass_time < self.recheck_loop_time / len(self.ip_list):
@@ -1024,7 +1024,7 @@ class IPManager:
                     self.logger.warning('发现配置未使用的 IP：%s', ip)
                     self.remove_ip(ip)
                     continue
-                self.last_check = time()
+                self.last_check = mtime()
                 if self.check_ip(ip):
                     self.ip_source.report_recheck_ok(ip)
                 else:

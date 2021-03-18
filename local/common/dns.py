@@ -8,7 +8,7 @@ import logging
 import random
 import urllib.parse as urlparse
 from select import select
-from time import time, sleep
+from time import mtime, sleep
 from threading import _start_new_thread as start_new_thread
 from .net import servers_2_addresses, isip, isipv4, isipv6, stop_all_forward
 from .util import LRUCache, spawn_loop
@@ -117,14 +117,19 @@ from local.FilterUtil import get_action
 from local.HTTPUtil import http_gws, http_nor
 
 #待处理：IP 数据库尚未支持 IPv6 地址
-def check_servers(servers, local, fallback):
-    return tuple(server for server in servers
-                 if not ipdb or isipv6(server) or (server in ipdb) is local) or (fallback, )
+def check_servers(servers, local):
+    return tuple((sv, d) for sv, d in servers
+                 if not ipdb or (not local and d != 53) or
+                 isipv6(sv) or (sv in ipdb) is local)
 
-dns_remote_servers = check_servers(GC.DNS_SERVERS, False, '1.1.1.1')
-dns_remote_servers = servers_2_addresses(dns_remote_servers, 53)
-dns_local_servers = check_servers(GC.DNS_LOCAL_SERVERS, True, '114.114.114.114')
-dns_local_servers = servers_2_addresses(dns_local_servers, 53)
+dns_remote_servers = servers_2_addresses(GC.DNS_SERVERS, 53)
+dns_remote_servers = check_servers(dns_remote_servers, False) or (('1.1.1.1', 53), )
+dns_remote_local_servers = check_servers(dns_remote_servers, True)
+dns_local_servers = servers_2_addresses(GC.DNS_LOCAL_SERVERS, 53)
+dns_local_servers = (dns_remote_local_servers + 
+                     check_servers(dns_local_servers, True)
+                    ) or (('114.114.114.114', 53), )
+dns_local_prefer = GC.DNS_LOCAL_PREFER and any(d == 53 for _, d in dns_remote_servers)
 dns_time_threshold = GC.DNS_TIME_THRESHOLD / 1000
 
 class DoHError(Exception):
@@ -215,7 +220,7 @@ def _https_resolve(server, qname, qtype, query_data):
             xip = response.xip
             if noerror:
                 if GC.GAE_KEEPALIVE or http_util is not http_gws:
-                    http_util.ssl_connection_cache[connection_cache_key].append((time(), response.sock))
+                    http_util.ssl_connection_cache[connection_cache_key].append((mtime(), response.sock))
                 else:
                     response.sock.close()
         return iplist, xip, ok
@@ -263,7 +268,7 @@ def _dns_over_https_resolve(qname, qtypes=qtypes):
         iplist.xip = xips
     return iplist
 
-remote_query_opt = dnslib.EDNS0(flags='do', udp_len=1024)
+remote_query_opt = dnslib.EDNS0(flags='do', udp_len=1024)  # 1232
 bv4_remote = 1 << 0
 bv6_remote = 1 << 1
 bv4_local = 1 << 2
@@ -271,67 +276,54 @@ bv6_local = 1 << 3
 allresolved = (1 << 4) - 1
 
 def check_edns_opt(ar):
-    opt = None
     for r in ar:
         if r.rtype is OPT:
-            opt = r
-            break
-    return opt and opt.edns_do and 0 <= opt.edns_len - remote_query_opt.edns_len <= 512
+            return r.edns_do
 
 def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
     # https://gfwrev.blogspot.com/2009/11/gfwdns.html
     # https://zh.wikipedia.org/wiki/域名服务器缓存污染
     # http://support.microsoft.com/kb/241352 (已删除)
 
-    dns_v4_servers = []
-    dns_v6_servers = []
+    def get_sock(v4):
+        nonlocal sock_v4, sock_v6
+        if v4:
+            if sock_v4 is None:
+                sock_v4 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                socks.append(sock_v4)
+            return sock_v4
+        else:
+            if sock_v6 is None:
+                sock_v6 = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+                socks.append(sock_v6)
+            return sock_v6
+
     socks = []
-    id2qtype = {}
+    sock_v4 = sock_v6 = None
     query_times = 0
     iplists = {'remote': []}
     remote_resolve = dnsservers is dns_remote_servers
-    if remote_resolve and GC.DNS_LOCAL_PREFER:
-        local_servers = random.choice(dns_local_servers),
+    if remote_resolve and dns_local_prefer:
+        local_servers = dns_remote_local_servers or (random.choice(dns_local_servers), )
         iplists['local'] = []
     else:
         local_servers = ()
-    for x in dnsservers + local_servers:
-        if isipv4(x[0]):
-            dns_v4_servers.append(x)
-        else:
-            dns_v6_servers.append(x)
-    if dns_v4_servers:
-        sock_v4 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        socks.append(sock_v4)
-    if dns_v6_servers:
-        sock_v6 = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
-        socks.append(sock_v6)
+    if local_servers:
+        dnsservers = set(dnsservers + local_servers)
     for qtype in qtypes:
-        query = dnslib.DNSRecord(q=dnslib.DNSQuestion(qname, qtype),
-                                ar=[remote_query_opt])
+        query = dnslib.DNSRecord(q=dnslib.DNSQuestion(qname, qtype))
+        if remote_resolve:
+            query.ar.append(remote_query_opt)
         query_data = query.pack()
-        id2qtype[query.header.id] = qtype
-        try:
-            for dnsserver in dns_v4_servers:
-                sock_v4.sendto(query_data, dnsserver)
+        for dnsserver in dnsservers:
+            sock = get_sock(isipv4(dnsserver[0]))
+            try:
+                sock.sendto(query_data, dnsserver)
                 query_times += 1
-            for dnsserver in dns_v6_servers:
-                sock_v6.sendto(query_data, dnsserver)
-                query_times += 1
-        except socket.error as e:
-            logging.warning('send dns qname=%r \nsocket: %r', qname, e)
+            except socket.error as e:
+                logging.warning('send dns qname=%r \nsocket: %r', qname, e)
         del query, query_data
-    del dns_v4_servers, dns_v6_servers
-    timeout_st = time()
-    timeout_at = timeout_st + timeout
-    iplist = []
-    xips = []
-    pollution = False
-    resolved = 0
-    if A not in qtypes:
-        resolved |= bv4_remote | bv4_local
-    elif AAAA not in qtypes:
-        resolved |= bv6_remote | bv6_local
+    del dnsservers
 
     def is_resolved(qtype):
         if qtype is A:
@@ -340,13 +332,24 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
             return resolved & (bv6_local if local else bv6_remote)
         return True
 
-    while time() < timeout_at and (allresolved ^ resolved) and query_times:
+    time_start = mtime()
+    timeout_at = time_start + timeout
+    iplist = []
+    xips = []
+    pollution = False
+    resolved = 0
+    if A not in qtypes:
+        resolved |= bv4_remote | bv4_local
+    elif AAAA not in qtypes:
+        resolved |= bv6_remote | bv6_local
+    udp_len = remote_resolve and remote_query_opt.edns_len or 512
+    while mtime() < timeout_at and (allresolved ^ resolved) and query_times:
         ins, _, _ = select(socks, [], [], 0.1)
         for sock in ins:
             iplist.clear()
             qtype = None
             try:
-                reply_data, xip = sock.recvfrom(remote_query_opt.edns_len)
+                reply_data, xip = sock.recvfrom(udp_len)
                 local = xip in local_servers
                 if local and pollution:
                     continue
@@ -355,19 +358,16 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
                 rr_alone = len(reply.rr) == 1
                 if is_resolved(qtype):
                     continue
-                if remote_resolve:
-                    if not local:
-                        if rr_alone and (not reply.ar or
-                                time() - timeout_st < dns_time_threshold or
-                                id2qtype[reply.header.id] != qtype or
-                                not check_edns_opt(reply.ar)):
-                            query_times += 1
-                            pollution = True
+                if remote_resolve and not local:
+                    if rr_alone and (not check_edns_opt(reply.ar) or
+                            mtime() - time_start < dns_time_threshold):
+                        query_times += 1
+                        pollution = True
+                        continue
+                    elif not pollution and dns_local_prefer:
+                        resolved |= bv4_remote | bv6_remote
+                        if is_resolved(qtype):
                             continue
-                        elif not pollution and GC.DNS_LOCAL_PREFER:
-                            resolved |= bv4_remote | bv6_remote
-                            if is_resolved(qtype):
-                                continue
                 if reply.header.rcode is NOERROR:
                     for r in reply.rr:
                         if r.rtype is qtype:
@@ -377,8 +377,8 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
                             if qtype is AAAA and pollution and rr_alone and \
                                     len(ip) == 15 and ip.startswith('2001::'):
                                 query_times += 1
-                                iplist.clear()
-                                break
+                                #iplist.clear()
+                                #break
                             else:
                                 iplist.append(ip)
                 elif reply.header.rcode is NXDOMAIN:
@@ -391,6 +391,7 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
                 # dnslib 没有完整的支持，这里跳过一些不影响使用的解析错误
                 logging.debug('receive dns qname=%r \nerror: %r', qname, e)
             finally:
+                query_times -= 1
                 if iplist:
                     if local:
                         resolved |= bv4_local if qtype is A else bv6_local
@@ -403,11 +404,10 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
                     resolved |= bv6_local if local else bv6_remote
                 if xip not in xips:
                     xips.append(xip)
-                query_times -= 1
     for sock in socks:
         sock.close()
     logging.debug('query qname=%r reply iplist=%s', qname, iplists)
-    if pollution or not remote_resolve or not GC.DNS_LOCAL_PREFER:
+    if pollution or not remote_resolve or not dns_local_prefer:
         iplist = iplists['remote']
     else:
         iplist = iplists['local']
@@ -461,7 +461,7 @@ else:
     logging.warning('读取系统当前 DNS 设置失败')
 
 def dns_system_resolve(host, qtypes=qtypes):
-    start = time()
+    start = mtime()
     try:
         if dns_system_servers:
             iplist = _dns_udp_resolve(host, dns_system_servers, timeout=2, qtypes=qtypes)
@@ -475,31 +475,31 @@ def dns_system_resolve(host, qtypes=qtypes):
                 iplist = [ipaddr[4][0] for ipaddr in socket.getaddrinfo(host, None, socket.AF_INET6)]
     except:
         iplist = None
-    cost = int((time() - start) * 1000)
+    cost = int((mtime() - start) * 1000)
     logging.test('%sdns_system_resolve 已缓存：%s/%s，耗时：%s 毫秒，%s = %s',
                  address_string(iplist), len(dns), dns.max_items, cost, host, iplist or '查询失败')
     return iplist
 
 def dns_remote_resolve(host, qtypes=qtypes):
-    start = time()
+    start = mtime()
     iplist = _dns_udp_resolve(host, dns_remote_servers, timeout=2, qtypes=qtypes)
-    cost = int((time() - start) * 1000)
+    cost = int((mtime() - start) * 1000)
     logging.test('%sdns_remote_resolve 已缓存：%s/%s，耗时：%s 毫秒，%s = %s',
                  address_string(iplist), len(dns), dns.max_items, cost, host, iplist or '查询失败')
     return iplist
 
 def dns_local_resolve(host, qtypes=qtypes):
-    start = time()
+    start = mtime()
     iplist = _dns_udp_resolve(host, dns_local_servers, timeout=2, qtypes=qtypes)
-    cost = int((time() - start) * 1000)
+    cost = int((mtime() - start) * 1000)
     logging.test('%sdns_local_resolve 已缓存：%s/%s，耗时：%s 毫秒，%s = %s',
                  address_string(iplist), len(dns), dns.max_items, cost, host, iplist or '查询失败')
     return iplist
 
 def dns_over_https_resolve(host, qtypes=qtypes):
-    start = time()
+    start = mtime()
     iplist = _dns_over_https_resolve(host, qtypes=qtypes) 
-    cost = int((time() - start) * 1000)
+    cost = int((mtime() - start) * 1000)
     logging.test('%sdns_over_https 已缓存：%s/%s，耗时：%s 毫秒，%s = %s',
                  address_string(iplist), len(dns), dns.max_items, cost, host, iplist or '查询失败')
     return iplist

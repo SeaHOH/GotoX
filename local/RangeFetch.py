@@ -7,7 +7,7 @@ import queue
 import random
 import logging
 import threading
-from time import time, sleep
+from time import mtime, sleep
 from urllib.parse import urljoin
 from .common.util import LimiterFull, spawn_later
 from .GAEFetch import mark_badappid, gae_urlfetch
@@ -170,7 +170,7 @@ class RangeFetch:
                         xip = response.xip[0]
                         if xip in self.iplist:
                             realstart = start
-                            starttime = time()
+                            starttime = mtime()
                         else:
                             range_queue.put((start, end))
                             noerror = False
@@ -216,7 +216,7 @@ class RangeFetch:
                             data_queue.put((start, data))
                             start += len(data)
                             if self._stopped: return
-                            if (start-realstart) / (time()-starttime) < self.lowspeed:
+                            if (start-realstart) / (mtime()-starttime) < self.lowspeed:
                                 #移除慢速 ip
                                 if self.delable: 
                                     with self.tLock:
@@ -249,7 +249,7 @@ class RangeFetch:
                     response.close()
                     if noerror:
                         #放入套接字缓存
-                        response.http_util.ssl_connection_cache[response.connection_cache_key].append((time(), response.sock))
+                        response.http_util.ssl_connection_cache[response.connection_cache_key].append((mtime(), response.sock))
                     else:
                         response.sock.close()
                         if self.delable:

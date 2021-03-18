@@ -11,7 +11,7 @@ import collections
 import OpenSSL
 import logging
 import threading
-from time import time, sleep
+from time import mtime, sleep
 from queue import Queue
 from threading import _start_new_thread as start_new_thread
 from http.client import HTTPResponse
@@ -357,7 +357,7 @@ class BaseHTTPUtil:
 
     @staticmethod
     def check_connection_alive(sock, keeptime, ctime):
-        if time() - ctime > keeptime:
+        if mtime() - ctime > keeptime:
             sock.close()
             return
         return not check_connection_dead(sock)
@@ -449,7 +449,7 @@ class HTTPUtil(BaseHTTPUtil):
         for _ in range(count):
             sock = queobj.get()
             if hasattr(sock, '_sock'):
-                cache.append((time(), sock))
+                cache.append((mtime(), sock))
 
     def _create_connection(self, ipaddr, queobj, timeout=None, get_cache_sock=None):
         if get_cache_sock:
@@ -462,11 +462,11 @@ class HTTPUtil(BaseHTTPUtil):
         try:
             sock = self.get_tcp_socket(ipaddr[0], timeout)
             # start connection time record
-            start_time = time()
+            start_time = mtime()
             # TCP connect
             sock.connect(ipaddr)
             # record TCP connection time
-            self.tcp_connection_time[ipaddr] = sock.tcp_time = time() - start_time
+            self.tcp_connection_time[ipaddr] = sock.tcp_time = mtime() - start_time
             # put socket object to output queobj
             sock.xip = ipaddr
             queobj.put(sock)
@@ -594,16 +594,16 @@ class HTTPUtil(BaseHTTPUtil):
                 server_name = self.get_server_hostname(host, cache_key)
                 ssl_sock = self.get_ssl_socket(sock, server_name)
                 # start connection time record
-                start_time = time()
+                start_time = mtime()
                 # TCP connect
                 ssl_sock.connect(ipaddr)
-                #connected_time = time()
+                #connected_time = mtime()
                 # set a short timeout to trigger timeout retry more quickly.
                 if timeout is not None:
                     ssl_sock.settimeout(3 if self.gws else 1.5)
                 # SSL handshake
                 ssl_sock.do_handshake()
-                handshaked_time = time()
+                handshaked_time = mtime()
                 # record SSL connection time
                 ssl_sock.ssl_time = handshaked_time - start_time
                 # verify Google SSL certificate.
@@ -613,7 +613,7 @@ class HTTPUtil(BaseHTTPUtil):
                 if callback:
                     cache_key = callback(ssl_sock) or cache_key
                     self.ssl_connection_time[ipaddr] = ssl_sock.ssl_time
-                    self.ssl_connection_cache[cache_key].append((time(), ssl_sock))
+                    self.ssl_connection_cache[cache_key].append((mtime(), ssl_sock))
                     return True
                 self.ssl_connection_time[ipaddr] = ssl_sock.ssl_time
                 # put ssl socket object to output queobj
@@ -811,7 +811,7 @@ class HTTPUtil(BaseHTTPUtil):
                     proxytype = 'HTTP'
                 proxy_sock = self.get_proxy_socket(proxyip, 8)
                 proxy_sock.set_proxy(socks.PROXY_TYPES[proxytype], proxyip, proxyport, True, proxyuser, proxypass)
-                start_time = time()
+                start_time = mtime()
                 try:
                     proxy_ssl_sock = self.get_ssl_socket(proxy_sock, ohost.encode())
                     proxy_ssl_sock.settimeout(self.timeout)
@@ -826,7 +826,7 @@ class HTTPUtil(BaseHTTPUtil):
                     logging.error('create_gws_connection_withproxy 连接代理 [%s] 失败：%r', proxy, e)
                     continue
                 else:
-                    cost_time = time() - start_time
+                    cost_time = mtime() - start_time
                     if ipcnt > 1:
                         self.gws_front_connection_time['ip'][proxyip] = cost_time
                     self.gws_front_connection_time[proxy] = cost_time
