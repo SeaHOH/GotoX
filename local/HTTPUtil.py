@@ -285,7 +285,7 @@ class BaseHTTPUtil:
         # resize socket recv buffer 8K->*K to improve browser releated application performance
         if set_buffer:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, GC.LINK_RECVBUFFER)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32768)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, GC.LINK_SENDBUFFER)
         # disable negal algorithm to send http request quickly.
         sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
         # set a short timeout to trigger timeout retry more quickly.
