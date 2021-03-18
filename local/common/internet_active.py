@@ -10,7 +10,7 @@ import random
 import dnslib
 import logging
 import collections
-from time import time, sleep
+from time import sleep
 from select import select
 from threading import _start_new_thread as start_new_thread
 from .net import isipv4, isipv6, get_wan_ipv6
@@ -29,11 +29,11 @@ dns_ips_v4 = (
     '114.114.114.119',
     '114.114.115.119',
     #阿里
-    #http://www.alidns.com/
+    #https://www.alidns.com/
     '223.5.5.5',
     '223.6.6.6',
     #百度
-    #http://dudns.baidu.com/intro/publicdns/
+    #https://dudns.baidu.com/
     '180.76.76.76',
     #腾讯 DNSPod
     #https://www.dnspod.cn/Products/Public.DNS
@@ -42,30 +42,40 @@ dns_ips_v4 = (
     '182.254.116.116',
     '182.254.118.118',
     #DNS 派
-    #http://www.dnspai.com/public.html
+    #https://www.dnspai.com/public.html
     '101.226.4.6',
     '218.30.118.6',
     '123.125.81.6',
     '140.207.198.6',
     #OneDNS
-    #http://www.onedns.net/
+    #https://www.onedns.net/
+    '52.80.52.52',
+    '52.80.60.30',
+    '52.80.66.66',
+    '117.50.10.10',
     '117.50.11.11',
     '117.50.22.22',
+    '117.50.60.30',
     '112.124.47.27',
     '114.215.126.16',
     #CNNIC SDNS
-    #http://public.sdns.cn/emergency_services.shtml
+    #https://www.sdns.cn/
+    #http://public.sdns.cn/emergency_services.shtml (已删除)
+    #http://www.cnic.cas.cn/zcfw/cnnic/zyjxcxfw/zxdt_kpu01/201403/t20140317_4053559.html
     '1.2.4.8',
     '210.2.4.8',
+    #清华大学 TUNA 协会
+    #https://tuna.moe/help/dns/
+    '101.6.6.6', #始终回应 REFUSED
     )
 dns_ips_v6 = (
     #CFIEC
     #http://www.cfiec.net/dns/s/?978.html
-    #http://www.chinaipv6.com.cn/
+    #https://www.chinaipv6.com.cn/
     '240c::6666',
     '240c::6644',
     #CNNIC
-    '2001:dc7:1000::1',
+    '2001:dc7:1000::1', #始终回应 REFUSED
     #清华大学 TUNA 协会
     #https://tuna.moe/help/dns/
     '2001:da8::666',
@@ -78,8 +88,12 @@ dns_ips_v6 = (
     #北京邮电大学
     '2001:da8:202:10::36',
     '2001:da8:202:10::37',
+    #阿里
+    #https://www.alidns.com/
+    '2400:3200::1',
+    '2400:3200:baba::1',
     #百度
-    #http://dudns.baidu.com/intro/publicdns/
+    #https://dudns.baidu.com/
     '2400:da00::6666',
     )
 #用于 Teredo 隧道等
