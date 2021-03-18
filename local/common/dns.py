@@ -275,11 +275,13 @@ bv6_remote = 1 << 1
 bv4_local = 1 << 2
 bv6_local = 1 << 3
 allresolved = (1 << 4) - 1
+polluted_hosts = set()
 
 def check_edns_opt(ar):
+    if len(ar) > 1:
+        return True
     for r in ar:
-        if r.rtype is OPT:
-            return r.edns_do
+        return r.rtype is OPT and r.edns_do
 
 def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
     # https://gfwrev.blogspot.com/2009/11/gfwdns.html
@@ -303,14 +305,16 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
     sock_v4 = sock_v6 = None
     query_times = 0
     iplists = {'remote': []}
+    local_servers = ()
+    pollution = qname in polluted_hosts
     remote_resolve = dnsservers is dns_remote_servers
-    if remote_resolve and dns_local_prefer:
-        local_servers = dns_remote_local_servers or (random.choice(dns_local_servers), )
-        iplists['local'] = []
-    else:
-        local_servers = ()
-    if local_servers:
-        dnsservers = set(dnsservers + local_servers)
+    if remote_resolve:
+        if dns_local_prefer and not pollution:
+            local_servers = dns_remote_local_servers or (random.choice(dns_local_servers), )
+        if local_servers:
+            iplists['local'] = []
+            if not dns_remote_local_servers:
+                dnsservers = dnsservers + local_servers
     for qtype in qtypes:
         query = dnslib.DNSRecord(q=dnslib.DNSQuestion(qname, qtype))
         if remote_resolve:
@@ -324,7 +328,6 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
             except socket.error as e:
                 logging.warning('send dns qname=%r \nsocket: %r', qname, e)
         del query, query_data
-    del dnsservers
 
     def is_resolved(qtype):
         if qtype is A:
@@ -337,7 +340,6 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
     timeout_at = time_start + timeout
     iplist = []
     xips = []
-    pollution = False
     resolved = 0
     if A not in qtypes:
         resolved |= bv4_remote | bv4_local
@@ -356,7 +358,7 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
                     continue
                 reply = dnslib.DNSRecord.parse(reply_data)
                 qtype = reply.q.qtype
-                rr_alone = len(reply.rr) == 1
+                rr_alone = len(reply.rr) == 1 and reply.a.rtype is qtype
                 if is_resolved(qtype):
                     continue
                 if remote_resolve and not local:
@@ -364,6 +366,8 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
                             mtime() - time_start < dns_time_threshold):
                         query_times += 1
                         pollution = True
+                        if not pollution:
+                            polluted_hosts.add(qname)
                         continue
                     elif not pollution and dns_local_prefer:
                         resolved |= bv4_remote | bv6_remote
