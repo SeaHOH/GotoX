@@ -123,12 +123,12 @@ def check_servers(servers, local):
                  isipv6(sv) or (sv in ipdb) is local)
 
 dns_remote_servers = servers_2_addresses(GC.DNS_SERVERS, 53)
-dns_remote_servers = check_servers(dns_remote_servers, False) or (('1.1.1.1', 53), )
-dns_remote_local_servers = check_servers(dns_remote_servers, True)
+dns_remote_servers = check_servers(dns_remote_servers, False) or \
+                     servers_2_addresses('1.1.1.1|1.0.0.1'.split('|'))
 dns_local_servers = servers_2_addresses(GC.DNS_LOCAL_SERVERS, 53)
-dns_local_servers = (dns_remote_local_servers + 
-                     check_servers(dns_local_servers, True)
-                    ) or (('114.114.114.114', 53), )
+dns_local_servers = check_servers(dns_local_servers, True) or \
+                    servers_2_addresses('114.114.114.114|114.114.115.115'.split('|'))
+dns_remote_local_servers = check_servers(dns_remote_servers, True)
 dns_local_prefer = (GC.DNS_LOCAL_PREFER or dns_remote_local_servers) and \
                     any(d == 53 for _, d in dns_remote_servers)
 dns_time_threshold = GC.DNS_TIME_THRESHOLD / 1000
@@ -309,12 +309,13 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
     pollution = qname in polluted_hosts
     remote_resolve = dnsservers is dns_remote_servers
     if remote_resolve:
+        # local_prefer 禁用时不要将 servers 中的境内服务器加入 local_servers 判断
         if dns_local_prefer and not pollution:
             local_servers = dns_remote_local_servers or (random.choice(dns_local_servers), )
         if local_servers:
             iplists['local'] = []
             if not dns_remote_local_servers:
-                dnsservers = dnsservers + local_servers
+                dnsservers += local_servers
     for qtype in qtypes:
         query = dnslib.DNSRecord(q=dnslib.DNSQuestion(qname, qtype))
         if remote_resolve:
@@ -394,7 +395,8 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
                 logging.warning('receive dns qname=%r \nsocket: %r', qname, e)
             except dnslib.dns.DNSError as e:
                 # dnslib 没有完整的支持，这里跳过一些不影响使用的解析错误
-                logging.debug('receive dns qname=%r \nerror: %r', qname, e)
+                logging.error('receive dns qname=%r \nerror: %s\nreply data: %r',
+                              qname, e, reply_data)
             finally:
                 query_times -= 1
                 if iplist:

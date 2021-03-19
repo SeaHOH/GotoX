@@ -247,9 +247,9 @@ class GC:
     DNS_LOCAL_BLACKLIST = CONFIG.gettuple('dns', 'localblacklist')
     DNS_OVER_HTTPS = CONFIG.getboolean('dns', 'overhttps', fallback=True)
     DNS_OVER_HTTPS_SERVERS = CONFIG.gettuple('dns', 'overhttpsservers', fallback='cloudflare-dns.com')
-    DNS_PRIORITY = CONFIG.getlist('dns', 'priority', fallback='remote|overhttps|system')
 
-    DNS_DEF_PRIORITY = ['system', 'remote', 'overhttps']
+    DNS_DEF_PRIORITY = ['remote', 'overhttps', 'system']
+    DNS_PRIORITY = CONFIG.getlist('dns', 'priority', fallback=DNS_DEF_PRIORITY)
     for dnstype in DNS_PRIORITY.copy():
         if dnstype in DNS_DEF_PRIORITY:
             DNS_DEF_PRIORITY.remove(dnstype)
