@@ -49,8 +49,8 @@ before_deploy:
     cd ..;
     }
 
-  - pack PYTHON_VERSION PYTHON_IMPL_VERSION win32
-  - pack PYTHON_VERSION PYTHON_IMPL_VERSION win_amd64
+  - pack ${PYTHON_VERSION} ${PYTHON_IMPL_VERSION} win32
+  - pack ${PYTHON_VERSION} ${PYTHON_IMPL_VERSION} win_amd64
 
   - md5sum *.zip *.7z | tee md5sum
   - sha256sum *.zip *.7z | tee sha256sum
