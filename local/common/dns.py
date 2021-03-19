@@ -112,7 +112,7 @@ def address_string(item):
 dns = LRUCache(GC.DNS_CACHE_ENTRIES, GC.DNS_CACHE_EXPIRATION)
 reset_dns()
 
-from .region import ipdb, islocal
+from .region import ipdb, islocal, direct_domains_black_tree
 from local.FilterUtil import get_action
 from local.HTTPUtil import http_gws, http_nor
 
@@ -310,7 +310,7 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
     remote_resolve = dnsservers is dns_remote_servers
     if remote_resolve:
         # local_prefer 禁用时不要将 servers 中的境内服务器加入 local_servers 判断
-        if dns_local_prefer and not pollution:
+        if dns_local_prefer and not pollution and qname not in direct_domains_black_tree:
             local_servers = dns_remote_local_servers or (random.choice(dns_local_servers), )
         if local_servers:
             iplists['local'] = []
@@ -362,7 +362,8 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
                 rr_alone = len(reply.rr) == 1 and reply.a.rtype is qtype
                 if is_resolved(qtype):
                     continue
-                if remote_resolve and not local:
+                #虽然现在没有污染，但此处不排除非标准端口
+                if remote_resolve and not local and xip not in dns_remote_local_servers:
                     if rr_alone and (not check_edns_opt(reply.ar) or
                             mtime() - time_start < dns_time_threshold):
                         query_times += 1
@@ -370,7 +371,7 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
                         if not pollution:
                             polluted_hosts.add(qname)
                         continue
-                    elif not pollution and dns_local_prefer:
+                    elif not pollution and dns_local_prefer and local_servers:
                         resolved |= bv4_remote | bv6_remote
                         if is_resolved(qtype):
                             continue
@@ -395,7 +396,7 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
                 logging.warning('receive dns qname=%r \nsocket: %r', qname, e)
             except dnslib.dns.DNSError as e:
                 # dnslib 没有完整的支持，这里跳过一些不影响使用的解析错误
-                logging.error('receive dns qname=%r \nerror: %s\nreply data: %r',
+                logging.debug('receive dns qname=%r \nerror: %s\nreply data: %r',
                               qname, e, reply_data)
             finally:
                 query_times -= 1
@@ -414,7 +415,7 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
     for sock in socks:
         sock.close()
     logging.debug('query qname=%r reply iplist=%s', qname, iplists)
-    if pollution or not remote_resolve or not dns_local_prefer:
+    if pollution or not remote_resolve or not local_servers or not dns_local_prefer:
         iplist = iplists['remote']
     else:
         iplist = iplists['local']
