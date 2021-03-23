@@ -51,6 +51,20 @@ def revert_gevent_socket_patch():
         del SSLConnection._send
 
 @clean_after_invoked
+def patch_select():
+    # libuv-cffi 的 bug 问题越来越大，暂时这么处理
+    import select as mselect
+
+    def select(rlist, wlist, xlist, timeout=None):
+        res = _select(rlist, wlist, xlist, timeout)
+        if timeout == 0 or not any(res):
+            return res
+        return _select(rlist, wlist, xlist, 0)
+
+    _select = mselect.select
+    mselect.select = select
+
+@clean_after_invoked
 def patch_time():
     import time
     if hasattr(time, 'clock_gettime') and hasattr(time, 'CLOCK_BOOTTIME'):

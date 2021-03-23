@@ -121,8 +121,12 @@ def init():
                       '请安装 gevent-1.3.0 以上版本，'
                       '或将相应 .egg 放到 %r 文件夹！\n'
                       '或者使用 nogevent 参数重新启动。', packages, exc_info=True)
+        # libuv-cffi 的 bug 问题越来越大，暂时调整默认顺序不使用它
+        if looptype is None:
+            looptype = 'libev-cext'
         if looptype:
             try:
+                gevent._config.Loop.default.remove(looptype)
                 gevent._config.Loop.default.insert(0, looptype)
             except:
                 pass
@@ -133,6 +137,7 @@ def init():
             gevent.monkey.patch_all(os=False)
         if get_looptype().startswith('libuv') and sys.platform.startswith('win'):
             patch_gevent_socket()
+            patch_select()
 
     replace_logging()
     patch_time()

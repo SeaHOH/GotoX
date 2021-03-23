@@ -11,7 +11,7 @@ from select import select
 from time import mtime, sleep
 from threading import _start_new_thread as start_new_thread
 from .net import servers_2_addresses, isip, isipv4, isipv6, stop_all_forward
-from .util import LRUCache, spawn_loop
+from .util import LRUCache
 from local.GlobalConfig import GC
 
 A = dnslib.QTYPE.A
@@ -354,6 +354,7 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
             qtype = None
             try:
                 reply_data, xip = sock.recvfrom(udp_len)
+                xip = xip[:2]
                 local = xip in local_servers
                 if local and pollution:
                     continue
@@ -368,6 +369,7 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
                             mtime() - time_start < dns_time_threshold):
                         query_times += 1
                         pollution = True
+                        resolved |= bv4_local | bv6_local
                         if not pollution:
                             polluted_hosts.add(qname)
                         continue

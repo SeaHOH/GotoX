@@ -263,7 +263,7 @@ def main():
  GAE  验  证 : {'已' if GC.GAE_SSLVERIFY else '未'}启用
 """ or
 GC.LISTEN_ACT == 'CFW' and f"""
- CF  Workers : {GC.CFW_SUBDOMAIN and f'@{GC.CFW_SUBDOMAIN} [{" | ".join(GC.CFW_WORKERS)}]' or GC.CFW_WORKER or '请填入 Workers'}
+ CF  Workers : {GC.CFW_SUBDOMAIN and GC.CFW_WORKERS and f'@{GC.CFW_SUBDOMAIN} [{" | ".join(GC.CFW_WORKERS)}]' or GC.CFW_WORKER or '请填入 Workers'}
 """}
  监 听 地 址 : 自动代理 - {GC.LISTEN_IP}:{GC.LISTEN_AUTOPORT}
                {GC.LISTEN_ACT} 代理 - {GC.LISTEN_IP}:{GC.LISTEN_ACTPORT}
