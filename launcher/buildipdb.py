@@ -161,6 +161,9 @@ def parse_cidr_iplist(fd, ds):
             if line[:1] in b'#;':
                 continue
             if b'/' in line:
+                if b':' in line:
+                    #不需要 IPv6 数据，提前结束
+                    return
                 ip, mask = line.decode().strip('\r\n').split('/')
                 ds.itemlist.append((ip2int(ip), 32 - int(mask)))
     except Exception as e:
