@@ -346,6 +346,8 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
         resolved |= bv4_remote | bv4_local
     elif AAAA not in qtypes:
         resolved |= bv6_remote | bv6_local
+    if not local_servers:
+        resolved |= bv4_local | bv6_local
     udp_len = remote_resolve and remote_query_opt.edns_len or 512
     while mtime() < timeout_at and (allresolved ^ resolved) and query_times:
         ins, _, _ = select(socks, [], [], 0.1)
@@ -368,10 +370,11 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
                     if rr_alone and (not check_edns_opt(reply.ar) or
                             mtime() - time_start < dns_time_threshold):
                         query_times += 1
-                        pollution = True
-                        resolved |= bv4_local | bv6_local
+                        if local_servers:
+                            resolved |= bv4_local | bv6_local
                         if not pollution:
                             polluted_hosts.add(qname)
+                        pollution = True
                         continue
                     elif not pollution and dns_local_prefer and local_servers:
                         resolved |= bv4_remote | bv6_remote
