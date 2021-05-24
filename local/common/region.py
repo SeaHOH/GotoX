@@ -22,8 +22,8 @@ direct_tlds = (
     # https://www.icann.org/resources/pages/registries/registries-agreements-en
     # Country code top-level domains
     'cn',
-    #'hk',  # rthk.hk
-    'mo',
+    #'hk',  # rthk.hk 等百余站点被污染
+    'mo',   # 同，只有三个站点，已加入下方黑名单
     # Internationalized country code top-level domains
     'xn--fiqs8s',   #中国
     'xn--fiqz9s',   #中國
@@ -206,7 +206,10 @@ for domain in GC.LINK_TEMPWHITELIST:
     direct_domains_temp_tree.add(domain)
 
 direct_domains_black_tree = DomainsTree('直连/本地 DNS 黑名单')
-for domain in GC.DNS_LOCAL_BLACKLIST:
+for domain in GC.DNS_LOCAL_BLACKLIST + (
+        'hojemacau.com.mo',
+        'macaudailytimes.com.mo',
+        'tdm.com.mo'):
     direct_domains_black_tree.add(domain)
 
 def load_ipdb():
