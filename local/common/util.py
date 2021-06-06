@@ -2,6 +2,7 @@
 
 import os
 import re
+import socket
 import string
 import weakref
 import threading
