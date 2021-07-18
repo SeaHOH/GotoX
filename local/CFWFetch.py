@@ -124,7 +124,7 @@ def check_response(response, worker_params):
                         sleep(30)
                     finally:
                         lock.release()
-            elif response.status in (502, 503, 504):
+            elif response.status in (500, 502, 503, 504):
                 sleep(5)
             elif remove_badip(response.xip[0]):
                 logging.test('CFW %d 移除 %s', response.status, response.xip[0])

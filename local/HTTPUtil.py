@@ -28,7 +28,7 @@ from .common.decorator import make_lock_decorator
 from .common.path import cert_dir
 from .common.proxy import parse_proxy, proxy_no_rdns
 from .common.util import LRUCache, LimiterFull, LimitDictBase, wait_exit
-from .FilterUtil import reset_method_list, get_fake_sni
+from .FilterUtil import reset_method_list, get_fakesni
 
 GoogleONames = {'Google Inc', 'Google LLC'}
 GoogleICAPkeys = {
@@ -260,7 +260,7 @@ class BaseHTTPUtil:
         match_hostname(cert, hostname)
 
     def get_server_hostname(self, host, cache_key):
-        servername = get_fake_sni(host)
+        servername = get_fakesni(host)
         if servername:
             return servername
         if self.gws:

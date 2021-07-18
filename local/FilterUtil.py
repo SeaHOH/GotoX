@@ -60,7 +60,7 @@ def _check_reset():
 
 start_new_thread(check_reset, ())
 
-def get_fake_sni(host):
+def get_fakesni(host):
     if not isinstance(host, str):
         return
     action, rule = get_connect_action(True, host)
