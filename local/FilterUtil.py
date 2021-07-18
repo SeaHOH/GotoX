@@ -134,6 +134,7 @@ def match_path_filter(filter, path):
 
 REDIRECTS = 'do_REDIRECT', 'do_IREDIRECT'
 TEMPACT = GC.LISTEN_ACTNAME, None
+TEMPFAKESNI = 'do_FAKECERT', '@none'
 #默认规则
 filter_DEF = '', numToAct[GC.FILTER_ACTION], None
 ssl_filter_DEF = numToSSLAct[GC.FILTER_SSLACTION], None
@@ -156,6 +157,13 @@ def set_temp_connect_action(host):
     action = filter[0]
     if action != 'do_FAKECERT':
         ssl_filters_cache.set(host, ('do_FAKECERT', filter), GC.LINK_TEMPTIME)
+        return True
+
+def set_temp_fakesni(host):
+    #将缓存规则替换为伪造规则
+    filter = ssl_filters_cache.get(host)
+    if filter is not TEMPFAKESNI:
+        ssl_filters_cache[host] = TEMPFAKESNI
         return True
 
 @lock_filters_cache

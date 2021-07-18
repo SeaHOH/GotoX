@@ -19,7 +19,7 @@ from .compat.openssl import res_ciphers, SSL, SSLConnection, CertificateError
 from .common import cert
 from .common.decompress import decompress_readers
 from .common.decorator import make_lock_decorator
-from .common.dns import reset_dns, set_dns, dns_resolve, dns
+from .common.dns import reset_dns, set_dns, dns_resolve, dns, polluted_hosts
 from .common.net import (
     NetWorkIOError, reset_errno, closed_errno, bypass_errno,
     isip, isipv4, isipv6, forward_socket )
@@ -34,7 +34,7 @@ from .CFWFetch import cfw_fetch
 from .GAEFetch import (
     check_appid_exists, mark_badappid, make_errinfo, gae_urlfetch )
 from .FilterUtil import (
-    set_temp_action, set_temp_connect_action,
+    set_temp_action, set_temp_connect_action, set_temp_fakesni,
     get_action, get_connect_action )
 from .FilterConfig import action_filters
 
@@ -1089,7 +1089,10 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         else:
             logging.info('%s "FWD %s %s HTTP/1.1" - -',
                          self.address_string(remote), self.command, self.url)
-        self.forward_connect(remote)
+        if self.forward_connect(remote) and host in polluted_hosts:
+            host = 'https://' + host
+            if set_temp_fakesni(host):
+                logging.warning('将 %r 加入 "FAKESNI" 规则。', host)
 
     def do_PROXY(self):
         #转发到其它代理
@@ -1474,6 +1477,11 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             payload = self.connection.recv(65536)
         try:
             forward_socket(self.connection, remote, payload, timeout or self.fwd_keeptime, tick, bufsize, maxping, maxpong)
+        except ConnectionResetError:
+            if self.command == 'CONNECT':
+                return True
+            else:
+                raise
         except NetWorkIOError as e:
             if e.args[0] not in bypass_errno:
                 logging.warning('%s 转发 "%s" 失败：%r',
