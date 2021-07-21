@@ -28,7 +28,7 @@ from .common.decorator import make_lock_decorator
 from .common.path import cert_dir
 from .common.proxy import parse_proxy, proxy_no_rdns
 from .common.util import LRUCache, LimiterFull, LimitDictBase, wait_exit
-from .FilterUtil import reset_method_list, get_fakesni
+from .FilterUtil import reset_method_list, get_fakesni, unset_temp_fakesni
 
 GoogleONames = {'Google Inc', 'Google LLC'}
 GoogleICAPkeys = {
@@ -965,6 +965,11 @@ class HTTPUtil(BaseHTTPUtil):
                     ip = sock.xip
                     sock.close()
                 if hasattr(e, 'xip'):
+                    if ssl and 'SSL' in str(e):
+                        host = 'https://' + request_params.host
+                        if unset_temp_fakesni(host):
+                            logging.warning('%r 的 "FAKESNI" 临时规则不适用，已取消。', host)
+                            continue
                     ip = e.xip
                     logging.warning('%s create_%sconnection %r 失败：%r', ip[0], 'ssl_' if ssl else '', realurl or url, e)
                 elif isinstance(e, LimiterFull):

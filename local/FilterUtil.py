@@ -166,6 +166,13 @@ def set_temp_fakesni(host):
         ssl_filters_cache[host] = TEMPFAKESNI
         return True
 
+def unset_temp_fakesni(host):
+    #取消伪造规则
+    filter = ssl_filters_cache[host]
+    if filter is TEMPFAKESNI:
+        ssl_filters_cache[host] = 'do_FAKECERT', None
+        return True
+
 @lock_filters_cache
 def get_action(scheme, host, path, url):
     schemes = '', scheme
