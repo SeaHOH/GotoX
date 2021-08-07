@@ -300,7 +300,11 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
 
     def _do_METHOD(self):
         self.reread_req = False
-        self.url_parts = url_parts = urlparse.urlsplit(self.path)
+        if self.path[:2] == '//':
+            path = '//' + self.path
+        else:
+            path = self.path
+        self.url_parts = url_parts = urlparse.urlsplit(path)
         self.parse_host(self.headers.get('Host'), url_parts.netloc)
         #确定协议
         scheme = 'https' if self.ssl else 'http'

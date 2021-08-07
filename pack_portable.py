@@ -5,6 +5,7 @@
 import os
 import re
 import sys
+import stat
 import json
 import zlib
 import shutil
@@ -192,9 +193,19 @@ if __name__ == '__main__':
     sys.exit(rc)
 '''
 
+def writeb64z(filename, b64z):
+    with open(filename, 'wb') as f:
+        f.write(zlib.decompress(base64.decodebytes(b64z), -15))
+
+def download394core(filename, arch, sum):
+    filepath = download(f'https://www.python.org/ftp/python/3.9.4/{arch}/core.msi', sum=sum)
+    os.system(f'{_7z} e {filepath} python.dll {to_null}')
+    os.remove(filepath)
+    os.rename('python.dll', filename)
+
 dllsb64z = {
     'win32': (
-        ('api-ms-win-core-path-l1-1-0.dll.w7', b'''
+        (writeb64z, 'api-ms-win-core-path-l1-1-0.dll.w7', b'''
 7VZLb9xUFD7zKDRNEyZNg1ggcKRWahYe5SVINpBkJqEjJp3ROKQIJFqPx8nc1mMb20kmrIJ4KVKFBiGk
 sqISCIkNYtFFhVSptFWLaPIH2MCiq7KgrJEI3722M56H0i7YgLij7z7OPee73z22753FNxqUIKIksLdH
 dI38MkOPLjeA/ue/76erPbvD12L53eGlKnMl27FWHbUmaappWp5U1iVnzZSYKWULilSzKnq6r+/IiYDj
@@ -214,9 +225,11 @@ gPcUjaMni5hxWEYCzl6syfPlifVM7MyIZEIVml2h2Q0U87IF3hhU68g6j+C5sZFDvutVqhL/b/INVD1+
 HtOYmQWTgbbJ4oqRLhQ4tI66Ak+il4TuQuDJAt1h7sxH6r9AJxFfFMoqsGqYO/j5fwslZ8VKFVg2YOeW
 Avj1/X3wd5A/2U2xlg42XuZwnrev1f50D3q2vGTF17aMdZwubznRCfHHbkkoMcFrtLyhhO/0u643+t8=
 '''),
+        (download394core, 'python39.dll.w7',
+        'win32', 'md5|3b4e607be6441a706e14a6e58e629360')
     ),
     'win_amd64': (
-        ('api-ms-win-core-path-l1-1-0.dll.w7', b'''
+        (writeb64z, 'api-ms-win-core-path-l1-1-0.dll.w7', b'''
 7VZNb9xEGH73o0AaErYNRUVC1EEttAev8iVIhQTZ7CZixWZ3tQ6p1EvjtSfZab22ZTtNyikVUC49rBBC
 QuqRCwcQh0pEIKTSSByq5gYnfgBqOZRrL5Rnxnb2U2kPcAAxq2c+Xr/vM8+89szs0vkWpYgoDTx6RLRD
 YZmjx5dbwOiJ70bp5tDe+E6itDe+3OC+4nrOuqc3FUO3bSdQ6kzxNmyF20qhoilNx2TZkZHDJyOOj7Xx
@@ -235,6 +248,8 @@ Er1pnNkzYDlNmzILdURvIPYCogOsR3hNw3uWptBTZcwULGcizmHMKfIVyPlsrMzqyIQuNftSsx8pln+i
 wJuAaoasiwiRGxc5FKtepwaJ/yJfQtWT5zGLJzkwWWjbLL4cManAo8uoTXgSvSV1VyJPHumOc2c/Vv9F
 OoX4qlRmwmrg2cHv/2soOSdnMmHZhF1YKuBn++sQ36B4s1fkXAxsoszjfO+dq/ftHvRuRSnI3baCebwB
 XznRSflHblkqscFrdX2hhH36zcAb/S8='''),
+        (download394core, 'python39.dll.w7',
+        'amd64', 'md5|567a240112d13d6d3d7addd7465989cc')
     )
 }
 
@@ -401,7 +416,8 @@ extras = sys.argv[2:]
 py_url = config.get(py_ver, 'url')
 py_sum = config.get(py_ver, 'sum')
 py_ver, py_arch = py_ver.split('-')
-py_ver = py_ver.replace('.', '')[:2]
+py_vers = py_ver.split('.')
+py_ver = ''.join(py_vers[:2])
 dll_tag = f'cp{py_ver}-{py_arch}'
 
 if not os.path.exists('python/python.exe'):
@@ -434,24 +450,28 @@ for filename in os.listdir():
             f.write(simplewinvenv)
         os.system(f'{_7z} a -mx=9 -mfb=258 -mtc=off {to_null} {filename} ./pythonzip/*')
         shutil.rmtree('pythonzip', True)
-if py_ver >= '39':
+if int(py_vers[1]) >= 9:
     install_dlls = ['''\
 for /f "tokens=2 delims=[" %%v in ('ver') do set version=%%v
 for /f "tokens=2" %%v in ('echo %version%') do set version=%%v
 for /f "delims=]" %%v in ('echo %version%') do set version=%%v
 if %version% lss 6.2 ( goto :install )''']
-    for filename, _ in dllsb64z[py_arch]:
-        install_dlls.append(f'del {filename}')
+    for _, filename, *args in dllsb64z[py_arch]:
+        install_dlls.append(f'if exist {filename} del {filename}')
     install_dlls.append('''
 :del_self
   del %0
   goto :EOF
 
 :install''')
-    for filename, b64z in dllsb64z[py_arch]:
-        with open(filename, 'wb') as f:
-            f.write(zlib.decompress(base64.decodebytes(b64z), -15))
-        install_dlls.append(f'  rename {filename} {os.path.splitext(filename)[0]}')
+    for generator, filename, *args in dllsb64z[py_arch]:
+        if generator is download394core and py_ver == '39' and int(py_vers[2]) <= 4:
+            continue
+        if not os.path.exists(filename):
+            generator(filename, *args)
+        newfilename = os.path.splitext(filename)[0]
+        install_dlls.append(f'  if exist {newfilename} del {newfilename}')
+        install_dlls.append(f'  rename {filename} {newfilename}')
     install_dlls.append('  goto :del_self')
     with open('install_dll.bat', 'w', newline='\r\n') as f:
         f.write('\n'.join(install_dlls))
@@ -522,10 +542,9 @@ def extract(project, version):
         filepath = filepath.rpartition('.')[0]
     if filepath.endswith(('whl', 'egg', 'tar', 'zip')):
         os.system(f'{_7z} x -y {filepath} {to_null}')
-        try:
+        if os.path.exists('@PaxHeader'):
+            os.chmod('@PaxHeader', stat.S_IWRITE)
             os.remove('@PaxHeader')
-        except FileNotFoundError:
-            pass
         os.remove(filepath)
     if filepath.endswith(('tar', 'zip')):
         # This is source code, may require a complicated installation process.
