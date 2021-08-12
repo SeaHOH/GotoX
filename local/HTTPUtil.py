@@ -30,7 +30,7 @@ from .common.proxy import parse_proxy, proxy_no_rdns
 from .common.util import LRUCache, LimiterFull, LimitDictBase, wait_exit
 from .FilterUtil import reset_method_list, get_fakesni, unset_temp_fakesni
 
-GoogleONames = {'Google Inc', 'Google LLC'}
+GoogleONames = {'Google LLC', 'Google Trust Services LLC'}
 GoogleICAPkeys = {
 # 已过期
 # GIAG2
@@ -477,7 +477,7 @@ class BaseHTTPUtil:
             raise CertificateError(-1, '没有获取到证书')
         subject = cert.get_subject()
         if subject.O not in GoogleONames:
-            raise CertificateError(-1, '%s 证书的组织名称（%s）不属于 %s 之一。' % (sock.getpeername[0], subject.O, GoogleONames))
+            raise CertificateError(-1, '%s 证书的组织名称（%s）不属于 %s 之一。' % (sock.getpeername(), subject.O, GoogleONames))
         return cert
 
     @staticmethod
