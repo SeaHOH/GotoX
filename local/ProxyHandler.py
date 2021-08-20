@@ -380,49 +380,25 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         else:
             self.close_connection = False
         payload = b''
-        length = int(request_headers.get('Content-Length', 0))
-        if self.action == 'do_GAE':
-            try:
-                #暂时限制为 32MB，实际可能会更小一点
-                if 0 < length < 33554433:
-                    payload = self.rfile.read(length)
-                elif 'Transfer-Encoding' in request_headers:
-                    value = []
-                    length = 0
-                    while True:
-                        chunk_size_str = self.rfile.readline(65537)
-                        if len(chunk_size_str) > 65536:
-                            raise Exception('分块尺寸过大')
-                        chunk_size = int(chunk_size_str.split(b';')[0], 16)
-                        if chunk_size == 0:
-                            while True:
-                                chunk = self.rfile.readline(65537)
-                                if chunk in (b'\r\n', b'\n', b''): # b'' 也许无法读取到空串
-                                    break
-                                else:
-                                    #只能抛弃，如服务器强制要求携带，则请求可能失败
-                                    logging.debug('%s "%s %s %s"分块拖挂：%r',
-                                                  self.address_string(), self.action[3:], self.command, self.url, chunk)
-                            break
-                        chunk = self.rfile.read(chunk_size)
-                        value.append(chunk)
-                        length += len(chunk)
-                        if length > 33554432:
-                            break
-                        if self.rfile.read(2) != b'\r\n':
-                            raise Exception('分块尺寸不匹配 CRLF')
-                    payload = b''.join(value)
-            except Exception as e:
-                logging.error('%s "%s %s %s" 附加内容读取失败：%r',
-                              self.address_string(), self.action[3:], self.command, self.url, e)
-                raise
-            if length > 33554432:
-                logging.error('%s "%s %s %s" 附加内容尺寸过大：%d，无法通过 GAE 代理',
-                              self.address_string(), self.action[3:], self.command, self.url, length)
-                raise
-        elif self.action not in ('do_DIRECT', 'do_CFW') or \
-                length > 65536 or \
-                'Transfer-Encoding' in request_headers:
+        length = max_length = int(request_headers.get('Content-Length', 0))
+        action = self.action[3:]
+        if action == 'CFW':
+            max_length = 104857600  # 100MB，free plan
+        elif action == 'GAE':
+            max_length = 33554432  # 32MB，实际可能会更小一点
+        if length > max_length:
+            logging.error('%s "%s %s %s" 实体数据过大：%d，无法通过 %s 代理',
+                          self.address_string(), action, self.command, self.url, length, action)
+            c = message_html('413 请求实体数据过大',
+                             '请求实体数据过大',
+                             '无法通过 %s 代理超过 %d MB 的请求实体！'
+                             % (action, max_length // 1048576)).encode()
+            self.write(b'HTTP/1.1 413 Request Entity Too Large\r\n'
+                       b'Content-Type: text/html\r\n'
+                       b'Content-Length: %d\r\n\r\n' % len(c))
+            self.write(c)
+            return None, None
+        elif length > 65536:
             #不读取，直接传递 rfile 以加快代理转发速度
             payload = self.rfile
             self.rfile.readed = 0
@@ -431,8 +407,8 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             try:
                 payload = self.rfile.read(length)
             except NetWorkIOError as e:
-                logging.error('%s "%s %s %s" 附加内容读取失败：%r',
-                              self.address_string(), self.action[3:], self.command, self.url, e)
+                logging.error('%s "%s %s %s" 实体数据读取失败：%r',
+                              self.address_string(), action, self.command, self.url, e)
                 raise
         #如果强制请求压缩内容，之后会自动判断解压缩
         if self.request_compress:
@@ -678,6 +654,8 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
 
     def do_CFW(self):
         request_headers, payload = self.handle_request_headers()
+        if request_headers is None:
+            return
         headers_sent = False
         if self.target and '@follow' in self.target:
             options = {'redirect': 'true'}
@@ -743,6 +721,8 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             return self.do_action()
         url_parts = self.url_parts
         request_headers, payload = self.handle_request_headers()
+        if request_headers is None:
+            return
         if self.command == 'OPTIONS':
             return self.fake_OPTIONS(request_headers)
         #排除不支持 range 的请求

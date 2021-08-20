@@ -208,11 +208,11 @@ async function handleRequest(request) {
                 if (err) throw err
                 // 新建代理请求 Headers
                 const wsHeaders = new Headers()
-                wsHeaders.set('Host', new URL(fetchOptions.url).host)
                 for (let [key, value] of request.headers.entries())
                     // 排除 headers 中保存的请求 IP 等信息
                     if (!['cf', 'x'].includes(key.substring(0, key.indexOf('-'))))
                         wsHeaders.append(key, value)
+                wsHeaders.set('Host', new URL(fetchOptions.url).host)
                 // 获取代理请求响应
                 return fetch(new Request(fetchOptions.url, {headers: wsHeaders}))
             } catch (error) {
@@ -294,9 +294,9 @@ async function readRequest(request, fetchOptions) {
         headers: requestHeaders
     }
 
-    // 设置代理请求负载
-    // fetch() 没有使用 chunked 方式，始终要全部读取后才开始发出请求，对上传大量数据是个障碍
-    // 会造成多余的延时，是否占用 Worker 内存还未确定，可上传大于 128 MB 的数据测试
+    // 设置代理请求负载，free plan 限制 100 MB 负载
+    // fetch() 无法使用 chunked 方式，始终要全部读取后才开始发出请求
+    // 对上传大量数据是个障碍，会造成多余的延时
     const requestBodyLength = parseInt(request.headers.get('Content-Length')) - 2 - requestMetedataLength
     if (requestBodyLength)
         if (['GET', 'HEAD', 'OPTIONS'].includes(requestMethod))

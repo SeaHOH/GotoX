@@ -5,6 +5,7 @@ import queue
 import struct
 import logging
 from io import BytesIO
+from gzip import _PaddedFile
 from time import time, mtime, sleep, timezone, localtime, strftime, strptime, mktime
 from http.client import HTTPResponse, parse_headers
 from .FilterUtil import get_action
@@ -220,12 +221,17 @@ def gae_urlfetch(method, url, headers, payload, getfast=None):
     if not isinstance(metadata, bytes):
         metadata = metadata.encode()
     metadata = zlib.compress(metadata)[2:-4]
+    metadata = struct.pack('!h', len(metadata)) + metadata
+    length = len(metadata) + int(headers.get('Content-Length', 0))
     if payload:
-        if not isinstance(payload, bytes):
-            payload = payload.encode()
-        payload = struct.pack('!h', len(metadata)) + metadata + payload
+        if hasattr(payload, 'read'):
+            payload = _PaddedFile(payload, metadata)
+        else:
+            if not isinstance(payload, bytes):
+                payload = payload.encode()
+            payload = metadata + payload
     else:
-        payload = struct.pack('!h', len(metadata)) + metadata
+        payload = metadata
     realurl = 'GAE-' + url
     response = LimitGAE()
     _response = _gae_urlfetch(response.appid, payload, getfast, method, realurl)
@@ -237,13 +243,13 @@ def _gae_urlfetch(appid, payload, getfast, method, realurl):
         request_headers = {
             'User-Agent': 'Mozilla/5.0',
             'Accept-Encoding': 'gzip',
-            'Content-Length': str(len(payload))
+            'Content-Length': str(length)
             }
     else:
         #禁用 CDN 不兼容的 GAE chunked 机制
         request_headers = {
             'User-Agent': '',
-            'Content-Length': str(len(payload))
+            'Content-Length': str(length)
             }
     while True:
         response = http_util.request(request_params, payload, request_headers,

@@ -203,7 +203,7 @@ def download394core(filename, arch, sum):
     os.remove(filepath)
     os.rename('python.dll', filename)
 
-dllsb64z = {
+dlls = {
     'win32': (
         (writeb64z, 'api-ms-win-core-path-l1-1-0.dll.w7', b'''
 7VZLb9xUFD7zKDRNEyZNg1ggcKRWahYe5SVINpBkJqEjJp3ROKQIJFqPx8nc1mMb20kmrIJ4KVKFBiGk
@@ -456,7 +456,7 @@ for /f "tokens=2 delims=[" %%v in ('ver') do set version=%%v
 for /f "tokens=2" %%v in ('echo %version%') do set version=%%v
 for /f "delims=]" %%v in ('echo %version%') do set version=%%v
 if %version% lss 6.2 ( goto :install )''']
-    for _, filename, *args in dllsb64z[py_arch]:
+    for _, filename, *args in dlls[py_arch]:
         install_dlls.append(f'if exist {filename} del {filename}')
     install_dlls.append('''
 :del_self
@@ -464,7 +464,7 @@ if %version% lss 6.2 ( goto :install )''']
   goto :EOF
 
 :install''')
-    for generator, filename, *args in dllsb64z[py_arch]:
+    for generator, filename, *args in dlls[py_arch]:
         if generator is download394core and py_ver == '39' and int(py_vers[2]) <= 4:
             continue
         if not os.path.exists(filename):

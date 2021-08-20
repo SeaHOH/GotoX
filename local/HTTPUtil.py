@@ -983,38 +983,9 @@ class HTTPUtil(BaseHTTPUtil):
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, False)
             request_data = '\r\n'.join(request_data).encode()
             sock.sendall(request_data)
-            readed = 0
-            #以下按原样转发
-            if 'Transfer-Encoding' in headers:
-                while True:
-                    chunk = payload.read(bufsize)
-                    if chunk:
-                        sock.sendall(chunk)
-                        readed += len(chunk)
-                    else:
-                        break
-                    #chunk_size_str = payload.readline(65537)
-                    #if len(chunk_size_str) > 65536:
-                    #    raise Exception('分块尺寸过大')
-                    #sock.sendall(chunk_size_str)
-                    #readed += len(chunk_size_str)
-                    #chunk_size = int(chunk_size_str.split(b';')[0], 16) + 2
-                    #if chunk_size == 2:
-                    #    while True:
-                    #        chunk = payload.readline(65536)
-                    #        sock.sendall(chunk)
-                    #        readed += len(chunk)
-                    #        if chunk in (b'\r\n', b'\n', b''): # b'' 也许无法读取到空串
-                    #            break
-                    #        else:
-                    #            logging.debug('%s "%s %s%s"分块拖挂：%r', sock.xip[0], method, headers['Host'], path, chunk)
-                    #    break
-                    #chunk = payload.read(chunk_size)
-                    #sock.sendall(chunk)
-                    #readed += chunk_size
-                    #if chunk[-2:] != b'\r\n':
-                    #    raise Exception('分块尺寸不匹配 CRLF')
-            else:
+            try:
+                #以下按原样转发
+                readed = 0
                 left_size = int(headers.get('Content-Length', 0))
                 while True:
                     if left_size < 1:
@@ -1023,7 +994,11 @@ class HTTPUtil(BaseHTTPUtil):
                     sock.sendall(data)
                     left_size -= len(data)
                     readed += len(data)
-            payload.readed = readed
+            finally:
+                if payload.__class__.__name__ == '_PaddedFile':
+                    payload.file.readed = readed
+                else:
+                    payload.readed = readed
             #为下个请求恢复无延迟发送
             sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
         else:

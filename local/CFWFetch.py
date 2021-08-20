@@ -8,7 +8,7 @@ import logging
 import threading
 from time import sleep
 from io import BytesIO
-from gzip import GzipFile
+from gzip import GzipFile, _PaddedFile
 from collections import deque
 from .GlobalConfig import GC
 from .FilterUtil import get_action
@@ -170,14 +170,17 @@ def cfw_fetch(method, host, url, headers, payload=b'', options=None):
     metadata += ['%s\t%s' % header for header in headers.items()]
     metadata = '\n'.join(metadata).encode()
     metadata = zlib.compress(metadata)[2:-4]
-    if hasattr(payload, 'read'):
-        payload = payload.read()
+    metadata = struct.pack('!h', len(metadata)) + metadata
+    length = len(metadata) + int(headers.get('Content-Length', 0))
     if payload:
-        if not isinstance(payload, bytes):
-            payload = payload.encode()
-        payload = struct.pack('!h', len(metadata)) + metadata + payload
+        if hasattr(payload, 'read'):
+            payload = _PaddedFile(payload, metadata)
+        else:
+            if not isinstance(payload, bytes):
+                payload = payload.encode()
+            payload = metadata + payload
     else:
-        payload = struct.pack('!h', len(metadata)) + metadata
+        payload = metadata
     if options:
         _options = cfw_options.copy()
         _options.update(options)
@@ -189,7 +192,7 @@ def cfw_fetch(method, host, url, headers, payload=b'', options=None):
         'Host': worker_params.host,
         'User-Agent': 'GotoX/ls/0.5',
         'Accept-Encoding': ae,
-        'Content-Length': str(len(payload)),
+        'Content-Length': str(length),
         'X-Fetch-Options': options_str,
     }
     realurl = 'CFW-' + url
