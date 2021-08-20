@@ -7,7 +7,7 @@ from io import DEFAULT_BUFFER_SIZE, RawIOBase, BufferedReader
 from gzip import _PaddedFile, _GzipReader
 
 try:
-    from brotli import _brotli
+    from brotlicffi import _brotlicffi as _brotli
     ffi = _brotli.ffi
     lib = _brotli.lib
 except:
@@ -95,7 +95,7 @@ class GzipReader(BufferedReader):
 class BrotliReader(RawIOBase):
     # A wrapper for brotlipy.
     # This code does not require class Inheritance of BufferedReader.
-    # https://github.com/python-hyper/brotlipy
+    # https://github.com/python-hyper/brotlicffi
     def __init__(self, fileobj):
         self.fp = fileobj
         self.decompressor = BrotliDecompressor(fileobj)
