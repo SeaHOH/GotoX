@@ -1075,7 +1075,7 @@ class HTTPUtil(BaseHTTPUtil):
 
         remote = None
         for i in range(self.max_retry):
-            if hasattr(request_params, 'connection') and check_connection_dead(request_params.connection):
+            if not hasattr(payload, 'read') and hasattr(request_params, 'connection') and check_connection_dead(request_params.connection):
                 raise socket.error(errno.ECONNABORTED, '本地连接已断开')
             sock = None
             ssl_sock = None
