@@ -97,6 +97,8 @@ class cconfig:
     def load(self, names=None, filename=None):
         if names:
             self.add(names)
+        if not self._extlist:
+            return
         if not filename:
             filename = self.conf
         if os.path.exists(filename):
@@ -108,6 +110,8 @@ class cconfig:
                         self.set(name, value.strip())
 
     def save(self, filename=None):
+        if not self._extlist:
+            return
         exts = []
         if not filename:
             filename = self.conf

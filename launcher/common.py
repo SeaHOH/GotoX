@@ -186,8 +186,10 @@ class DataSourceManager:
         self._sign_all = 0
         self._sign_bit = 0
         self._valid = {}
+        self._conf = cconfig('ds', conf=self.ext_conf)
 
     def add(self, name, url, parser, fullname=None):
+        self._conf.add(name)
         ds = DataSource(self, name, url, parser, fullname)
         self._valid['--' + name.lower()] = ds
         self._sign_all |= ds.sign
@@ -205,17 +207,28 @@ class DataSourceManager:
     def sign_all(self):
         return self._sign_all
 
+    def check(self, name):
+        return self._conf.check(name)
+
+    def set(self, name, save=False):
+        self._conf.set(name, 1, save)
+
+    def switch(self, name, save=False):
+        self._conf.switch(name, save)
+
     def load(self, filename=None):
         if filename:
             self.ext_conf = filename
+        self._conf.load(filename=filename)
         for ds in self.sources():
-            ds.load()
+            ds.load(filename=filename)
 
     def save(self, filename=None):
         if filename:
             self.ext_conf = filename
+        self._conf.save(filename=filename)
         for ds in self.sources():
-            ds.save()
+            ds.save(filename=filename)
 
     def get_source(self, *args):
         kwargs = parse_cmds(*args)
@@ -235,6 +248,14 @@ class DataSourceManager:
 
     def sources(self):
         return self._valid.values()
+
+    @property
+    def data_source(self):
+        data_source = 0
+        for ds in self.sources():
+            if self._conf.check(ds.name):
+                data_source |= ds
+        return data_source
 
 def parse_cmds(*args):
     args = list(args)

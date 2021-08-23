@@ -302,8 +302,11 @@ import builddomains
 
 gloop_conf = os.path.join(config_dir, 'gloop.conf')
 
-buildipdb.ds_APNIC.load()
-builddomains.ds_FELIX.load()
+buildipdb.data_source_manager.load()
+builddomains.data_source_manager.load()
+if not buildipdb.data_source_manager.data_source:
+    buildipdb.data_source_manager.set(buildipdb.ds_17MON.name)
+builddomains.data_source_manager.set(builddomains.ds_FELIX.name)
 gloop = cconfig('gloop', conf=gloop_conf)
 gloop.add(['libuv-cffi', 'libev-cext', 'libev-cffi', 'nogevent'])
 gloop.load()
@@ -345,25 +348,38 @@ def build_menu(systray):
                  ('    ├─ libev-cffi', lambda x: gloop.checked('libev-cffi', True), libev_cffi_state, MFT_RADIOCHECK),
                  ('    ├─ nogevent (禁用)', lambda x: gloop.checked('nogevent', True), nogevent_state, MFT_RADIOCHECK),
                  ('    └─ 默认', lambda x: gloop.clear(True), default_loop_state, MFT_RADIOCHECK))
+    dsm = buildipdb.data_source_manager
+    apnic_checked = dsm.check(buildipdb.ds_APNIC.name)
+    l7mon_checked = dsm.check(buildipdb.ds_17MON.name)
+    gaoyifan_checked = dsm.check(buildipdb.ds_GAOYIFAN.name)
+    misakaio_checked = dsm.check(buildipdb.ds_MISAKAIO.name)
+    multi_data_source = len(list(filter(None, [apnic_checked, l7mon_checked, gaoyifan_checked, misakaio_checked]))) > 1
+    multi_state = multi_data_source and MFS_CHECKED or fixed_fState
+    apnic_state = apnic_checked and multi_state or MFS_ENABLED
     mo_state = buildipdb.ds_APNIC.check('mo') and MFS_CHECKED or MFS_ENABLED
     hk_state = buildipdb.ds_APNIC.check('hk') and MFS_CHECKED or MFS_ENABLED
-    sub_menu2 = (('建议更新频率：10～30 天一次', 'pass', MFS_DISABLED),
+    l7mon_state = l7mon_checked and multi_state or MFS_ENABLED
+    gaoyifan_state = gaoyifan_checked and multi_state or MFS_ENABLED
+    misakaio_state = misakaio_checked and multi_state or MFS_ENABLED
+    sub_menu2 = (('点击此处开始更新', lambda x: download_cniplist(dsm.data_source)),
+                 ('建议更新频率：10～30 天一次', 'pass', MFS_DISABLED),
+                 ('请选择数据来源', 'pass', MFS_DISABLED),
                  (None, '-'),
-                 ('Ⅰ 从 APNIC 下载（每日更新）', lambda x: download_cniplist(buildipdb.ds_APNIC)),
-                 ('    ├─ 包含澳门', lambda x: buildipdb.ds_APNIC.switch('mo', True), mo_state, MFT_RADIOCHECK),
-                 ('    └─ 包含香港', lambda x: buildipdb.ds_APNIC.switch('hk', True), hk_state, MFT_RADIOCHECK),
-                 ('Ⅱ 从 17mon 下载（每月初更新）', lambda x: download_cniplist(buildipdb.ds_17MON)),
-                 ('Ⅲ 从 gaoyifan 下载（每日更新）', lambda x: download_cniplist(buildipdb.ds_GAOYIFAN)),
-                 ('从 Ⅰ、Ⅱ 下载后合并', lambda x: download_cniplist(buildipdb.ds_APNIC | buildipdb.ds_17MON)),
-                 ('从 Ⅰ、Ⅲ 下载后合并', lambda x: download_cniplist(buildipdb.ds_APNIC | buildipdb.ds_GAOYIFAN)),
-                 ('从 Ⅱ、Ⅲ 下载后合并', lambda x: download_cniplist(buildipdb.ds_17MON | buildipdb.ds_GAOYIFAN)),
-                 ('全部下载后合并', lambda x: download_cniplist(buildipdb.data_source_manager.sign_all)))
+                 ('APNIC （每日更新）', lambda x: dsm.switch(buildipdb.ds_APNIC.name, True), apnic_state, MFT_RADIOCHECK),
+                 ('  ├─ 包含澳门', lambda x: buildipdb.ds_APNIC.switch('mo', True), mo_state, MFT_RADIOCHECK),
+                 ('  └─ 包含香港', lambda x: buildipdb.ds_APNIC.switch('hk', True), hk_state, MFT_RADIOCHECK),
+                 ('17mon （每月初更新）', lambda x: dsm.switch(buildipdb.ds_17MON.name, True), l7mon_state, MFT_RADIOCHECK),
+                 ('gaoyifan （每日更新）', lambda x: dsm.switch(buildipdb.ds_GAOYIFAN.name, True), gaoyifan_state, MFT_RADIOCHECK),
+                 ('misakaio （每小时更新）', lambda x: dsm.switch(buildipdb.ds_MISAKAIO.name, True), misakaio_state, MFT_RADIOCHECK)
+                )
     fapple_state = builddomains.ds_FELIX.check('apple') and MFS_CHECKED or MFS_ENABLED
-    sub_menu3 = (('建议更新频率：1～7 天一次', 'pass', MFS_DISABLED),
+    sub_menu3 = (('点击此处开始更新', lambda x: download_domains(builddomains.data_source_manager.data_source)),
+                 ('建议更新频率：1～7 天一次', 'pass', MFS_DISABLED),
+                 ('请选择数据来源', 'pass', MFS_DISABLED),
                  (None, '-'),
-                 ('Ⅰ 从 felixonmars 下载（每日更新）', lambda x: download_domains(builddomains.ds_FELIX)),
-                 ('    └─ 包含 apple', lambda x: builddomains.ds_FELIX.switch('apple', True), fapple_state, MFT_RADIOCHECK),
-                 ('全部下载后合并', lambda x: download_domains(builddomains.data_source_manager.sign_all)))
+                 ('felixonmars （随时更新）', 'pass', fixed_fState, MFT_RADIOCHECK),
+                 ('  └─ 包含 apple', lambda x: builddomains.ds_FELIX.switch('apple', True), fapple_state, MFT_RADIOCHECK)
+                )
     global proxy_state_menu, last_main_menu
     proxy_state_menu = proxy_state = get_proxy_state()
     disable_state = proxy_state.type == 0 and fixed_fState or MFS_ENABLED
@@ -383,14 +399,11 @@ def build_menu(systray):
                  ('禁用 FTP 代理', on_disable_ftp_proxy, disable_ftp_state, MFT_RADIOCHECK),
                  ('禁用 SOCKS 代理', on_disable_socks_proxy, disable_socks_state, MFT_RADIOCHECK))
     visible = IsWindowVisible(hwnd)
-    show_state = visible and fixed_fState or MFS_ENABLED
-    hide_state = not visible and fixed_fState or MFS_ENABLED
     main_menu = (('GotoX 设置', sub_menu1, icon_gotox, MFS_DEFAULT),
                  ('更新直连 IP 库', sub_menu2),
                  ('更新直连域名列表', sub_menu3),
                  (None, '-'),
-                 ('显示窗口', on_show, show_state, MFT_RADIOCHECK),
-                 ('隐藏窗口', on_hide, hide_state, MFT_RADIOCHECK),
+                 visible and ('隐藏窗口', on_hide) or ('显示窗口', on_show),
                  ('创建桌面快捷方式', on_create_shortcut),
                  ('设置系统（IE）代理', sub_menu4),
                  ('重置 DNS 缓存', on_reset_dns),

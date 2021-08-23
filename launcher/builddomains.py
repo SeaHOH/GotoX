@@ -45,7 +45,7 @@ def download_domains_as_txt(txt, p=1):
         return msg
     downloading = True
     #数据将保存为文本，使用容易阅读的日期格式
-    update = time.strftime('%Y-%m-%d', time.localtime(time.time()))
+    update = time.strftime('%Y-%m-%d %H:%M', time.localtime(time.time()))
     count = 0
     domains_list = []
     domains_list.append(b'# Update: ' + update.encode())

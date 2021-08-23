@@ -28,6 +28,7 @@ def int2bytes4(n, pack=struct.pack):
 Url_APNIC = 'https://ftp.apnic.net/apnic/stats/apnic/delegated-apnic-latest'
 Url_17MON = 'https://raw.githubusercontent.com/17mon/china_ip_list/master/china_ip_list.txt'
 Url_GAOYIFAN = 'https://raw.githubusercontent.com/gaoyifan/china-operator-ip/ip-lists/china.txt'
+Url_MISAKAIO = 'https://raw.githubusercontent.com/misakaio/chnroutes2/master/chnroutes.txt'
 downloading = False
 mask_dict = dict((str(2**i), i) for i in range(8, 25))
 # https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml
@@ -209,11 +210,14 @@ data_source_manager = DataSourceManager()
 ds_APNIC = data_source_manager.add('APNIC', Url_APNIC, parse_apnic_iplist)
 ds_17MON = data_source_manager.add('17mon', Url_17MON, parse_cidr_iplist)
 ds_GAOYIFAN = data_source_manager.add('GaoYiFan', Url_GAOYIFAN, parse_cidr_iplist)
+ds_MISAKAIO = data_source_manager.add('MISAKAIO', Url_MISAKAIO, parse_cidr_iplist)
 ds_APNIC.add(['mo', 'hk'])
 #更新一般在月初几天，由于内容不包含日期信息，故记录为获取时的日期信息
 ds_17MON.datefmt = '%Y%m%d'
-#每日 3:00 之后更新
+#每日 11:00 之后更新
 ds_GAOYIFAN.datefmt = '%Y%m%d'
+#每小时更新！！
+ds_MISAKAIO.datefmt = '%Y%m%d%H'
 
 is_main = __name__ == '__main__'
 logging = getlogger(is_main)
@@ -236,6 +240,7 @@ if is_main:
                  hk  保存香港数据
     --17mon    使用 17mon 数据源
     --gaoyifan 使用 gaoyifan 数据源
+    --misakaio 使用 misakaio 数据源
     --all      使用以上全部数据源
 
     指定数据源并配合以下参数时不会进入交互模式，适用于自动／无人职守模式
@@ -259,6 +264,7 @@ if is_main:
  *                      APNIC --------- 按 1   *
  *                      17mon --------- 按 2   *
  *                      gaoyifan ------ 按 3   *
+ *                      misakaio ------ 按 4   *
  *                      全部 ---------- 按 6   *
  *                      保存澳门数据 -- 按 7   *
  *                      保存香港数据 -- 按 8   *
@@ -297,6 +303,8 @@ if is_main:
                 data_source |= ds_17MON
             if 3 in ns:
                 data_source |= ds_GAOYIFAN
+            if 4 in ns:
+                data_source |= ds_MISAKAIO
             if 7 in ns:
                 ds_APNIC.set('mo')
             if 8 in ns:
