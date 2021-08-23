@@ -234,10 +234,10 @@ def gae_urlfetch(method, url, headers, payload, getfast=None):
         payload = metadata
     realurl = 'GAE-' + url
     response = LimitGAE()
-    _response = _gae_urlfetch(response.appid, payload, getfast, method, realurl)
+    _response = _gae_urlfetch(response.appid, payload, getfast, method, realurl, length)
     return response(_response)
 
-def _gae_urlfetch(appid, payload, getfast, method, realurl):
+def _gae_urlfetch(appid, payload, getfast, method, realurl, length):
     request_params, http_util, connection_cache_key = _get_request_params(appid)
     if http_util is http_gws:
         request_headers = {

@@ -363,21 +363,21 @@ def build_menu(systray):
     misakaio_state = misakaio_checked and multi_state or MFS_ENABLED
     sub_menu2 = (('点击此处开始更新', lambda x: download_cniplist(dsm.data_source)),
                  ('建议更新频率：10～30 天一次', 'pass', MFS_DISABLED),
-                 ('请选择数据来源', 'pass', MFS_DISABLED),
+                 ('请选择数据来源（多选）', 'pass', MFS_DISABLED),
                  (None, '-'),
-                 ('APNIC （每日更新）', lambda x: dsm.switch(buildipdb.ds_APNIC.name, True), apnic_state, MFT_RADIOCHECK),
+                 ('APNIC（每日更新）', lambda x: dsm.switch(buildipdb.ds_APNIC.name, True), apnic_state, MFT_RADIOCHECK),
                  ('  ├─ 包含澳门', lambda x: buildipdb.ds_APNIC.switch('mo', True), mo_state, MFT_RADIOCHECK),
                  ('  └─ 包含香港', lambda x: buildipdb.ds_APNIC.switch('hk', True), hk_state, MFT_RADIOCHECK),
-                 ('17mon （每月初更新）', lambda x: dsm.switch(buildipdb.ds_17MON.name, True), l7mon_state, MFT_RADIOCHECK),
-                 ('gaoyifan （每日更新）', lambda x: dsm.switch(buildipdb.ds_GAOYIFAN.name, True), gaoyifan_state, MFT_RADIOCHECK),
-                 ('misakaio （每小时更新）', lambda x: dsm.switch(buildipdb.ds_MISAKAIO.name, True), misakaio_state, MFT_RADIOCHECK)
+                 ('17mon（每月初更新）', lambda x: dsm.switch(buildipdb.ds_17MON.name, True), l7mon_state, MFT_RADIOCHECK),
+                 ('gaoyifan（每日更新）', lambda x: dsm.switch(buildipdb.ds_GAOYIFAN.name, True), gaoyifan_state, MFT_RADIOCHECK),
+                 ('misakaio（每小时更新）', lambda x: dsm.switch(buildipdb.ds_MISAKAIO.name, True), misakaio_state, MFT_RADIOCHECK)
                 )
     fapple_state = builddomains.ds_FELIX.check('apple') and MFS_CHECKED or MFS_ENABLED
     sub_menu3 = (('点击此处开始更新', lambda x: download_domains(builddomains.data_source_manager.data_source)),
                  ('建议更新频率：1～7 天一次', 'pass', MFS_DISABLED),
                  ('请选择数据来源', 'pass', MFS_DISABLED),
                  (None, '-'),
-                 ('felixonmars （随时更新）', 'pass', fixed_fState, MFT_RADIOCHECK),
+                 ('felixonmars（随时更新）', 'pass', fixed_fState, MFT_RADIOCHECK),
                  ('  └─ 包含 apple', lambda x: builddomains.ds_FELIX.switch('apple', True), fapple_state, MFT_RADIOCHECK)
                 )
     global proxy_state_menu, last_main_menu
@@ -405,7 +405,7 @@ def build_menu(systray):
                  (None, '-'),
                  visible and ('隐藏窗口', on_hide) or ('显示窗口', on_show),
                  ('创建桌面快捷方式', on_create_shortcut),
-                 ('设置系统（IE）代理', sub_menu4),
+                 ('设置系统（IE/Edge）代理', sub_menu4),
                  ('重置 DNS 缓存', on_reset_dns),
                  ('重置自动规则缓存', on_reset_autorule_cache),
                  ('重置自动规则', on_reset_autorule),
@@ -421,7 +421,7 @@ def update_tip():
     new_proxy_state = get_proxy_state()
     if last_proxy_state and last_proxy_state.str == new_proxy_state.str:
         return
-    systray_GotoX.update(hover_text='GotoX\n当前系统（IE）代理：\n%s' % new_proxy_state)
+    systray_GotoX.update(hover_text='GotoX\n当前系统（IE/Edge）代理：\n%s' % new_proxy_state)
     last_proxy_state = new_proxy_state
     return new_proxy_state
 
