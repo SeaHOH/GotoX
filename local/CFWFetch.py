@@ -3,6 +3,7 @@
 import zlib
 import struct
 import json
+import math
 import random
 import logging
 import threading
@@ -18,7 +19,6 @@ from .common.decorator import make_lock_decorator
 from .common.dns import dns, dns_resolve
 from .common.net import explode_ip
 
-# IP 数相比请求数极为巨大，无需重复连接同一 IP
 http_cfw.max_per_ip = 1
 lock = threading.Lock()
 _lock_worker = make_lock_decorator(lock)
@@ -69,23 +69,31 @@ def set_dns():
     if dns.gettill(cfw_params.hostname):
         return
     dns.setpadding(cfw_params.hostname)
-    if not cfw_iplist:
-        if GC.CFW_IPLIST:
-            iplist = GC.CFW_IPLIST
+    explodeip = GC.CFW_EXPLODEIP
+    if GC.CFW_IPLIST:
+        expire = False
+        iplist = GC.CFW_IPLIST
+    else:
+        expire = 3600
+        iplist = dns_resolve('cloudflare.com')
+        if iplist:
+            expire = 3600 * 6
+        elif cfw_iplist:
+            explodeip = False
         else:
-            iplist = dns_resolve('cloudflare.com')
-            if not iplist:
-                logging.warning('无法解析 cloudflare.com，使用默认 IP 列表')
-                # https://www.cloudflare.com/ips/
-                # 百度云加速与 CloudFlare 合作节点，保证可用
-                iplist = ['162.159.208.0', '162.159.209.0', '162.159.210.0', '162.159.211.0']
-        if GC.CFW_EXPLODEIP:
-            # 每个 IP 会自动扩展为 256 个，即填满最后 8 bit 子网
-            cfw_iplist[:] = sum([explode_ip(ip) for ip in iplist], [])
-        else:
-            cfw_iplist[:] = iplist
-        random.shuffle(cfw_iplist)
-    dns.set(cfw_params.hostname, cfw_iplist, expire=False)
+            logging.warning('无法解析 cloudflare.com，使用默认 IP 列表')
+            # https://www.cloudflare.com/ips/
+            # 百度云加速与 CloudFlare 合作节点，保证可用
+            iplist = ['162.159.208.0', '162.159.209.0', '162.159.210.0', '162.159.211.0']
+    if explodeip:
+        # 每个 IP 会自动扩展为 256 个，即填满最后 8 bit 子网
+        cfw_iplist[:] = sum([explode_ip(ip) for ip in iplist], [])
+    elif iplist:
+        cfw_iplist[:] = iplist
+    random.shuffle(cfw_iplist)
+    dns.set(cfw_params.hostname, cfw_iplist, expire=expire)
+    # 根据 IP 数限制对同一 IP 请求数
+    http_cfw.max_per_ip = math.ceil(32 / len(cfw_iplist))
 
 def remove_badip(ip):
     with lock:

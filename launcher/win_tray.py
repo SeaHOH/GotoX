@@ -118,7 +118,7 @@ class proxy_server:
         for k in ('http', 'https', 'ftp', 'socks'):
             v = self.__getattr__(k)
             if v:
-                server_list.append('%s=%s' % (k, v))
+                server_list.append(f'{k}={v}')
         return server_list
 
     @property
@@ -226,7 +226,7 @@ def on_refresh(systray):
         ShowWindow(hwnd, 8)
 
 def on_about(systray):
-    about = 'GotoX v%s\n\nhttps://github.com/SeaHOH/GotoX' % gotoxver
+    about = f'GotoX v{gotoxver}\n\nhttps://github.com/SeaHOH/GotoX'
     MessageBox(None, about, '关于', 0)
 
 def on_quit(systray):
@@ -391,7 +391,7 @@ def build_menu(systray):
     act_state = proxy_state.type == 2 and LISTEN_ACT in proxy_state  and fixed_fState or MFS_ENABLED
     sub_menu4 = (
                  ('使用自动代理', on_enable_auto_proxy, auto_state, MFT_RADIOCHECK),
-                 ('使用 %s 代理' % LISTEN_ACTTYPE, on_enable_act_proxy, act_state, MFT_RADIOCHECK),
+                 (f'使用 {LISTEN_ACTTYPE} 代理', on_enable_act_proxy, act_state, MFT_RADIOCHECK),
                  ('完全禁用代理', on_disable_proxy, disable_state, MFT_RADIOCHECK),
                  (None, '-'),
                  ('禁用 HTTP 代理', on_disable_http_proxy, disable_http_state, MFT_RADIOCHECK),
@@ -405,7 +405,7 @@ def build_menu(systray):
                  (None, '-'),
                  visible and ('隐藏窗口', on_hide) or ('显示窗口', on_show),
                  ('创建桌面快捷方式', on_create_shortcut),
-                 ('设置系统（IE/Edge）代理', sub_menu4),
+                 (f'设置系统（{sys_web_browser}）代理', sub_menu4),
                  ('重置 DNS 缓存', on_reset_dns),
                  ('重置自动规则缓存', on_reset_autorule_cache),
                  ('重置自动规则', on_reset_autorule),
@@ -421,7 +421,7 @@ def update_tip():
     new_proxy_state = get_proxy_state()
     if last_proxy_state and last_proxy_state.str == new_proxy_state.str:
         return
-    systray_GotoX.update(hover_text='GotoX\n当前系统（IE/Edge）代理：\n%s' % new_proxy_state)
+    systray_GotoX.update(hover_text=f'GotoX\n当前系统（{sys_web_browser}）代理：\n{new_proxy_state}')
     last_proxy_state = new_proxy_state
     return new_proxy_state
 
@@ -435,9 +435,10 @@ def notify_proxy_changed():
     old_proxy_state = last_proxy_state
     new_proxy_state = update_tip()
     if new_proxy_state:
-        text = '设置由：\n%s\n变更为：\n%s' % (old_proxy_state, new_proxy_state)
+        text = f'设置由：\n{old_proxy_state}\n变更为：\n{new_proxy_state}'
         balloons_warning(text, '系统代理改变')
 
+sys_web_browser = sys.getwindowsversion().major < 10 and 'IE' or 'Edge'
 last_main_menu = None
 last_proxy_state = None
 quit_item = '退出', on_quit
@@ -449,7 +450,7 @@ start_GotoX()
 #load_config()
 #os.environ['HTTPS_PROXY'] = os.environ['HTTP_PROXY'] = LISTEN_AUTO.http
 sleep(0.1)
-balloons_info('''
+balloons_info(f'''
 GotoX 已经启动。        
 
 左键单击：打开菜单
@@ -459,7 +460,8 @@ GotoX 已经启动。
 右键单击：隐显窗口
 
 当前系统代理设置为：
-%s''' % update_tip())
+
+{update_tip()}''')
 
 running = True
 if reg_notify is None:
