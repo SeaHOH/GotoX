@@ -184,10 +184,12 @@ def get_action(scheme, host, path, url):
         if action is 'TEMPACT':
             if mtime() > expire:
                 del filters[0]
-                logging.warning('%r 的临时 "GAE" 规则已经失效。', key)
+                logging.warning('%r 的临时 %s 规则已经失效。', GC.LISTEN_ACT, key)
             #符合自动多线程时不使用临时 GAE 规则，仍尝试默认规则
             #是否包含元组元素（媒体文件）
-            elif not any(path.endswith(x) for x in GC.AUTORANGE_FAST_ENDSWITH):
+            elif GC.LISTEN_ACT == 'GAE' and any(path.endswith(x) for x in GC.AUTORANGE_FAST_ENDSWITH):
+                pass
+            else:
                 return TEMPACT
         #以缓存规则进行匹配
         for pathfilter, action, target in filters:
