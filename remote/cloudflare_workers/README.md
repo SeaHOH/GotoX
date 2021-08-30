@@ -1,4 +1,4 @@
-0.5 测试版，支持基本的 HTTP 方法和 WebSocket。
+0.6 测试版，支持基本的 HTTP 方法和 WebSocket。
 
 此代理采用中间人方法实现代理，正常使用需要安装自签证书，运行 GotoX 并设置好代理，访问 http://gotox.go 安装证书。
 

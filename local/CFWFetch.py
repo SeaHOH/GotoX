@@ -198,7 +198,7 @@ def cfw_fetch(method, host, url, headers, payload=b'', options=None):
     worker_params = get_worker_params()
     request_headers = {
         'Host': worker_params.host,
-        'User-Agent': 'GotoX/ls/0.5',
+        'User-Agent': 'GotoX/ls/0.6',
         'Accept-Encoding': ae,
         'Content-Length': str(length),
         'X-Fetch-Options': options_str,

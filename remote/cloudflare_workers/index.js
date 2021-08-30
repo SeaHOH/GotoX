@@ -2,7 +2,7 @@
 
 const about = `
 /******************************************************************************
- *  GotoX remote server 0.5 in CloudFlare Workers
+ *  GotoX remote server 0.6 in CloudFlare Workers
  *  https://github.com/SeaHOH/GotoX
  *  The MIT License - Copyright (c) 2020 SeaHOH
  *
@@ -183,8 +183,15 @@ async function handleRequest(request) {
                 // cf.scrapeShield 参数无法关闭 Email Address Obfuscation，解码替换恢复
                     const ct = headers.has('Content-Type') ? headers.get('Content-Type') : ''
                     if (ct.includes('text/html') || ct.includes('application/xhtml+xml')) {
+                        body = response.clone().body
+                        // text() 强制使用 UTF-8 解码，编码错误时自动以备用字符替换
+                        // U+FFFD �: REPLACEMENT CHARACTER
                         const html = await response.text()
-                        body = cfEmail.decode(html)
+                        if (!html.includes('\ufffd\ufffd\ufffd\ufffd')) {
+                            const decoded = cfEmail.decode(html)
+                            if (decoded !== html)
+                                body = decoded
+                        }
                     }
                 }
                 return new Response(body, {
