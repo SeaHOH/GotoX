@@ -131,9 +131,9 @@ def save_iplist_as_db(ipdb, iplist, padding=b'\xff\xff'):
     count = str(index_n // 2)
     fd.write(count.encode('ascii'))
     fd.close()
-    logging.debug('更新信息：%s' % update)
-    logging.debug('包含 IP 范围条目数：%s' % count)
-    logging.debug('保存地址：%s' % ipdb)
+    logger.debug('更新信息：%s' % update)
+    logger.debug('包含 IP 范围条目数：%s' % count)
+    logger.debug('保存地址：%s' % ipdb)
 
 def parse_apnic_iplist(fd, ds):
     read = 0
@@ -151,7 +151,7 @@ def parse_apnic_iplist(fd, ds):
                 #不需要 IPv6 数据，提前结束
                 return
     except Exception as e:
-        logging.warning('parse_apnic_iplist 解析出错：%s', e)
+        logger.warning('parse_apnic_iplist 解析出错：%s', e)
     return read
 
 def parse_cidr_iplist(fd, ds):
@@ -168,14 +168,14 @@ def parse_cidr_iplist(fd, ds):
                 ip, mask = line.decode().strip('\r\n').split('/')
                 ds.itemlist.append((ip2int(ip), 32 - int(mask)))
     except Exception as e:
-        logging.warning('parse_cidr_iplist 解析出错：%s', e)
+        logger.warning('parse_cidr_iplist 解析出错：%s', e)
     return read
 
 def download_cniplist_as_db(ipdb, p=1):
     global downloading, update
     if downloading:
         msg = '已经有更新直连 IP 库的任务正在进行中，请稍后再试'
-        logging.warning(msg)
+        logger.warning(msg)
         return msg
     downloading = True
     iplist = []
@@ -193,9 +193,9 @@ def download_cniplist_as_db(ipdb, p=1):
 
         update = ' and '.join(_update)
         save_iplist_as_db(ipdb, iplist)
-        logging.info('直连 IP 库已保存完毕')
+        logger.info('直连 IP 库已保存完毕')
     except Exception as e:
-        logging.warning('更新直连 IP 库 %r 失败：%s' % (ipdb, e))
+        logger.warning('更新直连 IP 库 %r 失败：%s' % (ipdb, e))
     finally:
         downloading = False
         data_source_manager.clear_source_data()
@@ -220,7 +220,7 @@ ds_GAOYIFAN.datefmt = '%Y%m%d'
 ds_MISAKAIO.datefmt = '%Y%m%d%H'
 
 is_main = __name__ == '__main__'
-logging = getlogger(is_main)
+logger = getlogger(is_main)
 
 if is_main:
     if len(sys.argv) < 2:

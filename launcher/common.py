@@ -26,6 +26,7 @@ ca1 = os.path.join(root_dir, 'cert', 'CA.crt')
 ca2 = os.path.join(root_dir, 'cert', 'cacert-ds.pem')
 context = None
 logging = None
+logger = None
 
 
 if root_dir not in sys.path:
@@ -74,15 +75,17 @@ def load_config():
     return LISTEN_AUTO, LISTEN_ACT, LISTEN_ACTTYPE
 
 def getlogger(use_print=False):
-    global logging
+    global logging, logger
     if logging is None:
         if use_print:
             class logging:
                 warning = info = debug = print
+            logger = logging
         else:
             replace_logging()
             import logging
-    return logging
+            logger = logging.getLogger('[launcher]')
+    return logger
 
 try:
     startfile = os.startfile
@@ -286,7 +289,7 @@ def download(req):
             context.load_verify_locations(ca1)
         context.load_verify_locations(ca2)
     retry_delay = 10
-    max_retries = 2
+    max_retries = 4
     retry_times = 0
     timeout = 8
     l = 0
@@ -303,18 +306,18 @@ def download(req):
                 fd.close()
             retry_times += 1
             if retry_times > max_retries:
-                logging.warning('请求网址 %r 时，重试 %d 次后仍然失败。'
+                logger.warning('请求网址 %r 时，重试 %d 次后仍然失败。'
                                 % (req.full_url, max_retries))
-                logging.warning('请忽略下面这个错误跟踪，并检查是否需要'
+                logger.warning('请忽略下面这个错误跟踪，并检查是否需要'
                                 '更改自动代理规则（ActionFilter.ini）。')
                 raise err or OSError('连接失败', 0)
-            logging.debug('获取直连数据网址失败，%d 秒后重试' % retry_delay)
+            logger.debug('获取直连数据网址失败，%d 秒后重试' % retry_delay)
             time.sleep(retry_delay)
     return fd, l
 
 def download_as_list(ds):
     #支持续传
-    logging.info('开始下载 %s 列表' % ds.fullname)
+    logger.info('开始下载 %s 列表' % ds.fullname)
     if ds.req is None:
         ds.req = Request(ds.url)
     ds.req.headers['Range'] = 'bytes=0-'
@@ -340,8 +343,8 @@ def download_as_list(ds):
             #往回跳过可能的缺损条目
             read = max(read - 100, 0)
             ds.req.headers['Range'] = 'bytes=%d-' % read
-            logging.debug('%s 列表下载中断，续传：%d/%d' % (ds.fullname, read, l))
-    logging.info(ds.fullname + ' 列表下载完毕')
+            logger.debug('%s 列表下载中断，续传：%d/%d' % (ds.fullname, read, l))
+    logger.info(ds.fullname + ' 列表下载完毕')
     return ds.itemlist
 
 def set_proxy(proxy_addr):
@@ -349,7 +352,7 @@ def set_proxy(proxy_addr):
         ip, port = proxy_addr.split(':')
         socket.create_connection((ip, int(port)), timeout=1).close()
         os.environ['HTTPS_PROXY'] = os.environ['HTTP_PROXY'] = proxy_addr
-        logging.info('\n代理地址 %r 已设置成功。' % proxy_addr)
+        logger.info('\n代理地址 %r 已设置成功。' % proxy_addr)
         return True
     except:
         os.environ.pop('HTTP_PROXY', None)

@@ -15,7 +15,7 @@ from common import (
     get_dirname, getlogger, startfile, load_config as _load_config, cconfig)
 
 single_instance('gotox.win_tray')
-logging = getlogger()
+logger = getlogger()
 
 app_start = os.path.join(app_root, 'start.py')
 create_shortcut_js = os.path.join(app_root, 'create_shortcut.vbs')
@@ -70,7 +70,7 @@ except Exception as e:
     if notifyHandle:
         CloseHandle(notifyHandle)
         notifyHandle = None
-    logging.warning('发生错误：%s，采用轮询方式替代注册表监视。', e)
+    logger.warning('发生错误：%s，采用轮询方式替代注册表监视。', e)
     ACCESS = winreg.KEY_QUERY_VALUE | winreg.KEY_SET_VALUE
     SETTINGS = winreg.OpenKey(winreg.HKEY_CURRENT_USER, SET_PATH, access=ACCESS)
 
@@ -191,13 +191,13 @@ def start_GotoX():
 
 def stop_GotoX():
     if GotoX_app is None:
-        logging.warning('GotoX 进程还未开始。')
+        logger.warning('GotoX 进程还未开始。')
     else:
         retcode = GotoX_app.poll()
         if retcode is None:
             urlopen('http://localhost/docmd?cmd=quit')
         else:
-            logging.warning('GotoX 进程已经结束，code：%s。', retcode)
+            logger.warning('GotoX 进程已经结束，code：%s。', retcode)
 
 def on_show(systray):
     ShowWindow(hwnd, 1)

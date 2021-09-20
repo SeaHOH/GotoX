@@ -34,14 +34,14 @@ def parse_dnsmasq_domains(fd, ds):
             if len(linesp) == 3:
                 ds.itemlist.append(linesp[1])
     except Exception as e:
-        logging.warning('parse_dnsmasq_domains 解析出错：%s', e)
+        logger.warning('parse_dnsmasq_domains 解析出错：%s', e)
     return read
 
 def download_domains_as_txt(txt, p=1):
     global downloading
     if downloading:
         msg = '已经有更新直连域名列表的任务正在进行中，请稍后再试'
-        logging.warning(msg)
+        logger.warning(msg)
         return msg
     downloading = True
     #数据将保存为文本，使用容易阅读的日期格式
@@ -70,12 +70,12 @@ def download_domains_as_txt(txt, p=1):
         domains_list.append(b'')
         domains_list.append(b'#end')
         save_domains_as_txt(txt, domains_list)
-        logging.debug('更新信息：%s' % update)
-        logging.debug('包含域名条目数：%s' % count)
-        logging.debug('保存地址：%s' % txt)
-        logging.info('直连域名列表已保存完毕')
+        logger.debug('更新信息：%s' % update)
+        logger.debug('包含域名条目数：%s' % count)
+        logger.debug('保存地址：%s' % txt)
+        logger.info('直连域名列表已保存完毕')
     except Exception as e:
-        logging.warning('更新直连域名列表 %r 失败：%s' % (txt, e))
+        logger.warning('更新直连域名列表 %r 失败：%s' % (txt, e))
     finally:
         downloading = False
         data_source_manager.clear_source_data()
@@ -85,7 +85,7 @@ ds_FELIX = data_source_manager.add('Felix', Url_FCHINA, parse_dnsmasq_domains, '
 ds_FAPPLE = ds_FELIX.add_child('Apple', Url_FAPPLE, fullname='felixonmars/apple.china')
 
 is_main = __name__ == '__main__'
-logging = getlogger(is_main)
+logger = getlogger(is_main)
 
 if is_main:
     if len(sys.argv) < 2:
