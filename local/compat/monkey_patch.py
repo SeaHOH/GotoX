@@ -87,7 +87,7 @@ def patch_builtins():
 def patch_configparser():
     import logging
     from configparser import _UNSET, NoSectionError, NoOptionError, RawConfigParser
-    from collections import Iterable
+    from collections.abc import Iterable
 
     #去掉 lower 以支持选项名称大小写共存
     RawConfigParser.optionxform = lambda s, opt: opt
