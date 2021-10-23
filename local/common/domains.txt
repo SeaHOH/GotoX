@@ -7,7 +7,7 @@
 
 ## Windows update
 ## https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/update.txt
-## Update: 2020-12-31T01:22:00Z02:12
+## Update: 2021-09-26T20:42:00Z02:12
 00001b-1.l.windowsupdate.com
 000043-1.l.windowsupdate.com
 000061-1.l.windowsupdate.com
@@ -167,6 +167,7 @@
 0026bc-1.l.windowsupdate.com
 adl.windows.com
 am3p.wns.windows.com
+apac1.notify.windows.com.akadns.net
 arc-apac.msn.com
 array101-prod.do.dsp.mp.microsoft.com
 array102-prod.do.dsp.mp.microsoft.com
@@ -539,11 +540,12 @@ tlu.dl.delivery.mp.microsoft.com
 tsfe.trafficshaping.dsp.mp.microsoft.com
 v4.download.windowsupdate.com
 windowsupdate.com
+wns2-db5p.wns.windows.com
 www.download.windowsupdate.com
 
 ## Windows extra
 ## https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/extra.txt
-## Update: 2021-03-10T12:34:00Z02:12
+## Update: 2021-09-26T20:42:00Z02:12
 a-0001.a-msedge.net
 a-0001.dc-msedge.net
 a-0002.a-msedge.net
@@ -568,11 +570,13 @@ answers.microsoft.com
 api.bing.com
 api.cdp.microsoft.com
 api.onedrive.com
+api.msn.com
 appex-rf.msn.com
 apps.skype.com
 arc.msn.com
 arc.msn.com.nsatc.net
 ars.smartscreen.microsoft.com
+assets.msn.com
 assuritystorage.blob.core.windows.net
 auth.gfx.ms
 az361816.vo.msecnd.net
@@ -582,7 +586,9 @@ b.config.skype.com
 bingforbusiness.com
 blob.weather.microsoft.com
 browser.events.data.microsoft.com
+browser.events.data.msn.com
 c-0001.dc-msedge.net
+c.bing.com
 c1.microsoft.com
 candycrushsoda.king.com
 cdn.content.prod.cms.msn.com
@@ -600,13 +606,16 @@ continuum.dds.microsoft.com
 crl.microsoft.com
 cs.dds.microsoft.com
 cy2.settings.data.microsoft.com.akadns.net
+decsitefinitycdn.blob.core.windows.net
 dev.virtualearth.net
+developerportalprod.blob.core.windows.net
 device.auth.xboxlive.com
 dmd.metaservices.microsoft.com
 dmd.metaservices.microsoft.com.akadns.net
 dns.msftncsi.com
 ecn.dev.virtualearth.net
 edgetipscdn.microsoft.com
+edge.microsoft.com
 eu-v10.events.data.microsoft.com
 eu-v20.events.data.microsoft.com
 eu.vortex.data.microsoft.com
@@ -625,6 +634,9 @@ fs.microsoft.com
 g.bing.com
 g.live.com
 global.sam.msn.com
+graph.microsoft.com
+hel01r3.msedge.net
+ic3.events.data.microsoft.com
 i1.services.social.microsoft.com
 iecvlist.microsoft.com
 img.stb.s-msn.com
@@ -634,8 +646,11 @@ inference.location.live.net
 insiderservice.microsoft.com
 insideruser.microsoft.com
 ipv4.login.live.com
+isgemail.blob.core.windows.net
+iteactive-pra.msedge.net
 kiwi.blob.core.windows.net
 licensing.mp.microsoft.com
+licensingphone.md.mp.microsoft.com
 location-inference-westus.cloudapp.net
 login.live.com
 login.microsoftonline.com
@@ -648,14 +663,19 @@ m.hotmail.com
 mediaredirect.microsoft.com
 mobile.events.data.microsoft.com
 msagfx.live.com
+mscrl.microsoft.com
 msedge.api.cdp.microsoft.com
+msportal.blob.core.windows.net
 msftncsi.com
 nav.smartscreen.microsoft.com
+ne.cp.wd.microsoft.com
+ne-we.cp.wd.microsoft.com
 next-services.apps.microsoft.com
 ocos-office365-s2s.msedge.net
 officecdn.microsoft.com
 officecdn.microsoft.com.edgesuite.net
 officeclient.microsoft.com
+officehomeblobs.blob.core.windows.net
 oneclient.sfx.ms
 onedriveclucprodbn20001.blob.core.windows.net
 onedriveclucprodbn20002.blob.core.windows.net
@@ -686,7 +706,16 @@ onedriveclucprodbn20027.blob.core.windows.net
 onedriveclucprodbn20028.blob.core.windows.net
 onedriveclucprodbn20029.blob.core.windows.net
 onedriveclucprodbn20030.blob.core.windows.net
+onedriveclucprodbn20036.blob.core.windows.net
 onedriveclucprodbn20037.blob.core.windows.net
+onedriveclucprodbn20038.blob.core.windows.net
+onedriveclucprodbn20039.blob.core.windows.net
+onedriveclucprodbn20040.blob.core.windows.net
+onedriveclucprodbn20041.blob.core.windows.net
+onedriveclucprodbn20042.blob.core.windows.net
+onedriveclucprodbn20046.blob.core.windows.net
+onedriveclucprodbn20048.blob.core.windows.net
+onedriveclucprodbn20050.blob.core.windows.net
 onedriveclucproddm20001.blob.core.windows.net
 onedriveclucproddm20002.blob.core.windows.net
 onedriveclucproddm20003.blob.core.windows.net
@@ -718,7 +747,13 @@ onedriveclucproddm20029.blob.core.windows.net
 onedriveclucproddm20030.blob.core.windows.net
 onedriveclucproddm20036.blob.core.windows.net
 onedriveclucproddm20037.blob.core.windows.net
+onedriveclucproddm20038.blob.core.windows.net
+onedriveclucproddm20039.blob.core.windows.net
 onedriveclucproddm20040.blob.core.windows.net
+onedriveclucproddm20042.blob.core.windows.net
+onedriveclucproddm20046.blob.core.windows.net
+onedriveclucproddm20047.blob.core.windows.net
+onedriveclucproddm20050.blob.core.windows.net
 oneocsp.microsoft.com
 optanon.blob.core.windows.net
 otf.msn.com
@@ -730,6 +765,7 @@ pti.store.microsoft.com
 purchase.mp.microsoft.com
 query.prod.cms.rt.microsoft.com
 r20swj13mr.microsoft.com
+rcr.blob.core.windows.net
 register.cdpcs.microsoft.com
 ris.api.iris.microsoft.com
 roaming.officeapps.live.com
@@ -740,12 +776,19 @@ s2s.config.skype.com
 search.msn.com
 self.events.data.microsoft.com
 service.weather.microsoft.com
+server6.pipe.aria.microsoft.com
+server7.pipe.aria.microsoft.com
 settings.data.microsoft.com
 settings-ssl.xboxlive.com
 settings-win.data.microsoft.com
 sfdataservice.microsoft.com
 share.microsoft.com
+skyapi.live.net
+smartscreen-prod.microsoft.com
+staging.to-do.microsoft.com
+staging.to-do.officeppe.com
 static.2mdn.net
+statics.teams.cdn.live.net
 storage.live.com
 store-images.microsoft.com
 store-images.s-microsoft.com
@@ -756,10 +799,13 @@ support.microsoft.com
 t0.ssl.ak.dynamic.tiles.virtualearth.net
 t0.ssl.ak.tiles.virtualearth.net
 t.urs.microsoft.com
+teams.events.data.microsoft.com
+teams.live.com
 thestreamstaging.blob.core.windows.net
 tile-service.weather.microsoft.com
 time.windows.com
 tk2.plt.msn.com
+to-do.microsoft.com
 troubleshooting.microsoft.com
 uhf.microsoft.com
 ui.skype.com
@@ -774,6 +820,7 @@ v20.events.data.microsoft.com
 validation.sls.microsoft.com
 validation-v2.sls.microsoft.com
 version.hybrid.api.here.com
+videomd.blob.core.windows.net
 vortex-win.data.microsoft.com
 vortex-win-sandbox.data.microsoft.com
 w.apprep.smartscreen.microsoft.com
@@ -781,6 +828,8 @@ wallet.microsoft.com
 wdcp.microsoft.com
 wdcpalt.microsoft.com
 win10-trt.msedge.net
+windows.msn.com
+wpcdn.blob.core.windows.net
 wscont.apps.microsoft.com
 wscont.apps.microsoft.com.edgesuite.net
 wscont2.apps.microsoft.com
@@ -795,7 +844,7 @@ xml.login.live.com
 
 ## Windows spy
 ## https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/spy.txt
-## Update: 2021-03-10T12:34:00Z02:12
+## Update: 2021-09-26T20:42:00Z02:12
 a.ads1.msn.com
 a.ads2.msads.net
 a.ads2.msn.com
@@ -810,7 +859,6 @@ ads1.msn.com
 aidps.atdmt.com
 aka-cdn-ns.adtech.de
 alpha.telemetry.microsoft.com
-apac1.notify.windows.com.akadns.net
 api.cortana.ai
 asimov-win.settings.data.microsoft.com.akadns.net
 azwancan.trafficmanager.net
@@ -996,6 +1044,7 @@ df.telemetry.microsoft.com
 diagnostics.support.microsoft.com
 eaus2watcab01.blob.core.windows.net
 eaus2watcab02.blob.core.windows.net
+edge.activity.windows.com
 ec.atdmt.com
 flex.msn.com
 g.msn.com
@@ -1152,6 +1201,8 @@ telemetry.remoteapp.windowsazure.com
 telemetry.urs.microsoft.com
 teredo.ipv6.microsoft.com
 test.activity.windows.com
+uks.b.prd.ags.trafficmanager.net
+umwatson.events.data.microsoft.com
 umwatsonc.events.data.microsoft.com
 v10.vortex-win.data.microsoft.com
 v10-win.vortex.data.microsoft.com.akadns.net
