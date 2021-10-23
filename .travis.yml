@@ -17,25 +17,26 @@ addons:
       - p7zip-full
 
 script:
-  - export PYTHON_VERSION=3.9.6
+  - export PYTHON_VERSION=3.9.7
   - export PYTHON_IMPL_VERSION=cp39
   - export RELEASE_VERSION=$(grep -oP '[0-9\.ab]+' local/__init__.py)
 
 before_deploy:
-  - curl -L -o cert/cacerts/mozilla.pem https://curl.haxx.se/ca/cacert.pem
+  #- curl -L -o cert/cacerts/mozilla.pem https://curl.se/ca/cacert.pem
+  - curl -L -o cert/cacerts/mozilla.pem https://raw.githubusercontent.com/gisle/mozilla-ca/master/lib/Mozilla/CA/cacert.pem
   - curl -L -o cert/cacerts/google.pem https://pki.google.com/roots.pem
   - python launcher/buildipdb.py -u -d --17mon
   - python launcher/builddomains.py -u -d --felix
 
   - cd python/site-packages
-  - 7za a -tzip -mx=9 -mfb=258 -mtc=off helpers-win32.egg winsystray
+  - 7z a -tzip -mx=9 -mfb=258 -mtc=off helpers-win32.egg winsystray
   - rm -rf winsystray
   - cd ../..
 
   - rm -rf .git*
   - rm -rf .travis*
 
-  - 7za a -mx=9 -mfb=258 -mtc=off GotoX-${RELEASE_VERSION}-py3-any.zip *
+  - 7z a -mx=9 -mfb=258 -mtc=off GotoX-${RELEASE_VERSION}-py3-any.zip *
   - mv *.zip ..
   - cd ..
 
@@ -43,7 +44,7 @@ before_deploy:
     cp -r GotoX GotoX-${3};
     cd GotoX-${3};
     python pack_portable.py ${1}-${3};
-    7za a -mx=9 -m0=BCJ2 -m1=LZMA2:mf=bt3 -m2=LZMA:d19 -m3=LZMA:d19 -m4=LZMA:d19
+    7z a -mx=9 -m0=BCJ2 -m1=LZMA2:mf=bt3 -m2=LZMA:d19 -m3=LZMA:d19 -m4=LZMA:d19
     -mb0s0:1 -mb0s1:2 -mb0s2:3 -mb0s3:4 GotoX-${RELEASE_VERSION}-${2}-${3}.7z *;
     mv *.7z ..;
     cd ..;
