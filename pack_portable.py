@@ -262,7 +262,7 @@ _distutils_findvs.pyd
 winsound.pyd
 '''.split()
 
-_7z = '7za'
+_7z = '7z'
 to_null = '1>/dev/null'
 ca1 = 'cert/CA.crt'
 ca2 = 'cert/cacerts/mozilla.pem'
@@ -465,7 +465,7 @@ if %version% lss 6.2 ( goto :install )''']
 
 :install''')
     for generator, filename, *args in dlls[py_arch]:
-        if generator is download394core and py_ver == '39' and int(py_vers[2]) <= 4:
+        if generator is download394core and (py_ver != '39' or int(py_vers[2]) <= 4):
             continue
         if not os.path.exists(filename):
             generator(filename, *args)

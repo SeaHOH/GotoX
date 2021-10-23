@@ -276,6 +276,7 @@ bv4_local = 1 << 2
 bv6_local = 1 << 3
 allresolved = (1 << 4) - 1
 polluted_hosts = set()
+ip_blacklist = set(['0.0.0.0', '::'])
 
 def check_edns_opt(ar):
     if len(ar) > 1:
@@ -384,9 +385,16 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
                     for r in reply.rr:
                         if r.rtype is qtype:
                             ip = str(r.rdata)
+                            if ip in ip_blacklist:
+                                query_times += 1
+                                iplist.clear()
+                                if not pollution:
+                                    polluted_hosts.add(qname)
+                                pollution = True
+                                break
                             #一个简单排除 IPv6 污染定式的方法，有及其微小的机率误伤正常结果
                             #虽然没办法用于 IPv4，但这只是 check_edns_opt 的后备，聊胜于无
-                            if qtype is AAAA and pollution and rr_alone and \
+                            elif qtype is AAAA and pollution and rr_alone and \
                                     len(ip) <= 15 and ip.startswith('2001::'):
                                 query_times += 1
                                 #iplist.clear()
