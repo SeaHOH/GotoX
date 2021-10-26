@@ -261,6 +261,7 @@ def forward_socket(local, remote, payload=None, timeout=60, tick=4, bufsize=8192
     allins = [local, remote]
     timecount = timeout
     all_forward_sockets.add(remote)
+    connected = False
     try:
         while allins and timecount > 0:
             start_time = mtime()
@@ -276,12 +277,17 @@ def forward_socket(local, remote, payload=None, timeout=60, tick=4, bufsize=8192
                 if ndata:
                     other = local if sock is remote else remote
                     other.sendall(buf[:ndata])
+                    if not connected and sock is remote:
+                        connected = True
                 elif sock is remote:
                     return
                 else:
                     allins.remove(sock)
             if ins and len(allins) == 2:
                 timecount = max(min(timecount * 2, maxpong), tick)
+    except ConnectionResetError:
+        if not (connected or check_connection_dead(local)):
+            raise
     except Exception as e:
         logging.debug('forward_socket except: %s %r', ins, e)
         raise
