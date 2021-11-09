@@ -1048,31 +1048,31 @@ class HTTPUtil(BaseHTTPUtil):
             if 'Content-Length' not in headers:
                 headers['Content-Length'] = str(len(payload))
 
-        remote = None
         for i in range(self.max_retry):
             if not hasattr(payload, 'read') and hasattr(request_params, 'connection') and check_connection_dead(request_params.connection):
                 raise socket.error(errno.ECONNABORTED, '本地连接已断开')
-            sock = None
-            ssl_sock = None
+            remote = None
             ip = ''
             try:
                 if ssl:
-                    ssl_sock = self.create_ssl_connection(address, hostname, connection_cache_key, getfast=bool(getfast))
+                    remote = self.create_ssl_connection(address, hostname, connection_cache_key, getfast=bool(getfast))
                 else:
-                    sock = self.create_connection(address, hostname, connection_cache_key)
-                remote = ssl_sock or sock
+                    remote = self.create_connection(address, hostname, connection_cache_key)
                 if remote:
                     remote.settimeout(timeout)
                     return self._request(remote, method, request_params.path, self.protocol_version, headers, payload, bufsize=bufsize)
             except Exception as e:
-                if i < self.max_retry - 1 and isinstance(e, LimiterFull):
-                    continue
-                if ssl_sock:
-                    ip = ssl_sock.xip
-                    ssl_sock.close()
-                elif sock:
-                    ip = sock.xip
-                    sock.close()
+                if not realurl and isinstance(e, CertificateError):
+                    raise
+                if isinstance(e, LimiterFull):
+                    if i < self.max_retry - 1:
+                        continue
+                    else:
+                        logging.warning('request "%s %s" 失败：%r', realmethod, realurl or url, e)
+                        raise
+                if remote:
+                    ip = remote.xip
+                    remote.close()
                 if hasattr(e, 'xip'):
                     if ssl and 'SSL' in str(e):
                         host = 'https://' + request_params.host
@@ -1081,19 +1081,17 @@ class HTTPUtil(BaseHTTPUtil):
                             continue
                     ip = e.xip
                     logging.warning('%s create_%sconnection %r 失败：%r', ip[0], 'ssl_' if ssl else '', realurl or url, e)
-                elif isinstance(e, LimiterFull):
-                    logging.warning('request "%s %s" 失败：%r', realmethod, realurl or url, e)
-                else:
-                    logging.warning('%s _request "%s %s" 失败：%r', ip and ip[0], realmethod, realurl or url, e)
-                    if ip and realurl:
+                elif ip:
+                    e.xip = ip
+                    logging.warning('%s _request "%s %s" 失败：%r', ip[0], realmethod, realurl or url, e)
+                    if realurl:
                         self.ssl_connection_time[ip] = self.timeout + 1
-                if not realurl and (e.args[0] in reset_errno or (remote and e.args[0] in bypass_errno)) or \
-                        i == self.max_retry - 1 and isinstance(e, LimiterFull):
-                    if ip:
-                        e.xip = ip
+                else:
+                    logging.warning('request "%s %s" 失败：%r', realmethod, realurl or url, e)
+                if not realurl and (e.args[0] in reset_errno or (remote and e.args[0] in bypass_errno)):
                     raise
                 #确保不重复上传数据
-                if has_content and (sock or ssl_sock):
+                if has_content and remote:
                     return
                 if 'timed out' in str(e):
                     timeout += 10
