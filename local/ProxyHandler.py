@@ -153,8 +153,10 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             client_ip = self.client_address[0]
             if client_ip.endswith('127.0.0.1') or client_ip == '::1':
                 self.disable_nagle_algorithm = True
-                if sys.platform != 'darwin':
+                try:
                     self.request.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 0)
+                except OSError:
+                    pass #并非所有系统都支持关闭接收缓冲
         BaseHTTPRequestHandler.setup(self)
 
     def write(self, d, logerror=None):
