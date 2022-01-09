@@ -189,10 +189,40 @@ is_main = __name__ == '__main__'
 logger = getlogger(is_main)
 
 if is_main:
+    if len(sys.argv) < 2:
+        print('使用 "--help" 可查看命令行参数说明\n')
+    if '--help' in sys.argv:
+        print('''
+用法：
+    --help     显示此使用提示
+    -u         下载的证书文件不放入脚本目录而是更新到相邻的 data 目录
+               交互模式下参数 "-u" 无效
+
+    指定可用数据源，交互模式中无效
+
+    --all      更新所有证书数据源
+
+    指定数据源并配合以下参数时不会进入交互模式，适用于自动／无人职守模式
+
+    -d         跳过代理设置使用直连，使用参数 "-p" 时参数 "-d" 无效
+    -p 主机名(IP 或域名):端口
+               非交互模式使用 HTTP 代理，无效地址或无法链接代理时会直接结束脚本
+
+''')
+
+    if parse_set_proxy(int('--all' in sys.argv)) is None:
+        for ds in (ds_GOOGLE, ds_MOZILLA):
+            if '-u' not in sys.argv:
+                ds.path = os.path.basename(ds.path)
+            _update(ds)
+        sys.exit(0)
+
     import copy
-    parse_set_proxy(0)
     while True:
-        cwd = select_path(0, 1)
+        if '-u' in sys.argv:
+            cwd = 0
+        else:
+            cwd = select_path(0, 1)
         if cwd is None:
             continue
         dss = copy.deepcopy((ds_GOOGLE, ds_MOZILLA))
