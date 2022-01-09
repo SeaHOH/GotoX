@@ -4,4 +4,4 @@ Mozilla
 https://curl.se/ca/cacert.pem
 
 Google
-https://pki.google.com/roots.pem
+https://pki.goog/roots.pem

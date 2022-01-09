@@ -112,7 +112,8 @@ class GC:
         LINK_TEMPTIME_S = ' %d 分 %d 秒' % (LINK_TEMPTIME // 60, LINK_TEMPTIME_S)
     else:
         LINK_TEMPTIME_S = ' %d 分钟' % (LINK_TEMPTIME // 60)
-    LINK_TEMPWHITELIST = CONFIG.gettuple('link', 'tempwhitelist') + ('.cloudflare.com',)
+    LINK_TEMPWHITELIST = CONFIG.gettuple('link', 'tempwhitelist') + (
+                                         '.cloudflare.com', 'pki.goog', 'curl.se')
 
     CFW_WORKER = CONFIG.get('cfw', 'worker').strip()
     if CFW_WORKER.find('.') < 1:

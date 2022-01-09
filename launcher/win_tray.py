@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
-# coding:utf-8
+#-*- coding: UTF-8 -*-
 
 import os
 import sys
 
 sys.dont_write_bytecode = True
-
-import warnings
-warnings.filterwarnings('ignore', '"is" with a literal', SyntaxWarning, append=True) # py38+
 
 from common import (
     root_dir as app_root, config_dir, icon_gotox, direct_ipdb, direct_domains,
@@ -297,6 +294,7 @@ def on_right_click(systray):
     ShowWindow(hwnd, visible^1)
 
 from winsystray import SysTrayIcon, win32_adapter
+import updatecas
 import buildipdb
 import builddomains
 
@@ -320,6 +318,11 @@ fixed_fState = MFS_CHECKED | MFS_DISABLED
 NIIF_WARNING = win32_adapter.NIIF_WARNING
 NIIF_USER = win32_adapter.NIIF_USER
 NIIF_LARGE_ICON = win32_adapter.NIIF_LARGE_ICON
+
+def update_cas():
+    msg = updatecas.update(updatecas.ds_GOOGLE, updatecas.ds_MOZILLA)
+    if msg:
+        balloons_warning(msg)
 
 def download_cniplist(p):
     msg = buildipdb.download_cniplist_as_db(direct_ipdb, p)
@@ -348,6 +351,13 @@ def build_menu(systray):
                  ('    ├─ libev-cffi', lambda x: gloop.checked('libev-cffi', True), libev_cffi_state, MFT_RADIOCHECK),
                  ('    ├─ nogevent (禁用)', lambda x: gloop.checked('nogevent', True), nogevent_state, MFT_RADIOCHECK),
                  ('    └─ 默认', lambda x: gloop.clear(True), default_loop_state, MFT_RADIOCHECK))
+    sub_menu2 = (('点击此处开始更新', lambda x: update_cas()),
+                 ('建议更新频率：60 天一次', 'pass', MFS_DISABLED),
+                 ('固定数据来源', 'pass', MFS_DISABLED),
+                 (None, '-'),
+                 ('Google Trust Services', 'pass', MFS_DISABLED),
+                 ('Mozilla NSS, 由 curl.se 提供转换格式', 'pass', MFS_DISABLED)
+                )
     dsm = buildipdb.data_source_manager
     apnic_checked = dsm.check(buildipdb.ds_APNIC.name)
     l7mon_checked = dsm.check(buildipdb.ds_17MON.name)
@@ -361,19 +371,19 @@ def build_menu(systray):
     l7mon_state = l7mon_checked and multi_state or MFS_ENABLED
     gaoyifan_state = gaoyifan_checked and multi_state or MFS_ENABLED
     misakaio_state = misakaio_checked and multi_state or MFS_ENABLED
-    sub_menu2 = (('点击此处开始更新', lambda x: download_cniplist(dsm.data_source)),
+    sub_menu3 = (('点击此处开始更新', lambda x: download_cniplist(dsm.data_source)),
                  ('建议更新频率：10～30 天一次', 'pass', MFS_DISABLED),
                  ('请选择数据来源（多选）', 'pass', MFS_DISABLED),
                  (None, '-'),
                  ('APNIC（每日更新）', lambda x: dsm.switch(buildipdb.ds_APNIC.name, True), apnic_state, MFT_RADIOCHECK),
                  ('  ├─ 包含澳门', lambda x: buildipdb.ds_APNIC.switch('mo', True), mo_state, MFT_RADIOCHECK),
                  ('  └─ 包含香港', lambda x: buildipdb.ds_APNIC.switch('hk', True), hk_state, MFT_RADIOCHECK),
-                 ('17mon（每月初更新）', lambda x: dsm.switch(buildipdb.ds_17MON.name, True), l7mon_state, MFT_RADIOCHECK),
+                 ('17mon（每季度更新）', lambda x: dsm.switch(buildipdb.ds_17MON.name, True), l7mon_state, MFT_RADIOCHECK),
                  ('gaoyifan（每日更新）', lambda x: dsm.switch(buildipdb.ds_GAOYIFAN.name, True), gaoyifan_state, MFT_RADIOCHECK),
                  ('misakaio（每小时更新）', lambda x: dsm.switch(buildipdb.ds_MISAKAIO.name, True), misakaio_state, MFT_RADIOCHECK)
                 )
     fapple_state = builddomains.ds_FELIX.check('apple') and MFS_CHECKED or MFS_ENABLED
-    sub_menu3 = (('点击此处开始更新', lambda x: download_domains(builddomains.data_source_manager.data_source)),
+    sub_menu4 = (('点击此处开始更新', lambda x: download_domains(builddomains.data_source_manager.data_source)),
                  ('建议更新频率：1～7 天一次', 'pass', MFS_DISABLED),
                  ('请选择数据来源', 'pass', MFS_DISABLED),
                  (None, '-'),
@@ -389,7 +399,7 @@ def build_menu(systray):
     disable_socks_state = disable_state or proxy_state.type & 2 and not proxy_state.socks and fixed_fState or MFS_ENABLED
     auto_state = proxy_state.type == 2 and LISTEN_AUTO in proxy_state and fixed_fState or MFS_ENABLED
     act_state = proxy_state.type == 2 and LISTEN_ACT in proxy_state  and fixed_fState or MFS_ENABLED
-    sub_menu4 = (
+    sub_menu5 = (
                  ('使用自动代理', on_enable_auto_proxy, auto_state, MFT_RADIOCHECK),
                  (f'使用 {LISTEN_ACTTYPE} 代理', on_enable_act_proxy, act_state, MFT_RADIOCHECK),
                  ('完全禁用代理', on_disable_proxy, disable_state, MFT_RADIOCHECK),
@@ -400,12 +410,13 @@ def build_menu(systray):
                  ('禁用 SOCKS 代理', on_disable_socks_proxy, disable_socks_state, MFT_RADIOCHECK))
     visible = IsWindowVisible(hwnd)
     main_menu = (('GotoX 设置', sub_menu1, icon_gotox, MFS_DEFAULT),
-                 ('更新直连 IP 库', sub_menu2),
-                 ('更新直连域名列表', sub_menu3),
+                 ('更新 CA 证书集', sub_menu2),
+                 ('更新直连 IP 库', sub_menu3),
+                 ('更新直连域名列表', sub_menu4),
                  (None, '-'),
                  visible and ('隐藏窗口', on_hide) or ('显示窗口', on_show),
                  ('创建桌面快捷方式', on_create_shortcut),
-                 (f'设置系统（{sys_web_browser}）代理', sub_menu4),
+                 (f'设置系统（{sys_web_browser}）代理', sub_menu5),
                  ('重置 DNS 缓存', on_reset_dns),
                  ('重置自动规则缓存', on_reset_autorule_cache),
                  ('重置自动规则', on_reset_autorule),

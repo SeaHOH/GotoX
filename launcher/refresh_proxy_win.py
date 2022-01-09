@@ -1,4 +1,4 @@
-# coding:utf-8
+#-*- coding: UTF-8 -*-
 # 改变注册表设置后
 # HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Internet Settings
 # 调用此脚本刷新代理状态

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# coding: utf-8
+#-*- coding: UTF-8 -*-
 
 import os
 import sys
@@ -75,7 +75,7 @@ def download_domains_as_txt(txt, p=1):
         logger.debug('保存地址：%s' % txt)
         logger.info('直连域名列表已保存完毕')
     except Exception as e:
-        logger.warning('更新直连域名列表 %r 失败：%s' % (txt, e))
+        logger.warning('更新直连域名列表 %r 失败：%s', txt, e)
     finally:
         downloading = False
         data_source_manager.clear_source_data()

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# coding: utf-8
+#-*- coding: UTF-8 -*-
 
 import os
 import sys
@@ -145,7 +145,7 @@ def parse_apnic_iplist(fd, ds):
                 continue
             if linesp[2] == 'ipv4' and (linesp[1] == 'CN' or ds.check(linesp[1])):
                 ds.itemlist.append((ip2int(linesp[3]), mask_dict[linesp[4]]))
-            elif linesp[0] is '2' and not ds.update:
+            elif linesp[0] == '2' and not ds.update:
                 ds.update = '%s/%s' % (linesp[2], linesp[5])
             elif linesp[2] == 'ipv6':
                 #不需要 IPv6 数据，提前结束
@@ -195,7 +195,7 @@ def download_cniplist_as_db(ipdb, p=1):
         save_iplist_as_db(ipdb, iplist)
         logger.info('直连 IP 库已保存完毕')
     except Exception as e:
-        logger.warning('更新直连 IP 库 %r 失败：%s' % (ipdb, e))
+        logger.warning('更新直连 IP 库 %r 失败：%s', ipdb, e)
     finally:
         downloading = False
         data_source_manager.clear_source_data()

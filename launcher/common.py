@@ -24,7 +24,7 @@ config_auto_filename = os.path.join(config_dir, 'ActionFilter.ini')
 ca1 = os.path.join(root_dir, 'cert', 'CA.crt')
 # APNIC 和 GitHub 使用的 CA
 ca2 = os.path.join(root_dir, 'cert', 'cacert-ds.pem')
-context = None
+gcontext = None
 logging = None
 logger = None
 
@@ -79,7 +79,9 @@ def getlogger(use_print=False):
     if logging is None:
         if use_print:
             class logging:
-                warning = info = debug = print
+                def info(s, *args):
+                    print(s % args)
+                warning = debug = info
             logger = logging
         else:
             replace_logging()
@@ -274,45 +276,56 @@ def parse_cmds(*args):
             kwargs[cmd].append(arg)
     return kwargs
 
-def download(req):
+def create_context(cafiles=[], capaths=[], cadatas=[]):
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.options |= ssl.OP_NO_SSLv2
+    context.options |= ssl.OP_NO_SSLv3
+    context.options |= getattr(ssl._ssl, 'OP_NO_COMPRESSION', 0)
+    context.verify_mode = ssl.CERT_REQUIRED
+    context.check_hostname = True
+    context.set_ciphers(ssl._RESTRICTED_SERVER_CIPHERS)
+    for cafile in cafiles:
+        if os.path.isfile(cafile):
+            context.load_verify_locations(cafile=cafile)
+    for capath in capaths:
+        if os.path.isdir(capath):
+            context.load_verify_locations(capath=capath)
+    for cadata in cadatas:
+        if cadata:
+            context.load_verify_locations(cadata=cadata)
+    return context
+
+def download(req, context=None):
     #显式加载 CA，确保正常使用
-    global context
+    global gcontext
     if context is None:
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS)
-        context.options |= ssl.OP_NO_SSLv2
-        context.options |= ssl.OP_NO_SSLv3
-        context.options |= getattr(ssl._ssl, 'OP_NO_COMPRESSION', 0)
-        context.verify_mode = ssl.CERT_REQUIRED
-        context.check_hostname = True
-        context.set_ciphers(ssl._RESTRICTED_SERVER_CIPHERS)
-        if os.path.exists(ca1):
-            context.load_verify_locations(ca1)
-        context.load_verify_locations(ca2)
+        if gcontext is None:
+            gcontext = create_context(cafiles=[ca1, ca2])
+        context = gcontext
     retry_delay = 10
     max_retries = 4
     retry_times = 0
     timeout = 8
     l = 0
-    while l is 0:
-        fd = None
+    while True:
         err = None
         try:
             fd = urlopen(req, timeout=timeout, context=context)
-            l = int(fd.headers.get('Content-Length', 0))
         except Exception as e:
             err = e
-        if l is 0:
-            if fd:
-                fd.close()
-            retry_times += 1
-            if retry_times > max_retries:
-                logger.warning('请求网址 %r 时，重试 %d 次后仍然失败。'
-                                % (req.full_url, max_retries))
-                logger.warning('请忽略下面这个错误跟踪，并检查是否需要'
-                                '更改自动代理规则（ActionFilter.ini）。')
-                raise err or OSError('连接失败', 0)
-            logger.debug('获取直连数据网址失败，%d 秒后重试' % retry_delay)
-            time.sleep(retry_delay)
+        else:
+            l = int(fd.headers.get('Content-Length', 0))
+        if l:
+            break
+        retry_times += 1
+        if retry_times > max_retries:
+            logger.warning('请求网址 %r 时，重试 %d 次后仍然失败。'
+                            % (req.full_url, max_retries))
+            logger.warning('请忽略下面这个错误跟踪，并检查是否需要'
+                            '更改自动代理规则（ActionFilter.ini）。')
+            raise err or OSError('连接失败', 0)
+        logger.debug('获取更新数据失败，%d 秒后重试' % retry_delay)
+        time.sleep(retry_delay)
     return fd, l
 
 def download_as_list(ds):
@@ -327,23 +340,22 @@ def download_as_list(ds):
         ds.update = time.strftime(ds.datefmt, time.localtime(time.time()))
     ds.itemlist.clear()
     read = 0
-    l = None
-    while read != l:
-        fd, _l = download(ds.req)
-        if l is None:
-            l = _l
+    fd, l = download(ds.req)
+    while True:
         _read = ds.parser(fd, ds)
         if _read is None:
             read = l
         else:
             read += _read
         fd.close()
+        if read >= l:
+            break
         #下载失败续传
-        if read != l:
-            #往回跳过可能的缺损条目
-            read = max(read - 100, 0)
-            ds.req.headers['Range'] = 'bytes=%d-' % read
-            logger.debug('%s 列表下载中断，续传：%d/%d' % (ds.fullname, read, l))
+        #往回跳过可能的缺损条目
+        read = max(read - 100, 0)
+        ds.req.headers['Range'] = 'bytes=%d-' % read
+        logger.debug('%s 列表下载中断，续传：%d/%d' % (ds.fullname, read, l))
+        fd, _ = download(ds.req)
     logger.info(ds.fullname + ' 列表下载完毕')
     return ds.itemlist
 
@@ -410,11 +422,11 @@ def select_path(*path):
     except:
         print('输入错误！')
         return
-    if n is 0:
+    if n == 0:
         sys.exit(0)
-    elif n is 1:
+    elif n == 1:
         return path[0]
-    elif n is 2:
+    elif n == 2:
         return path[1]
     else:
         print('输入错误！')
