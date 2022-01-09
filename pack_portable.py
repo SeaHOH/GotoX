@@ -193,63 +193,25 @@ if __name__ == '__main__':
     sys.exit(rc)
 '''
 
-def writeb64z(filename, b64z):
-    with open(filename, 'wb') as f:
-        f.write(zlib.decompress(base64.decodebytes(b64z), -15))
-
-def download394core(filename, arch, sum):
-    filepath = download(f'https://www.python.org/ftp/python/3.9.4/{arch}/core.msi', sum=sum)
-    os.system(f'{_7z} e {filepath} python.dll {to_null}')
-    os.remove(filepath)
-    os.rename('python.dll', filename)
+def download_apiset_corepath(filename, arch, sum):
+    zipfile = download('https://github.com/nalexandru/api-ms-win-core-path-HACK'
+                       '/releases/download/'
+                       '0.3.1/api-ms-win-core-path-blender-0.3.1.zip',
+                       sum=sum)
+    newfilename = os.path.splitext(filename)[0]
+    filepath = f'api-ms-win-core-path-blender/{arch}/{newfilename}'
+    os.system(f'{_7z} e {zipfile} {filepath} {to_null}')
+    os.remove(zipfile)
+    os.rename(newfilename, filename)
 
 dlls = {
     'win32': (
-        (writeb64z, 'api-ms-win-core-path-l1-1-0.dll.w7', b'''
-7VZLb9xUFD7zKDRNEyZNg1ggcKRWahYe5SVINpBkJqEjJp3ROKQIJFqPx8nc1mMb20kmrIJ4KVKFBiGk
-sqISCIkNYtFFhVSptFWLaPIH2MCiq7KgrJEI3722M56H0i7YgLij7z7OPee73z22753FNxqUIKIksLdH
-dI38MkOPLjeA/ue/76erPbvD12L53eGlKnMl27FWHbUmaappWp5U1iVnzZSYKWULilSzKnq6r+/IiYDj
-I2X41q3xQiPEc7sfNG6K9t3GD6L9MBi/J9oS06rcL9RQnCfKx+L0S2OoFNp+pfhwb6zX31QyIjgFSEGP
-9+NET2D3IUQZ9WOu9BEsM4fEIBUEp5o0V1D9FI9wg/dh4oBkwf9Z+udK2tPrHtoLiUBQ+159SefTjuto
-FGiTAp/DrX4zj/e4/y//0RJ+O/x1nuLA+zSVPDimpGSVe3883BxZv3t66/b0F1++/tlADPbZYk5eVOSz
-zJQzlqPLRdWryvkxeUweTduVcleuiRs3U7w6yqvjvEry6jDt7Ozw+c+XfH1fDRDxNZ4O8CN0SrDVgW30
-3wcuB+12qmkLW46Pg/GnEd/LAbYj/RC3wf0z8BuwBwwdIxoBXgReAd4E3ga2gE+Ar4GrwD3gPvAnMDBI
-dAqYAl4F3hrku4kh3wl8jodw9jyJT7KHjlAvHaU+6qen8EkP0DEapOM0RKrN5JorbyCnGs+pzXNq+Dmt
-GAbxHM8ahqVlVNMymaYa7B09YrVqZWb6hoxWna1U5lTtomuobrWbbb4esc7XPd10mWXu22xbNyuto2ZE
-h4A2W8SzVVQwbM4vMLNz8ZxbsiwvHJX0mrWud+ylzdyk9Cc6SH3zAjN0xda1ptVUa53OykVmRzUonsPs
-oqOvsHqLacna98q5r53JQMW/ocTEVfIMXud2e8y/GjvsPTgnTqN3HnfLpS7336XEJOplUugc6nkqoZej
-Ap3BOId6AX1erid//4vz8ZuYZrZOhu3LAU8Sv3gb94M4j1DII4cYmbQKNkYG6WA2aYUs+NwRPqM0CUyL
-dk5c8XmcIDHKwKdGNqnw34QaFSNdcC+CSQOvRS6wgjUk4e3Am9cqLAw9k/j+U+AK184Crohl8G164WzE
-mEGvLti47jUqo5eFmjzmHRqJ8CwDDpia8S9QmiaAafRG8UvTGHoTOLMnwXKKNkQWyoheQ+w5RHvYD/ea
-gPcUjaMni5hxWEYCzl6syfPlifVM7MyIZEIVml2h2Q0U87IF3hhU68g6j+C5sZFDvutVqhL/b/INVD1+
-HtOYmQWTgbbJ4oqRLhQ4tI66Ak+il4TuQuDJAt1h7sxH6r9AJxFfFMoqsGqYO/j5fwslZ8VKFVg2YOeW
-Avj1/X3wd5A/2U2xlg42XuZwnrev1f50D3q2vGTF17aMdZwubznRCfHHbkkoMcFrtLyhhO/0u643+t8=
-'''),
-        (download394core, 'python39.dll.w7',
-        'win32', 'md5|3b4e607be6441a706e14a6e58e629360')
+        (download_apiset_corepath, 'api-ms-win-core-path-l1-1-0.dll.w7',
+        'x86', 'md5|a40e20f59a12b71ca5f2997d9111519c'),
     ),
     'win_amd64': (
-        (writeb64z, 'api-ms-win-core-path-l1-1-0.dll.w7', b'''
-7VZNb9xEGH73o0AaErYNRUVC1EEttAev8iVIhQTZ7CZixWZ3tQ6p1EvjtSfZab22ZTtNyikVUC49rBBC
-QuqRCwcQh0pEIKTSSByq5gYnfgBqOZRrL5Rnxnb2U2kPcAAxq2c+Xr/vM8+89szs0vkWpYgoDTx6RLRD
-YZmjx5dbwOiJ70bp5tDe+E6itDe+3OC+4nrOuqc3FUO3bSdQ6kzxNmyF20qhoilNx2TZkZHDJyOOj7Xx
-3d2pSivGy3sftW7L9mrrR9lei8YfyLbGjYbwizVUF4jMa0m69/BYLbb9Qa8ow8nhcFHpDsEZWW8n4n6S
-6CmsPoYsE2HMiRsEy2pinyDTTdIeh90WqjvJjrkU6EgdkDz4v0R/X8kGbCtAez4VCepdeyhpNev5nkGR
-NiXyeabbb+7JXv//5T9S4r0jPt9ZAXw/s+mDY2paQbu7PLZ9sfxq6atfyp/8duPznNhXuWpRXdLUc9xW
-847H1KoeNNTSpDqpTmRdsz6Qa/rW7t24iPHDb0M9nx4hEpwvRNiBrgxsDeDDzD+Dm+C+A/wKPAAOHSV6
-EXgNeAN4F9ABF7gKfAZ8AXwP/Az8DiTGiI4Dp4E3gfKYWE0C+U1hux3CWfM0ttwQHaZhepZGaJSew5Y9
-QkdpjJ6nY6S7XG366iZyaIgcuiKHVphD07JI5DRnWY6R123H5oZu8fdZh9Vp1rkdGvJGI2ea87pxybd0
-vzHItrDVYV3YCpjtc8fet7kus83uUTuiT0CPrcOzW1Q0bD9f5Hb/5EW/5jhBPKqxpnOZ9a2lx9ymDB/0
-kYbmRW4xzWVG22rrzX5n7RJ3OzVogcfdqsfW+FaXadnZ9yr675XzUPFvLAl5dRzHHdlrT4RXY599COfE
-O+it4i65PuC+u56aQb1CGl1AvUA19IpUoTLGRdSL6IvyQ/rBn4JP3MQ0t30qbt+OeNL4JXu47ydFhEYB
-ecTJpnWwcbKIgdmmNXLg85P0maAZ4Kxs5+UVX8KJkqA8fJrkkg7/K1CjY8Qk9xKYDPA65ANrmEOR3h68
-Ra3DwtGzSaw/A6547gLgy1gO37YXzkaMOfQyySZ0b1AdvQLUlPDcozMdPCuAB6Z2/OuUpWngLHoT+GVp
-Er1pnNkzYDlNmzILdURvIPYCogOsR3hNw3uWptBTZcwULGcizmHMKfIVyPlsrMzqyIQuNftSsx8pln+i
-wJuAaoasiwiRGxc5FKtepwaJ/yJfQtWT5zGLJzkwWWjbLL4cManAo8uoTXgSvSV1VyJPHumOc2c/Vv9F
-OoX4qlRmwmrg2cHv/2soOSdnMmHZhF1YKuBn++sQ36B4s1fkXAxsoszjfO+dq/ftHvRuRSnI3baCebwB
-XznRSflHblkqscFrdX2hhH36zcAb/S8='''),
-        (download394core, 'python39.dll.w7',
-        'amd64', 'md5|567a240112d13d6d3d7addd7465989cc')
+        (download_apiset_corepath, 'api-ms-win-core-path-l1-1-0.dll.w7',
+        'x64', 'md5|a40e20f59a12b71ca5f2997d9111519c'),
     )
 }
 
@@ -465,8 +427,6 @@ if %version% lss 6.2 ( goto :install )''']
 
 :install''')
     for generator, filename, *args in dlls[py_arch]:
-        if generator is download394core and (py_ver != '39' or int(py_vers[2]) <= 4):
-            continue
         if not os.path.exists(filename):
             generator(filename, *args)
         newfilename = os.path.splitext(filename)[0]
@@ -486,8 +446,15 @@ os.chdir('site-packages')
 
 stable_sp = True
 StrictVersion.version_re = re.compile(r'^(\d+)\.(\d+)(\.(\d+))?(?:\.?([a-z]+)(\d+))?$')
-is_supported_tags_1 = re.compile(f'(?:cp|py)3(?:[0-{py_ver[1]}])?-(?:cp{py_ver}m?|none)-(?:{py_arch}|any)').search
-is_supported_tags_2 = re.compile(f'cp3(?:[2-{py_ver[1]}])-abi3-{py_arch}').search
+sub_vers = (len(py_vers[1]) == 1 and
+        f'[{{}}-{py_vers[1]}]' or
+        f'[{{}}-9]|[1-{py_vers[1][0]}][0-{py_vers[1][1]}]').format
+is_supported_tags_1 = re.compile(
+        f'(cp|py)3({sub_vers(0)})?-(cp{py_ver}m?|none)-({py_arch}|any)'
+        ).search
+is_supported_tags_2 = re.compile(
+        f'cp3({sub_vers(2)})-abi3-{py_arch}'
+        ).search
 
 def extract(project, version):
     data = download(pypi_api(project), JSON)

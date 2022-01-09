@@ -159,7 +159,10 @@
     - PySocks 1.7.0 及以上
 - 可选组件：
     - brotlicffi
-- 发布将提供包含 Windows CPython 3.9 环境的便携版本。
+- 发布将提供包含 Windows CPython 3.9 环境的便携版本。另，从 GotoX 3.8.7 开始，
+  使用了 [nalexandru](https://github.com/nalexandru/api-ms-win-core-path-HACK)
+  提供的 api-ms-win-core-path-l1-1-0.dll 文件，以帮助 CPython 3.9 及以上版本在
+  Windows 7 上正常运行。
 - 由于自己只使用 Windows，所以其它系统不保证能正常使用。如果有需求作者会尽量修改，
   但这需要有人帮助测试反馈。
 

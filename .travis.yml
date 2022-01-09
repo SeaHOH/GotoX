@@ -17,7 +17,7 @@ addons:
       - p7zip-full
 
 script:
-  - export PYTHON_VERSION=3.9.7
+  - export PYTHON_VERSION=3.9.9
   - export PYTHON_IMPL_VERSION=cp39
   - export RELEASE_VERSION=$(grep -oP '[0-9\.ab]+' local/__init__.py)
   - export CA_MOZILLA=cert/cacerts/mozilla.pem
@@ -25,7 +25,7 @@ script:
 
 before_deploy:
   - curl -L --cacert ${CA_MOZILLA} -o ${CA_MOZILLA} https://curl.se/ca/cacert.pem
-  - curl -L --cacert ${CA_GOOGLE} -o ${CA_GOOGLE} https://pki.google.com/roots.pem
+  - curl -L --cacert ${CA_GOOGLE} -o ${CA_GOOGLE} https://pki.goog/roots.pem
   - python launcher/buildipdb.py -u -d --17mon
   - python launcher/builddomains.py -u -d --felix
 
