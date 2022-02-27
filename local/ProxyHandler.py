@@ -15,7 +15,7 @@ from time import mtime, sleep
 from functools import partial
 from threading import _start_new_thread as start_new_thread
 from http.server import BaseHTTPRequestHandler, SimpleHTTPRequestHandler
-from .compat.openssl import res_ciphers, SSL, SSLConnection, CertificateError
+from .compat.openssl import def_ciphers, SSL, SSLConnection, CertificateError
 from .common import cert
 from .common.decompress import decompress_readers
 from .common.decorator import make_lock_decorator
@@ -1517,7 +1517,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             #无客户端验证
             context.set_verify(SSL.VERIFY_NONE, callback)
             #加密选择
-            context.set_cipher_list(res_ciphers)
+            context.set_cipher_list(def_ciphers)
             ssl_options |= SSL.OP_CIPHER_SERVER_PREFERENCE
             #会话重用
             context.set_session_id(os.urandom(16))

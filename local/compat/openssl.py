@@ -4,20 +4,20 @@ import socket
 import errno
 from OpenSSL import SSL, crypto
 from select import select
-from ssl import (
-    _DEFAULT_CIPHERS, _RESTRICTED_SERVER_CIPHERS,
-    _dnsname_match, _ipaddress_match )
+from ssl import _RESTRICTED_SERVER_CIPHERS, _dnsname_match, _ipaddress_match
 try:
     from ssl import _inet_paton as ip_address # py3.7+
 except ImportError:
     from ipaddress import ip_address
+
 SSL.TLSv1_3_METHOD = SSL.TLSv1_2_METHOD + 1
-_DEFAULT_CIPHERS += ':!SSLv3'
 _RESTRICTED_SERVER_CIPHERS += ':!SSLv3'
+res_ciphers = _RESTRICTED_SERVER_CIPHERS.encode()
+# py3.10+ 兼容一些旧的应用和系统
+def_ciphers = res_ciphers.replace(b':!SHA1:', b':')
+
 zero_errno = errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTSOCK
 zero_EOF_error = -1, 'Unexpected EOF'
-def_ciphers = _DEFAULT_CIPHERS.encode()
-res_ciphers = _RESTRICTED_SERVER_CIPHERS.encode()
 
 class SSLConnection:
     '''API-compatibility wrapper for Python OpenSSL's Connection-class.'''
