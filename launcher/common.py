@@ -281,8 +281,8 @@ def create_context(cafiles=[], capaths=[], cadatas=[]):
     context.options |= ssl.OP_NO_SSLv2
     context.options |= ssl.OP_NO_SSLv3
     context.options |= getattr(ssl._ssl, 'OP_NO_COMPRESSION', 0)
-    context.verify_mode = ssl.CERT_REQUIRED
     context.check_hostname = True
+    context.verify_mode = ssl.CERT_REQUIRED
     context.set_ciphers(ssl._RESTRICTED_SERVER_CIPHERS)
     for cafile in cafiles:
         if os.path.isfile(cafile):
