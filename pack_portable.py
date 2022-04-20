@@ -14,8 +14,11 @@ import pycurl
 import base64
 from io import BytesIO
 from configparser import ConfigParser
-from distutils.version import StrictVersion
-from distutils.versionpredicate import VersionPredicate
+try:
+    import packaging
+    from packaging.version import parse as parse_version
+except ImportError:
+    from pkg_resources import packaging, parse_version
 
 
 sitecustomize = b'''\
@@ -72,17 +75,19 @@ def set_path():
                 sys.path[i] = os.path.join(py_dir, 'DLLs')
             elif path.endswith('site-packages'):
                 if os.path.exists(path):
-                    sys.path[i + 1:i + 1] = glob.glob(os.path.join(path, '*.egg'))
+                    sys.path[i+1:i+1] = glob.glob(os.path.join(path, '*.egg'))
                     break
         eggs_cache = os.path.join(home, 'Eggs-Cache')
         if prompt:
             sys.ps1 = prompt + ' >>> '
             sys.ps2 = ' ' * len(prompt) + ' ... '
     else:
-        if not (py_dir == sys.prefix == sys.base_prefix == sys.exec_prefix == sys.base_exec_prefix):
+        if not (py_dir == sys.prefix == sys.base_prefix ==
+                          sys.exec_prefix == sys.base_exec_prefix):
             set_prefix()
         sp_dir = os.path.join(py_dir, 'site-packages')
-        sys.path[:] = [os.path.join(py_dir, 'python%d%d.zip' % sys.version_info[:2])]
+        sys.path[:] = [os.path.join(py_dir,
+                       'python%d%d.zip' % sys.version_info[:2])]
         sys.path.append(os.path.join(py_dir, 'DLLs'))
         sys.path.append(py_dir)
         if os.path.exists(sp_dir):
@@ -131,7 +136,7 @@ Use:  python -m svenv venvdir [prompt]
 
 """
 
-activate_bat = """\
+activate_bat = """\\
 @echo off
 set VIRTUAL_ENV=%~dp0
 set VIRTUAL_PROMPT={prompt}
@@ -144,12 +149,12 @@ set PROMPT=({prompt}) %PROMPT%
 echo on
 """
 
-launcher_bat = """\
+launcher_bat = """\\
 @if not defined VIRTUAL_ENV call "%~dp0activate.bat"
 @"{exe}" %*
 """
 
-console_bat = """\
+console_bat = """\\
 @if not defined VIRTUAL_ENV (
     call "%~dp0activate.bat"
     cmd
@@ -167,7 +172,8 @@ def create(env_dir, prompt):
         f.write(launcher_bat.format(exe=sys.executable))
     with open(os.path.join(env_dir, 'console.bat'), 'w') as f:
         f.write(console_bat)
-    print('New virtual environment created at %r, prompt is %r.' % (env_dir, prompt))
+    print('New virtual environment created at %r, prompt is %r.'
+          % (env_dir, prompt))
 
 def main():
     try:
@@ -176,7 +182,8 @@ def main():
         print(help)
         return
     if not os.path.isabs(env_dir) or os.path.isfile(env_dir):
-        raise ValueError("The environment path must be absolute, and can't be a exists file.")
+        raise ValueError("The environment path must be absolute, "
+                         "and can't be a exists file.")
     try:
         prompt = sys.argv[2]
     except IndexError:
@@ -195,8 +202,8 @@ if __name__ == '__main__':
 
 def download_apiset_corepath(filename, arch, sum):
     zipfile = download('https://github.com/nalexandru/api-ms-win-core-path-HACK'
-                       '/releases/download/'
-                       '0.3.1/api-ms-win-core-path-blender-0.3.1.zip',
+                       '/releases/download'
+                       '/0.3.1/api-ms-win-core-path-blender-0.3.1.zip',
                        sum=sum)
     newfilename = os.path.splitext(filename)[0]
     filepath = f'api-ms-win-core-path-blender/{arch}/{newfilename}'
@@ -225,7 +232,7 @@ winsound.pyd
 '''.split()
 
 _7z = '7z'
-to_null = '1>/dev/null'
+to_null = os.name == 'nt' and '1>nul' or '1>/dev/null'
 ca1 = 'cert/CA.crt'
 ca2 = 'cert/cacerts/mozilla.pem'
 if os.path.exists(ca1):
@@ -387,8 +394,6 @@ if not os.path.exists('python/python.exe'):
     os.system(f'{_7z} e {filepath} -opython {to_null}')
     os.remove(filepath)
 
-if not os.path.exists('python'):
-    os.mkdir('python')
 os.chdir('python')
 for filename in useless_exes:
     try:
@@ -444,8 +449,33 @@ if not os.path.exists('site-packages'):
     os.mkdir('site-packages')
 os.chdir('site-packages')
 
-stable_sp = True
-StrictVersion.version_re = re.compile(r'^(\d+)\.(\d+)(\.(\d+))?(?:\.?([a-z]+)(\d+))?$')
+
+class SpecifierSet(packaging.specifiers.SpecifierSet):
+    _allow_yanked = None
+
+    def __init__(self, specifiers, prereleases=None):
+        parsed = set()
+        for specifier in specifiers.split(','):
+            specifier = specifier.strip()
+            if not specifier:
+                continue
+            if specifier[-1] == '!':
+                specifier = specifier[:-1]
+                pre = True
+            else:
+                pre = None
+            parsed.add(packaging.specifiers.Specifier(specifier, pre))
+        self._specs = frozenset(parsed)
+        self._prereleases = prereleases
+
+    @property
+    def allow_yanked(self):
+        if self._allow_yanked is None:
+            self._allow_yanked = any(spec.operator[:2] == '=='
+                                     for spec in self._specs)
+        return self._allow_yanked
+
+allow_prerelease = None
 sub_vers = (len(py_vers[1]) == 1 and
         f'[{{}}-{py_vers[1]}]' or
         f'[{{}}-9]|[1-{py_vers[1][0]}][0-{py_vers[1][1]}]').format
@@ -456,27 +486,26 @@ is_supported_tags_2 = re.compile(
         f'cp3({sub_vers(2)})-abi3-{py_arch}'
         ).search
 
-def extract(project, version):
+def extract(project, specifiers):
     data = download(pypi_api(project), JSON)
-    if version and version[0] not in '<>!=':
-        project_sub, version = f'{version} '.split(' ', 1)
+    if specifiers and specifiers[0] not in '<>!~=':
+        project_sub, _, specifiers = specifiers.partition(' ')
     else:
         project_sub = None
-    if version.strip():
-        version = f'({version})'
-    version = VersionPredicate(f'{project}{version}')
-    if version.pred:
-        releases = sorted(((StrictVersion(key), key) for key in data['releases']),
-                          key=lambda r: r[0], reverse=True)
-        for release, key in releases:
-            if stable_sp and release.prerelease:
-                continue
-            if version.satisfied_by(release):
-                dists = sorted(data['releases'][key],
-                               key=lambda d: d['python_version'], reverse=True)
+    specifiers = SpecifierSet(specifiers, allow_prerelease)
+    releases = sorted(((parse_version(key), key) for key in data['releases']),
+                      key=lambda r: r[0], reverse=True)
+    dists = None
+    for release, key in releases:
+        if not specifiers or release in specifiers:
+            dists = sorted(data['releases'][key],
+                           key=lambda d: d['python_version'], reverse=True)
+            if not dists[0]['yanked'] or specifiers.allow_yanked:
                 break
-    else:
-        dists = data['urls']
+            dists = None
+    if not dists:
+        print(f'{project} mismatch specifiers: {specifiers}', file=sys.stderr)
+        sys.exit(-1)
     dist_type = None
     for dist in dists:
         if dist['packagetype'] in ('bdist_wheel', 'bdist_egg') and (
@@ -561,6 +590,7 @@ def package(name):
         for filename in filenames:
             filepath = os.path.join(dirpath, filename)
             if filename.endswith(('pyx', 'pxd', 'html', '.c', '.h', 'ffi_build.py')) or \
+                    filename.startswith(('test.', 'tests.', 'testing.')) or \
                     (filename != '__init__.py' and os.path.getsize(filepath) == 0):
                 os.remove(filepath)
             elif filename.endswith('pyd'):
@@ -571,7 +601,8 @@ def package(name):
                         newname = f'{filename[:-3]}{dll_tag}.pyd'
                         os.rename(os.path.join(dirpath, filename),
                                   os.path.join(dirpath, newname))
-                        print(f'Warning: filename {filename!r} does not match the dll_tag {dll_tag!r}, '
+                        print(f'Warning: filename {filename!r} '
+                              f'does not match the dll_tag {dll_tag!r}, '
                               f'rename it as {newname!r}.')
                         filename =  newname
                     filename = filename.split(dll_tag)[0]
@@ -590,10 +621,10 @@ def package(name):
                 os.remove(filepath)
         break
 
-for project, version in config.items('site-packages'):
-    package(extract(project, version))
+for project, specifiers in config.items('site-packages'):
+    package(extract(project, specifiers))
 
 for project in extras:
-    version = config.get('site-packages', project, fallback='')
-    package(extract(project, version))
+    specifiers = config.get('extras-site-packages', project, fallback='')
+    package(extract(project, specifiers))
 

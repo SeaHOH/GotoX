@@ -1,4 +1,4 @@
-gevent >= 20.4.0
-pyOpenSSL >= 19.1.0
+gevent >= 21.0
+pyOpenSSL >= 22.0
 dnslib >= 0.9.12
 PySocks >= 1.7.0
