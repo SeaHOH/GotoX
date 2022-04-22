@@ -16,6 +16,7 @@ from io import BytesIO
 from configparser import ConfigParser
 try:
     import packaging
+    import packaging.specifiers
     from packaging.version import parse as parse_version
 except ImportError:
     from pkg_resources import packaging, parse_version
