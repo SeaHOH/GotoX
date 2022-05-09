@@ -175,7 +175,7 @@ def match_hostname(cert, hostname):
         # Not an IP address (common case)
         host_ip = None
     dnsnames = []
-    san = cert.get_subject_alt_name() or ()
+    san = cert.get_subject_alt_name()
     for key, value in san:
         if key == 'DNS':
             if host_ip is None and _dnsname_match(value, hostname):
@@ -211,6 +211,7 @@ def get_subject_alt_name(self):
     for i in range(self.get_extension_count()):
         ext = self.get_extension(i)
         if ext._nid == SSL._lib.NID_subject_alt_name:
-            return tuple(s.split(':', 1) for s in ext._subjectAltNameString().split(', '))
+            for s in ext._subjectAltNameString().split(', '):
+                yield s.split(':', 1)
 
 crypto.X509.get_subject_alt_name = get_subject_alt_name

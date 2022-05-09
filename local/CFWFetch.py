@@ -157,7 +157,7 @@ def cfw_ws_fetch(host, url, headers):
         response = http_cfw.request(worker_params, headers=headers,
                                     connection_cache_key=worker_params.connection_cache_key,
                                     realurl=realurl)
-        if 'X-Fetch-Status' not in response.headers:
+        if response and 'X-Fetch-Status' not in response.headers:
             response.headers['X-Fetch-Status'] = 'ok'
         status = check_response(response, worker_params)
         if status == 'retry':

@@ -1000,7 +1000,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
 
     #未配置 CFWorker
     if not (GC.CFW_SUBDOMAIN and GC.CFW_WORKERS or GC.CFW_WORKER):
-        def do_GFW(self):
+        def do_CFW(self):
             noworker = '请编辑 %r 文件，添加可用的 CFWorker 域名到 [cfw] 配置中并重启 GotoX！' % GC.CONFIG_FILENAME
             logging.critical(noworker)
             c = message_html('502 CFWorker 域名为空',
@@ -1307,16 +1307,21 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         #返回本地文件
         if os.path.isfile(filename):
             content_type = self.guess_type(filename)
+            origin = self.headers.get('Origin')
+            if origin:
+                acao = 'Access-Control-Allow-Origin: %s\r\n' % origin
+            else:
+                acao = ''
             try:
                 filesize = os.path.getsize(filename)
                 with open(filename, 'rb') as fp:
                     data = fp.read(1048576) # 1M
                     logging.info('%s "%s %s HTTP/1.1" 200 %d',
                                  self.address_string(), self.command, self.url, filesize)
-                    self.write('HTTP/1.1 200 Ok\r\n'
+                    self.write('HTTP/1.1 200 Ok\r\n%s'
                                'Content-Length: %d\r\n'
                                'Content-Type: %s\r\n\r\n'
-                               % (filesize, content_type))
+                               % (acao, filesize, content_type))
                     while data:
                         self.write(data, True)
                         data = fp.read(1048576)

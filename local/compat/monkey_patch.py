@@ -70,7 +70,7 @@ def patch_time():
     if hasattr(time, 'clock_gettime') and hasattr(time, 'CLOCK_BOOTTIME'):
         time.mtime = lambda: time.clock_gettime(time.CLOCK_BOOTTIME)
     else:
-        time.mtime = time.monotonic
+        time.mtime = time.perf_counter
 
 @clean_after_invoked
 def patch_builtins():

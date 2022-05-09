@@ -328,11 +328,9 @@ class BaseHTTPUtil:
             wait_exit('未找到可信任 CA 证书集，GotoX 即将退出！请检查：%r', cacert)
 
     @_lock_context
-    def get_context(self, server_hostname):
-        if self.gws:
-            server_hostname = None
+    def get_context(self, cache_key):
         try:
-            return self.context_cache[server_hostname]
+            return self.context_cache[cache_key]
         except KeyError:
             pass
         if self.gws:
@@ -366,7 +364,7 @@ class BaseHTTPUtil:
         context.set_cipher_list(self.ssl_ciphers)
         #应用设置
         context.set_options(ssl_options)
-        self.context_cache[server_hostname] = context
+        self.context_cache[cache_key] = context
         return context
 
     def _verify_callback(self, sock, cert, error_number, depth, ok):
@@ -459,12 +457,12 @@ class BaseHTTPUtil:
     def get_proxy_socket(self, proxyip, timeout=None):
         return self._get_tcp_socket(socks.socksocket, proxyip, timeout)
 
-    def get_ssl_socket(self, sock, server_hostname=None):
+    def get_ssl_socket(self, sock, cache_key, server_hostname=None):
         if isinstance(server_hostname, tuple):
             server_hostname, sock.orig_hostname = server_hostname
         else:
             sock.orig_hostname = server_hostname
-        context = self.get_context(sock.orig_hostname)
+        context = self.get_context(cache_key)
         ssl_sock = SSLConnection(context, sock)
         if server_hostname and not isip(server_hostname):
             ssl_sock.set_tlsext_host_name(server_hostname.encode())
@@ -726,7 +724,7 @@ class HTTPUtil(BaseHTTPUtil):
             try:
                 sock = self.get_tcp_socket(ip, timeout)
                 server_name = self.get_server_hostname(host, cache_key)
-                ssl_sock = self.get_ssl_socket(sock, server_name)
+                ssl_sock = self.get_ssl_socket(sock, cache_key, server_name)
                 # start connection time record
                 start_time = mtime()
                 # TCP connect
@@ -947,7 +945,7 @@ class HTTPUtil(BaseHTTPUtil):
                 proxy_sock.set_proxy(socks.PROXY_TYPES[proxytype], proxyip, proxyport, True, proxyuser, proxypass)
                 start_time = mtime()
                 try:
-                    proxy_ssl_sock = self.get_ssl_socket(proxy_sock, ohost.encode())
+                    proxy_ssl_sock = self.get_ssl_socket(proxy_sock, ohost, ohost)
                     proxy_ssl_sock.settimeout(self.timeout)
                     #proxy_ssl_sock.set_connect_state()
                     proxy_ssl_sock.connect((ip, port))
