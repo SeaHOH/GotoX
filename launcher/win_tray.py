@@ -175,8 +175,8 @@ def refresh_proxy_state(enable=None):
 GotoX_app = None
 
 def load_config():
-    global LISTEN_AUTO, LISTEN_ACT, LISTEN_ACTTYPE
-    _LISTEN_AUTO, _LISTEN_ACT, LISTEN_ACTTYPE = _load_config()
+    global LISTEN_AUTO, LISTEN_ACT, LISTEN_ACTTYPE, AUTO_PROXY
+    _LISTEN_AUTO, _LISTEN_ACT, LISTEN_ACTTYPE, AUTO_PROXY = _load_config()
     LISTEN_ACT = proxy_server(_LISTEN_ACT, True)
     LISTEN_AUTO = proxy_server(_LISTEN_AUTO, True)
 
@@ -186,6 +186,12 @@ def start_GotoX():
     GotoX_app = Popen((sys.executable, app_start))
     os.environ['HTTPS_PROXY'] = os.environ['HTTP_PROXY'] = LISTEN_AUTO.http
 
+    if AUTO_PROXY:
+        # 给 enable_proxy 打个补丁
+        global proxy_state_menu
+        proxy_state_menu = proxy_state = get_proxy_state()
+        enable_proxy(LISTEN_AUTO)
+    
 def stop_GotoX():
     if GotoX_app is None:
         logger.warning('GotoX 进程还未开始。')
@@ -230,6 +236,7 @@ def on_quit(systray):
     global running
     running = False
     stop_GotoX()
+    on_disable_proxy(systray)
     if reg_notify:
         SetEvent(notifyHandle)
 
