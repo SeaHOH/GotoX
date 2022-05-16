@@ -72,9 +72,7 @@ def load_config():
     if not LOG_PRINT:
         log_config['stream'] = logging.NULL_STREAM
     logging.basicConfig(**log_config)
-    AUTO_PROXY = CONFIG.getint('misc', 'autoproxy')
-
-    return LISTEN_AUTO, LISTEN_ACT, LISTEN_ACTTYPE, AUTO_PROXY
+    return LISTEN_AUTO, LISTEN_ACT, LISTEN_ACTTYPE
 
 def getlogger(use_print=False):
     global logging, logger
