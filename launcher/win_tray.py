@@ -182,7 +182,7 @@ def refresh_proxy_state(enable=None):
         #导入默认代理例外地址
         if not ProxyOverride:
             reg_set_value('ProxyOverride', winreg.REG_SZ, ProxyOverride_local)
-        if ProxyOverride == '<local>':
+        elif ProxyOverride == '<local>':
             reg_set_value('ProxyOverride', winreg.REG_SZ, f'{ProxyOverride_local};<local>')
     Popen((sys.executable, refresh_proxy))
 
