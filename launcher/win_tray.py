@@ -27,7 +27,7 @@ from subprocess import Popen
 from local import __version__ as gotoxver
 
 SET_PATH = r'Software\Microsoft\Windows\CurrentVersion\Internet Settings'
-ProxyOverride = ';'.join(
+ProxyOverride_local = ';'.join(
     ['localhost', '127.*', '192.168.*', '10.*'] +
     ['100.%d.*' % (64 + n) for n in range(1 << 6)] +
     ['172.%d.*' % (16 + n) for n in range(1 << 4)])
@@ -178,10 +178,12 @@ def get_proxy_state():
 
 def refresh_proxy_state(enable=None):
     if enable:
-        ProxyOverride_Current = reg_get_value('ProxyOverride')
+        ProxyOverride = reg_get_value('ProxyOverride')
         #导入默认代理例外地址
-        if not ProxyOverride_Current or ProxyOverride_Current == '<local>':
-            reg_set_value('ProxyOverride', winreg.REG_SZ, ProxyOverride)
+        if not ProxyOverride:
+            reg_set_value('ProxyOverride', winreg.REG_SZ, ProxyOverride_local)
+        if ProxyOverride == '<local>':
+            reg_set_value('ProxyOverride', winreg.REG_SZ, f'{ProxyOverride_local};<local>')
     Popen((sys.executable, refresh_proxy))
 
 GotoX_app = None
