@@ -17,6 +17,7 @@ logger = getlogger()
 app_start = os.path.join(app_root, 'start.py')
 create_shortcut_js = os.path.join(app_root, 'create_shortcut.vbs')
 refresh_proxy = os.path.join(app_root, 'launcher', 'refresh_proxy_win.py')
+wintray_conf = os.path.join(config_dir, 'win_tray.conf')
 
 
 import winreg
@@ -30,6 +31,7 @@ ProxyOverride = ';'.join(
     ['localhost', '127.*', '192.168.*', '10.*'] +
     ['100.%d.*' % (64 + n) for n in range(1 << 6)] +
     ['172.%d.*' % (16 + n) for n in range(1 << 4)])
+sysproxy_keys = 'AutoConfigURL', 'ProxyEnable', 'ProxyServer', 'ProxyOverride'
 
 hwnd = ctypes.windll.kernel32.GetConsoleWindow()
 CreateEvent = ctypes.windll.kernel32.CreateEventA
@@ -136,47 +138,57 @@ class proxy_server:
             server_list.insert(0, 'pac=' + self.pac)
         return '\n'.join(server_list)
 
+    def __bool__(self):
+        return bool(self.type)
+
+def reg_query_value(key, path=SETTINGS):
+    try:
+        return winreg.QueryValueEx(path, key)
+    except:
+        return None, None
+
+def reg_get_value(key, path=SETTINGS):
+    return reg_query_value(key, path)[0]
+
+def reg_set_value(key, rtype, value, path=SETTINGS):
+    if rtype is None or value is None:
+        reg_del_value(key, path=path)
+    else:
+        winreg.SetValueEx(path, key, 0, rtype, value)
+
+def reg_del_value(key, path=SETTINGS):
+    try:
+        winreg.DeleteValue(path, key)
+    except:
+        pass
+
 def get_proxy_state():
-    AutoConfigURL = ProxyServer = None
-    try:
-        AutoConfigURL, reg_type = winreg.QueryValueEx(SETTINGS, 'AutoConfigURL')
-        AutoConfigURL = proxy_server(AutoConfigURL)
-    except:
-        pass
-    try:
-        ProxyEnable, reg_type = winreg.QueryValueEx(SETTINGS, 'ProxyEnable')
-        if ProxyEnable:
-            ProxyServer, reg_type = winreg.QueryValueEx(SETTINGS, 'ProxyServer')
-            ProxyServer = proxy_server(ProxyServer)
-    except:
-        pass
-    if AutoConfigURL and ProxyServer:
-        ProxyServer.pac = AutoConfigURL.pac
-        ProxyServer.type |= 1
-    elif AutoConfigURL:
-        ProxyServer = AutoConfigURL
-    elif ProxyServer:
-        pass
+    AutoConfigURL = proxy_server(reg_get_value('AutoConfigURL'))
+    if reg_get_value('ProxyEnable'):
+        ProxyServer = proxy_server(reg_get_value('ProxyServer'))
     else:
         ProxyServer = proxy_server(None)
+    if AutoConfigURL:
+        if ProxyServer:
+            ProxyServer.pac = AutoConfigURL.pac
+            ProxyServer.type |= 1
+        else:
+            ProxyServer = AutoConfigURL
     return ProxyServer
 
 def refresh_proxy_state(enable=None):
     if enable:
-        try:
-            ProxyOverride, reg_type = winreg.QueryValueEx(SETTINGS, 'ProxyOverride')
-        except:
-            ProxyOverride =None
+        ProxyOverride = reg_get_value('ProxyOverride')
         #导入默认代理例外地址
         if not ProxyOverride:
-            winreg.SetValueEx(SETTINGS, 'ProxyOverride', 0,  winreg.REG_SZ, ProxyOverride)
+            reg_set_value('ProxyOverride', winreg.REG_SZ, ProxyOverride)
     Popen((sys.executable, refresh_proxy))
 
 GotoX_app = None
 
 def load_config():
-    global LISTEN_AUTO, LISTEN_ACT, LISTEN_ACTTYPE, AUTO_PROXY
-    _LISTEN_AUTO, _LISTEN_ACT, LISTEN_ACTTYPE, AUTO_PROXY = _load_config()
+    global LISTEN_AUTO, LISTEN_ACT, LISTEN_ACTTYPE
+    _LISTEN_AUTO, _LISTEN_ACT, LISTEN_ACTTYPE = _load_config()
     LISTEN_ACT = proxy_server(_LISTEN_ACT, True)
     LISTEN_AUTO = proxy_server(_LISTEN_AUTO, True)
 
@@ -186,12 +198,6 @@ def start_GotoX():
     GotoX_app = Popen((sys.executable, app_start))
     os.environ['HTTPS_PROXY'] = os.environ['HTTP_PROXY'] = LISTEN_AUTO.http
 
-    if AUTO_PROXY:
-        # 给 enable_proxy 打个补丁
-        global proxy_state_menu
-        proxy_state_menu = proxy_state = get_proxy_state()
-        enable_proxy(LISTEN_AUTO)
-    
 def stop_GotoX():
     if GotoX_app is None:
         logger.warning('GotoX 进程还未开始。')
@@ -235,17 +241,20 @@ def on_about(systray):
 def on_quit(systray):
     global running
     running = False
+    if sysproxy.check('quit-restore'):
+        for key, (value, rtype) in sysproxy_start_state.items():
+            reg_set_value(key, rtype, value)
+        Popen((sys.executable, refresh_proxy))
     stop_GotoX()
-    on_disable_proxy(systray)
     if reg_notify:
         SetEvent(notifyHandle)
 
 def on_disable_proxy(systray):
     proxy_state = proxy_state_menu
     if proxy_state.type & 1:
-        winreg.DeleteValue(SETTINGS, 'AutoConfigURL')
+        reg_del_value('AutoConfigURL')
     if proxy_state.type & 2:
-        winreg.SetValueEx(SETTINGS, 'ProxyEnable', 0,  winreg.REG_DWORD, 0)
+        reg_set_value('ProxyEnable', winreg.REG_DWORD, 0)
     refresh_proxy_state()
 
 def disable_x_proxy(type):
@@ -256,9 +265,9 @@ def disable_x_proxy(type):
     proxy_state.type = 2
     ProxyServer = proxy_state.str
     if ProxyServer == '':
-        winreg.SetValueEx(SETTINGS, 'ProxyEnable', 0,  winreg.REG_DWORD, 0)
+        reg_set_value('ProxyEnable', winreg.REG_DWORD, 0)
     else:
-        winreg.SetValueEx(SETTINGS, 'ProxyServer', 0,  winreg.REG_SZ, ProxyServer)
+        reg_set_value('ProxyServer', winreg.REG_SZ, ProxyServer)
     refresh_proxy_state()
 
 def on_disable_http_proxy(systray):
@@ -277,20 +286,24 @@ def enable_proxy(ProxyServer):
     proxy_state = proxy_state_menu
     #删除 AutoConfigURL 确保使用 ProxyServer
     if proxy_state.pac:
-        winreg.DeleteValue(SETTINGS, 'AutoConfigURL')    
+        reg_del_value('AutoConfigURL')
     if not proxy_state.type & 2:
-        winreg.SetValueEx(SETTINGS, 'ProxyEnable', 0,  winreg.REG_DWORD, 1)
+        reg_set_value('ProxyEnable', winreg.REG_DWORD, 1)
     proxy_state.type = 2
     proxy_state.http = ProxyServer.http
     proxy_state.https = ProxyServer.https
-    winreg.SetValueEx(SETTINGS, 'ProxyServer', 0,  winreg.REG_SZ, proxy_state.str)
-    refresh_proxy_state(1)
+    reg_set_value('ProxyServer', winreg.REG_SZ, proxy_state.str)
+    refresh_proxy_state(True)
 
 def on_enable_auto_proxy(systray):
     enable_proxy(LISTEN_AUTO)
+    sysproxy.set('auto')
+    sysproxy.set('act', 0, True)
 
 def on_enable_act_proxy(systray):
     enable_proxy(LISTEN_ACT)
+    sysproxy.set('act')
+    sysproxy.set('auto', 0, True)
 
 def on_left_click(systray):
     build_menu(systray)
@@ -305,16 +318,18 @@ import updatecas
 import buildipdb
 import builddomains
 
-gloop_conf = os.path.join(config_dir, 'gloop.conf')
-
 buildipdb.data_source_manager.load()
 builddomains.data_source_manager.load()
 if not buildipdb.data_source_manager.data_source:
     buildipdb.data_source_manager.set(buildipdb.ds_17MON.name)
 builddomains.data_source_manager.set(builddomains.ds_FELIX.name)
-gloop = cconfig('gloop', conf=gloop_conf)
+wintray = cconfig('wintray', conf=wintray_conf)
+gloop = wintray.add_child('gloop')
 gloop.add(['libuv-cffi', 'libev-cext', 'libev-cffi', 'nogevent'])
 gloop.load()
+sysproxy = wintray.add_child('sysproxy')
+sysproxy.add(['start-set', 'quit-restore', 'auto', 'act'])
+sysproxy.load()
 
 MFS_CHECKED = win32_adapter.MFS_CHECKED
 MFS_ENABLED = win32_adapter.MFS_ENABLED
@@ -322,11 +337,16 @@ MFS_DISABLED = win32_adapter.MFS_DISABLED
 MFS_DEFAULT = win32_adapter.MFS_DEFAULT
 MFT_RADIOCHECK = win32_adapter.MFT_RADIOCHECK
 fixed_fState = MFS_CHECKED | MFS_DISABLED
+pass_fState = 'pass', MFS_DISABLED
 NIIF_WARNING = win32_adapter.NIIF_WARNING
 NIIF_USER = win32_adapter.NIIF_USER
 NIIF_LARGE_ICON = win32_adapter.NIIF_LARGE_ICON
 
-def update_cas():
+def make_rc_state(checked, disable=True):
+    return checked and (disable and fixed_fState or MFS_CHECKED
+            ) or MFS_ENABLED, MFT_RADIOCHECK
+
+def on_update_cas(systray):
     msg = updatecas.update(updatecas.ds_GOOGLE, updatecas.ds_MOZILLA)
     if msg:
         balloons_warning(msg)
@@ -341,80 +361,87 @@ def download_domains(p):
     if msg:
         balloons_warning(msg)
 
+def compare_menu_eq(a, b):
+    if bool(a) != bool(b) or len(a) != len(b):
+        return False
+    eq = True
+    for ma, mb in zip(a, b):
+        # 忽略 lambda
+        if getattr(ma, '__name__', None) == '<lambda>':
+            continue
+        if isinstance(ma, tuple):
+            eq = compare_menu_eq(ma, mb)
+        else:
+            eq = ma == mb
+        if not eq:
+            break
+    return eq
+
 def build_menu(systray):
-    libuv_cffi_state = gloop.check('libuv-cffi') and fixed_fState or MFS_ENABLED
-    libev_cext_state = gloop.check('libev-cext') and fixed_fState or MFS_ENABLED
-    libev_cffi_state = gloop.check('libev-cffi') and fixed_fState or MFS_ENABLED
-    nogevent_state = gloop.check('nogevent') and fixed_fState or MFS_ENABLED
-    default_loop_state = not (libuv_cffi_state or libev_cext_state or libev_cffi_state or nogevent_state) and fixed_fState or MFS_ENABLED
     sub_menu1 = (('打开默认配置', lambda x: startfile(config_filename)), #双击打开第一个有效命令
                  ('打开用户配置', lambda x: startfile(config_user_filename)),
                  ('打开自动规则配置', lambda x: startfile(config_auto_filename)),
                  (None, '-'),
-                 ('选择 gevent 优先使用的事件循环', 'pass', MFS_DISABLED),
-                 ('以下名称同时也是等价命令行参数', 'pass', MFS_DISABLED),
-                 ('    ├─ libuv-cffi', lambda x: gloop.checked('libuv-cffi', True), libuv_cffi_state, MFT_RADIOCHECK),
-                 ('    ├─ libev-cext', lambda x: gloop.checked('libev-cext', True), libev_cext_state, MFT_RADIOCHECK),
-                 ('    ├─ libev-cffi', lambda x: gloop.checked('libev-cffi', True), libev_cffi_state, MFT_RADIOCHECK),
-                 ('    ├─ nogevent (禁用)', lambda x: gloop.checked('nogevent', True), nogevent_state, MFT_RADIOCHECK),
-                 ('    └─ 默认', lambda x: gloop.clear(True), default_loop_state, MFT_RADIOCHECK))
-    sub_menu2 = (('点击此处开始更新', lambda x: update_cas()),
-                 ('建议更新频率：60 天一次', 'pass', MFS_DISABLED),
-                 ('固定数据来源', 'pass', MFS_DISABLED),
+                 ('选择 gevent 优先使用的事件循环', *pass_fState),
+                 ('以下名称同时也是等价命令行参数', *pass_fState),
+                 ('  ├─ libuv-cffi', lambda x: gloop.checked('libuv-cffi', True), *make_rc_state(gloop.check('libuv-cffi'))),
+                 ('  ├─ libev-cext', lambda x: gloop.checked('libev-cext', True), *make_rc_state(gloop.check('libev-cext'))),
+                 ('  ├─ libev-cffi', lambda x: gloop.checked('libev-cffi', True), *make_rc_state(gloop.check('libev-cffi'))),
+                 ('  ├─ nogevent (禁用)', lambda x: gloop.checked('nogevent', True), *make_rc_state(gloop.check('nogevent'))),
+                 ('  └─ 默认', lambda x: gloop.clear(True), *make_rc_state(not gloop)),
+                )
+    sub_menu2 = (('点击此处开始更新', on_update_cas),
+                 ('建议更新频率：60 天一次', *pass_fState),
+                 ('固定数据来源', *pass_fState),
                  (None, '-'),
-                 ('Google Trust Services', 'pass', MFS_DISABLED),
-                 ('Mozilla NSS, 由 curl.se 提供转换格式', 'pass', MFS_DISABLED)
+                 ('Google Trust Services', *pass_fState),
+                 ('Mozilla NSS, 由 curl.se 提供转换格式', *pass_fState)
                 )
     dsm = buildipdb.data_source_manager
     apnic_checked = dsm.check(buildipdb.ds_APNIC.name)
     l7mon_checked = dsm.check(buildipdb.ds_17MON.name)
     gaoyifan_checked = dsm.check(buildipdb.ds_GAOYIFAN.name)
     misakaio_checked = dsm.check(buildipdb.ds_MISAKAIO.name)
-    multi_data_source = len(list(filter(None, [apnic_checked, l7mon_checked, gaoyifan_checked, misakaio_checked]))) > 1
-    multi_state = multi_data_source and MFS_CHECKED or fixed_fState
-    apnic_state = apnic_checked and multi_state or MFS_ENABLED
-    mo_state = buildipdb.ds_APNIC.check('mo') and MFS_CHECKED or MFS_ENABLED
-    hk_state = buildipdb.ds_APNIC.check('hk') and MFS_CHECKED or MFS_ENABLED
-    l7mon_state = l7mon_checked and multi_state or MFS_ENABLED
-    gaoyifan_state = gaoyifan_checked and multi_state or MFS_ENABLED
-    misakaio_state = misakaio_checked and multi_state or MFS_ENABLED
+    standalone_source = sum(map(int, [apnic_checked, l7mon_checked, gaoyifan_checked, misakaio_checked])) == 1
     sub_menu3 = (('点击此处开始更新', lambda x: download_cniplist(dsm.data_source)),
-                 ('建议更新频率：10～30 天一次', 'pass', MFS_DISABLED),
-                 ('请选择数据来源（多选）', 'pass', MFS_DISABLED),
+                 ('建议更新频率：10～30 天一次', *pass_fState),
+                 ('请选择数据来源（多选）', *pass_fState),
                  (None, '-'),
-                 ('APNIC（每日更新）', lambda x: dsm.switch(buildipdb.ds_APNIC.name, True), apnic_state, MFT_RADIOCHECK),
-                 ('  ├─ 包含澳门', lambda x: buildipdb.ds_APNIC.switch('mo', True), mo_state, MFT_RADIOCHECK),
-                 ('  └─ 包含香港', lambda x: buildipdb.ds_APNIC.switch('hk', True), hk_state, MFT_RADIOCHECK),
-                 ('17mon（每季度更新）', lambda x: dsm.switch(buildipdb.ds_17MON.name, True), l7mon_state, MFT_RADIOCHECK),
-                 ('gaoyifan（每日更新）', lambda x: dsm.switch(buildipdb.ds_GAOYIFAN.name, True), gaoyifan_state, MFT_RADIOCHECK),
-                 ('misakaio（每小时更新）', lambda x: dsm.switch(buildipdb.ds_MISAKAIO.name, True), misakaio_state, MFT_RADIOCHECK)
+                 ('APNIC（每日更新）', lambda x: dsm.switch(buildipdb.ds_APNIC.name, True), *make_rc_state(apnic_checked, standalone_source)),
+                 ('  ├─ 包含澳门', lambda x: buildipdb.ds_APNIC.switch('mo', True), *make_rc_state(buildipdb.ds_APNIC.check('mo'), False)),
+                 ('  └─ 包含香港', lambda x: buildipdb.ds_APNIC.switch('hk', True), *make_rc_state(buildipdb.ds_APNIC.check('hk'), False)),
+                 ('17mon（每季度更新）', lambda x: dsm.switch(buildipdb.ds_17MON.name, True), *make_rc_state(l7mon_checked, standalone_source)),
+                 ('gaoyifan（每日更新）', lambda x: dsm.switch(buildipdb.ds_GAOYIFAN.name, True), *make_rc_state(gaoyifan_checked, standalone_source)),
+                 ('misakaio（每小时更新）', lambda x: dsm.switch(buildipdb.ds_MISAKAIO.name, True), *make_rc_state(misakaio_checked, standalone_source)),
                 )
-    fapple_state = builddomains.ds_FELIX.check('apple') and MFS_CHECKED or MFS_ENABLED
     sub_menu4 = (('点击此处开始更新', lambda x: download_domains(builddomains.data_source_manager.data_source)),
-                 ('建议更新频率：1～7 天一次', 'pass', MFS_DISABLED),
-                 ('请选择数据来源', 'pass', MFS_DISABLED),
+                 ('建议更新频率：1～7 天一次', *pass_fState),
+                 ('请选择数据来源', *pass_fState),
                  (None, '-'),
-                 ('felixonmars（随时更新）', 'pass', fixed_fState, MFT_RADIOCHECK),
-                 ('  └─ 包含 apple', lambda x: builddomains.ds_FELIX.switch('apple', True), fapple_state, MFT_RADIOCHECK)
+                 ('felixonmars（随时更新）', 'pass', *make_rc_state(True)),
+                 ('  └─ 包含 apple', lambda x: builddomains.ds_FELIX.switch('apple', True), *make_rc_state(builddomains.ds_FELIX.check('apple'), False))
                 )
     global proxy_state_menu, last_main_menu
     proxy_state_menu = proxy_state = get_proxy_state()
-    disable_state = proxy_state.type == 0 and fixed_fState or MFS_ENABLED
-    disable_http_state = disable_state or proxy_state.type & 2 and not proxy_state.http and fixed_fState or MFS_ENABLED
-    disable_https_state = disable_state or proxy_state.type & 2 and not proxy_state.https and fixed_fState or MFS_ENABLED
-    disable_ftp_state = disable_state or proxy_state.type & 2 and not proxy_state.ftp and fixed_fState or MFS_ENABLED
-    disable_socks_state = disable_state or proxy_state.type & 2 and not proxy_state.socks and fixed_fState or MFS_ENABLED
-    auto_state = proxy_state.type == 2 and LISTEN_AUTO in proxy_state and fixed_fState or MFS_ENABLED
-    act_state = proxy_state.type == 2 and LISTEN_ACT in proxy_state  and fixed_fState or MFS_ENABLED
-    sub_menu5 = (
-                 ('使用自动代理', on_enable_auto_proxy, auto_state, MFT_RADIOCHECK),
-                 (f'使用 {LISTEN_ACTTYPE} 代理', on_enable_act_proxy, act_state, MFT_RADIOCHECK),
-                 ('完全禁用代理', on_disable_proxy, disable_state, MFT_RADIOCHECK),
+    auto_state = proxy_state.type == 2 and LISTEN_AUTO in proxy_state
+    act_state = proxy_state.type == 2 and LISTEN_ACT in proxy_state
+    disable_state = proxy_state.type == 0
+    disable_http_state = disable_state or proxy_state.type & 2 and not proxy_state.http
+    disable_https_state = disable_state or proxy_state.type & 2 and not proxy_state.https
+    disable_ftp_state = disable_state or proxy_state.type & 2 and not proxy_state.ftp
+    disable_socks_state = disable_state or proxy_state.type & 2 and not proxy_state.socks
+    sub_menu5 = (('启动时设置代理', lambda x: sysproxy.switch('start-set', True), *make_rc_state(sysproxy.check('start-set'), False)),
+                 ('退出时恢复代理', lambda x: sysproxy.switch('quit-restore', True), *make_rc_state(sysproxy.check('quit-restore'), False)),
                  (None, '-'),
-                 ('禁用 HTTP 代理', on_disable_http_proxy, disable_http_state, MFT_RADIOCHECK),
-                 ('禁用 HTTPS 代理', on_disable_https_proxy, disable_https_state, MFT_RADIOCHECK),
-                 ('禁用 FTP 代理', on_disable_ftp_proxy, disable_ftp_state, MFT_RADIOCHECK),
-                 ('禁用 SOCKS 代理', on_disable_socks_proxy, disable_socks_state, MFT_RADIOCHECK))
+                 ('使用自动代理', on_enable_auto_proxy, *make_rc_state(auto_state)),
+                 (f'使用 {LISTEN_ACTTYPE} 代理', on_enable_act_proxy, *make_rc_state(act_state)),
+                 ('完全禁用代理', on_disable_proxy, *make_rc_state(disable_state)),
+                 (None, '-'),
+                 ('禁用 HTTP 代理', on_disable_http_proxy, *make_rc_state(disable_http_state)),
+                 ('禁用 HTTPS 代理', on_disable_https_proxy, *make_rc_state(disable_https_state)),
+                 ('禁用 FTP 代理', on_disable_ftp_proxy, *make_rc_state(disable_ftp_state)),
+                 ('禁用 SOCKS 代理', on_disable_socks_proxy, *make_rc_state(disable_socks_state)),
+                )
     visible = IsWindowVisible(hwnd)
     main_menu = (('GotoX 设置', sub_menu1, icon_gotox, MFS_DEFAULT),
                  ('更新 CA 证书集', sub_menu2),
@@ -429,8 +456,9 @@ def build_menu(systray):
                  ('重置自动规则', on_reset_autorule),
                  ('重启 GotoX', on_refresh),
                  (None, '-'),
-                 ('关于', on_about))
-    if main_menu != last_main_menu:
+                 ('关于', on_about)
+                )
+    if not compare_menu_eq(main_menu, last_main_menu):
         systray.update(menu=main_menu)
         last_main_menu = main_menu
 
@@ -469,7 +497,7 @@ start_GotoX()
 #os.environ['HTTPS_PROXY'] = os.environ['HTTP_PROXY'] = LISTEN_AUTO.http
 sleep(0.1)
 balloons_info(f'''
-GotoX 已经启动。        
+GotoX 已经启动。
 
 左键单击：打开菜单
 
@@ -480,6 +508,23 @@ GotoX 已经启动。
 当前系统代理设置为：
 
 {update_tip()}''')
+
+sysproxy_start_state = {key: reg_query_value(key) for key in sysproxy_keys}
+if sysproxy.check('start-set'):
+
+    def _enable_proxy(proxy):
+        global proxy_state_menu
+        proxy_state_menu = get_proxy_state()
+        enable_proxy(proxy)
+        sleep(5)
+        notify_proxy_changed()
+
+    if sysproxy.check('auto'):
+        _enable_proxy(LISTEN_AUTO)
+    elif sysproxy.check('act'):
+        _enable_proxy(LISTEN_ACT)
+
+    del _enable_proxy
 
 running = True
 if reg_notify is None:
