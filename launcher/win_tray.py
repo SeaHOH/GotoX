@@ -178,9 +178,9 @@ def get_proxy_state():
 
 def refresh_proxy_state(enable=None):
     if enable:
-        ProxyOverride = reg_get_value('ProxyOverride')
+        ProxyOverride_Current = reg_get_value('ProxyOverride')
         #导入默认代理例外地址
-        if not ProxyOverride:
+        if not ProxyOverride_Current or ProxyOverride_Current == '<local>':
             reg_set_value('ProxyOverride', winreg.REG_SZ, ProxyOverride)
     Popen((sys.executable, refresh_proxy))
 
