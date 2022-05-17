@@ -166,7 +166,7 @@ def get_proxy_state():
     else:
         ProxyServer = proxy_server(None)
     if AutoConfigURL.type:
-        if ProxyServer:
+        if ProxyServer.type:
             ProxyServer.pac = AutoConfigURL.pac
             ProxyServer.type |= 1
         else:
