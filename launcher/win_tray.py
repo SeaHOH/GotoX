@@ -138,9 +138,6 @@ class proxy_server:
             server_list.insert(0, 'pac=' + self.pac)
         return '\n'.join(server_list)
 
-    def __bool__(self):
-        return bool(self.type)
-
 def reg_query_value(key, path=SETTINGS):
     try:
         return winreg.QueryValueEx(path, key)
@@ -168,7 +165,7 @@ def get_proxy_state():
         ProxyServer = proxy_server(reg_get_value('ProxyServer'))
     else:
         ProxyServer = proxy_server(None)
-    if AutoConfigURL:
+    if AutoConfigURL.type:
         if ProxyServer:
             ProxyServer.pac = AutoConfigURL.pac
             ProxyServer.type |= 1
@@ -299,13 +296,9 @@ def enable_proxy(ProxyServer):
 
 def on_enable_auto_proxy(systray):
     enable_proxy(LISTEN_AUTO)
-    sysproxy.set('auto')
-    sysproxy.set('act', 0, True)
 
 def on_enable_act_proxy(systray):
     enable_proxy(LISTEN_ACT)
-    sysproxy.set('act')
-    sysproxy.set('auto', 0, True)
 
 def on_left_click(systray):
     build_menu(systray)
@@ -485,6 +478,10 @@ def notify_proxy_changed():
     if new_proxy_state:
         text = f'设置由：\n{old_proxy_state}\n变更为：\n{new_proxy_state}'
         balloons_warning(text, '系统代理改变')
+        #此处才能完整记录，虽然无法判断设置改变是否出于用户意愿
+        sysproxy.set('auto', new_proxy_state.type == 2 and LISTEN_AUTO in new_proxy_state)
+        sysproxy.set('act', new_proxy_state.type == 2 and LISTEN_ACT in new_proxy_state)
+        sysproxy.save()
 
 sys_web_browser = sys.getwindowsversion().major < 10 and 'IE' or 'Edge'
 last_main_menu = None
