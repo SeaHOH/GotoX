@@ -23,6 +23,12 @@ class cconfig:
         self._extlist = {}
         self._children = {}
 
+    def __bool__(self):
+        return bool(self.ext)
+
+    def __len__(self):
+        return len(self._extlist)
+
     def close(self, close=False):
         if close or self is self.root:
             children = self.get_children()
