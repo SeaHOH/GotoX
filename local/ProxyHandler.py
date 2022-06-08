@@ -1400,6 +1400,10 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
     def go_TEMPACT(self):
         if GC.LISTEN_ACT == 'GAE' and self.command not in self.gae_fetcmds:
             return self.go_BAD()
+        if GC.LISTEN_ACT == 'GAE' and not GC.GAE_APPIDS:
+            return self.go_BAD()
+        if GC.LISTEN_ACT == "CFW" and not (GC.CFW_SUBDOMAIN and GC.CFW_WORKERS or GC.CFW_WORKER):
+            return self.go_BAD()
         self._set_temp_ACT()
         self.action = GC.LISTEN_ACTNAME
         self.do_action()
