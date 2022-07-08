@@ -1412,6 +1412,10 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         self.do_action()
 
     def go_FAKECERT_TEMPACT(self):
+        if GC.LISTEN_ACT == 'GAE' and (self.command not in self.gae_fetcmds or not GC.GAE_APPIDS):
+            return self.go_BAD()
+        elif GC.LISTEN_ACT == "CFW" and not (GC.CFW_SUBDOMAIN and GC.CFW_WORKERS or GC.CFW_WORKER):
+            return self.go_BAD()
         self.path = '/'
         self._set_temp_ACT()
         self._set_temp_ACT()
