@@ -14,7 +14,7 @@ import threading
 from time import mtime, sleep
 from queue import Queue
 from threading import _start_new_thread as start_new_thread
-from http.client import HTTPResponse
+from http.client import HTTPResponse, _MAXHEADERS
 from .GlobalConfig import GC
 from .compat.openssl import (
     zero_errno, zero_EOF_error, res_ciphers, SSL, SSLConnection,
@@ -231,6 +231,8 @@ N3Tphr+AwTioLnSvaNDyqo+zfpJeXsoiwFLH+Y6YsP6R5IjVBzUoimFgeWeTSbYP
 YQIDAQAB
 -----END PUBLIC KEY-----
 '''}
+
+_MAXHEADERS = 1024
 
 gws_servername = GC.GAE_SERVERNAME
 gae_testgwsiplist = GC.GAE_TESTGWSIPLIST
