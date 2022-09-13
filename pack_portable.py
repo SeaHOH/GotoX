@@ -4,7 +4,9 @@
 
 import os
 import re
+import io
 import sys
+import gzip
 import stat
 import json
 import zlib
@@ -12,7 +14,6 @@ import shutil
 import hashlib
 import pycurl
 import base64
-from io import BytesIO
 from configparser import ConfigParser
 try:
     import packaging
@@ -251,6 +252,7 @@ STRING = b'STRING'
 BYTES = b'BYTES'
 JSON = b'JSON'
 ARB = re.compile(b'Accept-Ranges:\s?bytes', re.I).search
+CEG = re.compile(b'Content-Encoding:\s?gzip', re.I).search
 
 def _download(url, f):
     f.reset_headers()
@@ -263,10 +265,14 @@ def _download(url, f):
     c.setopt(c.FOLLOWLOCATION, 1)
     c.setopt(c.MAXREDIRS, 3)
     c.setopt(c.URL, url)
-    c.setopt(c.WRITEFUNCTION, f.write)
+    c.setopt(c.WRITEFUNCTION, f.write_cb)
     c.setopt(c.HEADERFUNCTION, f.header_cb)
     if start:
         c.setopt(c.RANGE, f'{start:d}-')
+    if f.filepath in (STRING, BYTES, JSON):
+        # With ACCEPT_ENCODING then decompress received contents automatically.
+        # With HTTPHEADER then will not do that, we need this for request RANGE.
+        c.setopt(c.HTTPHEADER, ['Accept-Encoding: gzip'])
     try:
         c.perform()
         ok = c.getinfo(c.RESPONSE_CODE) in (200, 206)
@@ -275,55 +281,85 @@ def _download(url, f):
     return ok
 
 class file:
-    def __init__(self, filepath, sum):
+    def __init__(self, filepath, sum='|'):
         self.f = None
         self.filepath = filepath
-        if sum:
-            self.algorithm, self.sum = sum.split('|')
+        self.algorithm, self.sum = sum.split('|')
+        self.reset_headers()
         self.new_file()
-        self.headers = []
 
     def new_file(self):
         self.close()
         if self.filepath in (STRING, BYTES, JSON):
-            self.f = BytesIO()
+            self.f = io.BytesIO()
         else:
             self.f = open(self.filepath, 'wb')
-        if hasattr(self, 'algorithm'):
-            self.m = getattr(hashlib, self.algorithm)()
+        if self.algorithm:
+            self.m = hashlib.new(self.algorithm)
         else:
             self.m = None
+        self._size = 0
+        self.fgzip = None
+        self.fungzip = None
 
-    def __getattr__(self, name):
-        return getattr(self.f, name)
+    def tell(self):
+        return self._size
 
-    def write(self, data):
+    def getvalue(self):
+        return (self.fungzip or self.f).getvalue()
+
+    def write_cb(self, data):
         if self.accept_ranges is None:
-            self.accept_ranges = bool(ARB(b''.join(self.headers)))
+            self.accept_ranges = bool(ARB(self.headers))
             if self.f.tell() and not self.accept_ranges:
                 self.new_file()
-        self.f.write(data)
+            if self.fgzip is None and bool(CEG(self.headers)):
+                self.fgzip = gzip._GzipReader(self.f)
+                self.fungzip = io.BytesIO()
+        if self.fgzip:
+            offset = self.f.tell()
+            self.f.seek(0, io.SEEK_END)
+        self._size += self.f.write(data)
+        chunks = [data]
+        if self.fgzip:
+            self.f.seek(offset)
+            chunks.clear()
+            while data:
+                offset = self.f.tell()
+                try:
+                    data = self.fgzip.read(sys.maxsize)
+                except (EOFError, gzip.BadGzipFile):
+                    if offset == 0:
+                        self.fgzip._rewind()
+                    elif self.fgzip._decompressor.eof:
+                        self.f.seek(offset)
+                    break
+                chunks.append(data)
+            for chunk in chunks:
+                self.fungzip.write(chunk)
         if self.m:
-            self.m.update(data)
+            for chunk in chunks:
+                self.m.update(chunk)
 
     def header_cb(self, data):
-        self.headers.append(data)
+        self.headers += data
 
     def reset_headers(self):
-        self.headers.clear()
+        self.headers = b''
         self.accept_ranges = None
 
     def close(self):
-        if hasattr(self.f, 'close'):
+        try:
             self.f.close()
+        except AttributeError:
+            pass
 
     def check_sum(self):
         if self.m:
             return self.m.hexdigest() == self.sum
-        else:
-            return True
+        return True
 
-def download(url, filepath=None, sum=None):
+def download(url, filepath=None, sum='|'):
     if not filepath:
         name_parts = url.split('/')[2:]
         filepath = name_parts.pop()
@@ -367,7 +403,7 @@ def download(url, filepath=None, sum=None):
         return res
     else:
         print(f'download {url!r} fail: {err}.', file=sys.stderr)
-        sys.exit(-1)
+        sys.exit(1)
 
 
 # python embed
@@ -376,11 +412,11 @@ config = ConfigParser()
 config.read('pack_portable.ini')
 if len(sys.argv) < 2:
     print('missing version parameter!', file=sys.stderr)
-    sys.exit(-1)
+    sys.exit(1)
 py_ver = sys.argv[1]
 if py_ver not in config.sections():
     print('version parameter mismatch!', file=sys.stderr)
-    sys.exit(-1)
+    sys.exit(1)
 extras = sys.argv[2:]
 
 py_url = config.get(py_ver, 'url')
@@ -480,8 +516,9 @@ allow_prerelease = None
 sub_vers = (len(py_vers[1]) == 1 and
         f'[{{}}-{py_vers[1]}]' or
         f'[{{}}-9]|[1-{py_vers[1][0]}][0-{py_vers[1][1]}]').format
+flag = int(py_vers[1]) < 8 and 'm?' or ''
 is_supported_tags_1 = re.compile(
-        f'(cp|py)3({sub_vers(0)})?-(cp{py_ver}m?|none)-({py_arch}|any)'
+        f'(cp|py)3({sub_vers(0)})?-(cp{py_ver}{flag}|none)-({py_arch}|any)'
         ).search
 is_supported_tags_2 = re.compile(
         f'cp3({sub_vers(2)})-abi3-{py_arch}'
@@ -506,7 +543,7 @@ def extract(project, specifiers):
             dists = None
     if not dists:
         print(f'{project} mismatch specifiers: {specifiers}', file=sys.stderr)
-        sys.exit(-1)
+        sys.exit(1)
     dist_type = None
     for dist in dists:
         if dist['packagetype'] in ('bdist_wheel', 'bdist_egg') and (
@@ -590,7 +627,11 @@ def package(name):
                 shutil.rmtree(filepath, True)
         for filename in filenames:
             filepath = os.path.join(dirpath, filename)
-            if filename.endswith(('pyx', 'pxd', 'html', '.c', '.h', 'ffi_build.py')) or \
+            if filename == 'testing.py' and ('pyparsing' in name or
+                                             'pkg_resources' in name):
+                with open(filepath, 'wb') as f:
+                    f.write(b'pyparsing_test = None\n')
+            elif filename.endswith(('pyx', 'pxd', 'html', '.c', '.h', 'ffi_build.py')) or \
                     filename.startswith(('test.', 'tests.', 'testing.')) or \
                     (filename != '__init__.py' and os.path.getsize(filepath) == 0):
                 os.remove(filepath)
