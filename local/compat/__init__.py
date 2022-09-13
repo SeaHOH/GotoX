@@ -57,19 +57,19 @@ def get_looptype():
         import gevent
         loopobj = gevent.get_hub().loop
         try:
-            assert isinstance(loopobj, gevent.libuv.loop.loop), ''
+            assert isinstance(loopobj, gevent.libuv.loop.loop)
             looptype = 'libuv-cffi-' + gevent.libuv.loop.get_version().split('-')[-1]
             return looptype
         except:
             pass
         try:
-            assert isinstance(loopobj, gevent.libev.corecext.loop), ''
+            assert isinstance(loopobj, gevent.libev.corecext.loop)
             looptype = 'libev-cext-' + gevent.libev.corecext.get_version().split('-')[-1]
             return looptype
         except:
             pass
         try:
-            assert isinstance(loopobj, gevent.libev.corecffi.loop), ''
+            assert isinstance(loopobj, gevent.libev.corecffi.loop)
             looptype = 'libev-cffi-' + gevent.libev.corecffi.get_version().split('-')[-1]
             return looptype
         except:
@@ -140,6 +140,7 @@ def init():
             patch_select()
 
     replace_logging()
+    patch_http_client()
     patch_time()
     patch_builtins()
     patch_configparser()

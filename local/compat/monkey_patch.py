@@ -18,6 +18,10 @@ def patch_stdout():
                                   errors='backslashreplace',
                                   line_buffering=True)
 
+def patch_http_client():
+    import http.client
+    http.client._MAXHEADERS = 1000
+
 def patch_gevent_socket():
     #使用 libuv-cffi 事件循环时，重复 gevent.socket.send 操作可能会被阻塞
     #没找到真正的原因，暂时这么处理，CPU 使用会增加 50-100%
