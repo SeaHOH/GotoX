@@ -6,7 +6,6 @@ import os
 import re
 import io
 import sys
-import gzip
 import stat
 import json
 import zlib
@@ -21,6 +20,11 @@ try:
     from packaging.version import parse as parse_version
 except ImportError:
     from pkg_resources import packaging, parse_version
+
+try:
+    from gzip import _GzipReader, BadGzipFile
+except ImportError:
+    BadGzipFile = OSError
 
 
 sitecustomize = b'''\
@@ -314,7 +318,7 @@ class file:
             if self.f.tell() and not self.accept_ranges:
                 self.new_file()
             if self.fgzip is None and bool(CEG(self.headers)):
-                self.fgzip = gzip._GzipReader(self.f)
+                self.fgzip = _GzipReader(self.f)
                 self.fungzip = io.BytesIO()
         if self.fgzip:
             offset = self.f.tell()
@@ -328,7 +332,7 @@ class file:
                 offset = self.f.tell()
                 try:
                     data = self.fgzip.read(sys.maxsize)
-                except (EOFError, gzip.BadGzipFile):
+                except (EOFError, BadGzipFile):
                     if offset == 0:
                         self.fgzip._rewind()
                     elif self.fgzip._decompressor.eof:
