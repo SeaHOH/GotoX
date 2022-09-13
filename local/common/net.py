@@ -1,5 +1,6 @@
 # coding:utf-8
 
+import re
 import errno
 import socket
 import random
@@ -137,6 +138,15 @@ def isipv6(ip, AF_INET6=socket.AF_INET6, inet_pton=socket.inet_pton):
         return False
     else:
         return True
+
+_portprog = re.compile('(.*):([0-9]*)', re.DOTALL)
+def splitport(host):
+    match = _portprog.fullmatch(host)
+    if match:
+        host, port = match.groups()
+        if port:
+            return host, port
+    return host, None
 
 def explode_ip(ip):
     if isipv4(ip):

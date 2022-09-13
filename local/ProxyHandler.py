@@ -22,7 +22,7 @@ from .common.decorator import make_lock_decorator
 from .common.dns import reset_dns, set_dns, dns_resolve, dns, polluted_hosts
 from .common.net import (
     NetWorkIOError, reset_errno, closed_errno, bypass_errno,
-    isip, isipv4, isipv6, forward_socket )
+    isip, isipv4, isipv6, splitport, forward_socket )
 from .common.path import web_dir
 from .common.proxy import parse_proxy, proxy_no_rdns
 from .common.region import isdirect
@@ -247,11 +247,11 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
     def parse_host(self, host, chost, mhost=True):
         port = None
         #从命令获取主机、端口
-        chost, cport = urlparse.splitport(chost)
+        chost, cport = splitport(chost)
         #确定主机，优先 Host 头域
         if host:
             #从头域获取主机、端口
-            host, port = urlparse.splitport(host)
+            host, port = splitport(host)
             #排除某些程序把代理当成主机名
             if chost and port in self.listen_port and host in self.localhosts:
                 self.host = host = chost
@@ -267,12 +267,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         #确定 Host 头域
         if mhost:
             if (bool(self.ssl), port) not in ((False, 80), (True, 443)):
-                if isipv6(host) and host[0] != '[':
-                    host = '[%s]:%d' % (host, port)
-                else:
-                    host = '%s:%d' % (host, port)
-            else:
-                host = self.host
+                host = f'{host}:{port}'
             if 'Host' in self.headers:
                 self.headers.replace_header('Host', host)
             else:
