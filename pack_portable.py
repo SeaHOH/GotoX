@@ -624,6 +624,13 @@ def package(name):
     if not name:
         return
     abi3 = 'abi3' in name
+    if 'zope.' in name:
+        import glob
+        nspkgpth = glob.glob('zope.*-nspkg.pth')
+        if nspkgpth:
+            os.remove(nspkgpth[0])
+            with open('zope/__init__.py', 'wb') as f:
+                f.write(b'__import__("pkg_resources").declare_namespace(__name__)\n')
     for dirpath, dirnames, filenames in os.walk('.'):
         for dirname in dirnames:
             if dirname in ('test', 'tests', 'testing'):
@@ -635,7 +642,8 @@ def package(name):
                                              'pkg_resources' in name):
                 with open(filepath, 'wb') as f:
                     f.write(b'pyparsing_test = None\n')
-            elif filename.endswith(('pyx', 'pxd', 'html', '.c', '.h', 'ffi_build.py')) or \
+            elif filename.endswith(('.pyx', '.pyi',  '.pxd', 'ffi_build.py', '.html',
+                                '.c', '.h', '.cpp', '.hpp', '.asm', '.obj')) or \
                     filename.startswith(('test.', 'tests.', 'testing.')) or \
                     (filename != '__init__.py' and os.path.getsize(filepath) == 0):
                 os.remove(filepath)
