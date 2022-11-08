@@ -1569,7 +1569,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         logging.warning('%s "%s %s HTTP/1.1" 204 0，GotoX 命令 [%s] 执行完毕。',
                         self.address_string(), self.command, self.url, cmd)
         if exit:
-            sys.exit(0)
+            os._exit(0)
 
     def log_error(self, format, *args):
         self.close_connection = True

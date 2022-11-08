@@ -61,8 +61,8 @@ import logging
 from .GlobalConfig import GC
 
 try:
-    from gevent import __version__ as geventver
-except ImportError:
+    geventver = sys.modules['gevent'].__version__
+except KeyError:
     geventver = None
 else:
     GC.GEVENT_LOOP = compat.get_looptype()
