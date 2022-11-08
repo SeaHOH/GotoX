@@ -206,7 +206,7 @@ def test(ipdb):
     save_iplist_as_db(ipdb, [])
     print('IP 保留地址已保存完毕')
 
-data_source_manager = DataSourceManager()
+data_source_manager = DataSourceManager('ipdb')
 ds_APNIC = data_source_manager.add('APNIC', Url_APNIC, parse_apnic_iplist)
 ds_17MON = data_source_manager.add('17mon', Url_17MON, parse_cidr_iplist)
 ds_GAOYIFAN = data_source_manager.add('GaoYiFan', Url_GAOYIFAN, parse_cidr_iplist)

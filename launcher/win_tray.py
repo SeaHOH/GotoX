@@ -313,18 +313,16 @@ import updatecas
 import buildipdb
 import builddomains
 
-buildipdb.data_source_manager.load()
-builddomains.data_source_manager.load()
+wintray = cconfig('wintray', conf=wintray_conf)
+gloop = wintray.add_child('gloop')
+gloop.load(['libuv-cffi', 'libev-cext', 'libev-cffi', 'nogevent'])
+sysproxy = wintray.add_child('sysproxy')
+sysproxy.load(['start-set', 'quit-restore', 'auto', 'act'])
+buildipdb.data_source_manager.set_conf(wintray)
+builddomains.data_source_manager.set_conf(wintray)
 if not buildipdb.data_source_manager.data_source:
     buildipdb.data_source_manager.set(buildipdb.ds_17MON.name)
 builddomains.data_source_manager.set(builddomains.ds_FELIX.name)
-wintray = cconfig('wintray', conf=wintray_conf)
-gloop = wintray.add_child('gloop')
-gloop.add(['libuv-cffi', 'libev-cext', 'libev-cffi', 'nogevent'])
-gloop.load()
-sysproxy = wintray.add_child('sysproxy')
-sysproxy.add(['start-set', 'quit-restore', 'auto', 'act'])
-sysproxy.load()
 
 MFS_CHECKED = win32_adapter.MFS_CHECKED
 MFS_ENABLED = win32_adapter.MFS_ENABLED
@@ -425,10 +423,7 @@ def build_menu(systray):
     disable_https_state = disable_state or proxy_state.type & 2 and not proxy_state.https
     disable_ftp_state = disable_state or proxy_state.type & 2 and not proxy_state.ftp
     disable_socks_state = disable_state or proxy_state.type & 2 and not proxy_state.socks
-    sub_menu5 = (('启动时设置代理', lambda x: sysproxy.switch('start-set', True), *make_rc_state(sysproxy.check('start-set'), False)),
-                 ('退出时恢复代理', lambda x: sysproxy.switch('quit-restore', True), *make_rc_state(sysproxy.check('quit-restore'), False)),
-                 (None, '-'),
-                 ('使用自动代理', on_enable_auto_proxy, *make_rc_state(auto_state)),
+    sub_menu5 = (('使用自动代理', on_enable_auto_proxy, *make_rc_state(auto_state)),
                  (f'使用 {LISTEN_ACTTYPE} 代理', on_enable_act_proxy, *make_rc_state(act_state)),
                  ('完全禁用代理', on_disable_proxy, *make_rc_state(disable_state)),
                  (None, '-'),
@@ -436,6 +431,9 @@ def build_menu(systray):
                  ('禁用 HTTPS 代理', on_disable_https_proxy, *make_rc_state(disable_https_state)),
                  ('禁用 FTP 代理', on_disable_ftp_proxy, *make_rc_state(disable_ftp_state)),
                  ('禁用 SOCKS 代理', on_disable_socks_proxy, *make_rc_state(disable_socks_state)),
+                 (None, '-'),
+                 ('启动时设置代理', lambda x: sysproxy.switch('start-set', True), *make_rc_state(sysproxy.check('start-set'), False)),
+                 ('退出时恢复代理', lambda x: sysproxy.switch('quit-restore', True), *make_rc_state(sysproxy.check('quit-restore'), False)),
                 )
     visible = IsWindowVisible(hwnd)
     main_menu = (('GotoX 设置', sub_menu1, icon_gotox, MFS_DEFAULT),

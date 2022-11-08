@@ -80,7 +80,7 @@ def download_domains_as_txt(txt, p=1):
         downloading = False
         data_source_manager.clear_source_data()
 
-data_source_manager = DataSourceManager()
+data_source_manager = DataSourceManager('domaindb')
 ds_FELIX = data_source_manager.add('Felix', Url_FCHINA, parse_dnsmasq_domains, 'felixonmars/accelerated-domains.china')
 ds_FAPPLE = ds_FELIX.add_child('Apple', Url_FAPPLE, fullname='felixonmars/apple.china')
 

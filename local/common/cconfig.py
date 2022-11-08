@@ -10,11 +10,11 @@ class cconfig:
         if name != inname:
             print('cconfig param name does not support case sensitivity!')
         if parent is None:
-            self.root = self
+            self._root = self
             if conf:
                 self.conf = conf
         else:
-            self.root = parent.root
+            self._root = None
             parent.add(name)
             parent._children[name] = self
         self.parent = parent
@@ -32,7 +32,7 @@ class cconfig:
     def close(self, close=False):
         if close or self is self.root:
             children = self.get_children()
-            del self.root
+            del self._root
             del self._children
             for child in children:
                 child.close(True)
@@ -153,6 +153,13 @@ class cconfig:
         if os.path.isdir(conf):
             raise ValueError('cconfig param conf can not be a exists dir %r.' % conf)
         self.root._conf = conf
+
+    @property
+    def root(self):
+        try:
+            return self.parent.root
+        except AttributeError:
+            return self._root
 
     @property
     def name(self):

@@ -97,8 +97,9 @@ def init():
         elif 'libev' in argv or 'libev-cext' in argv:
             looptype = 'libev-cext'
         else:
-            gloop_conf = os.path.join(config_dir, 'gloop.conf')
-            gloop = cconfig('gloop', conf=gloop_conf)
+            wintray_conf = os.path.join(config_dir, 'win_tray.conf')
+            wintray = cconfig('wintray', conf=wintray_conf)
+            gloop = wintray.add_child('gloop')
             gloop.add(['libuv-cffi', 'libev-cext', 'libev-cffi', 'nogevent'])
             gloop.load()
             allown_gevent_patch = not gloop.check('nogevent')
@@ -111,7 +112,7 @@ def init():
                     looptype = 'libev-cext'
                 else:
                     looptype = None
-            gloop.close()
+            wintray.close()
 
     if allown_gevent_patch:
         try:

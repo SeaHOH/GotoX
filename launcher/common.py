@@ -108,7 +108,7 @@ class DataSource:
             self.parent = None
             self._generations = 1
             self._sign = 1 << manager.sign_bit
-            self._cconfig = cconfig(name.lower(), conf=manager.ext_conf)
+            self._cconfig = cconfig(name.lower(), manager._conf)
         elif isinstance(manager, self.__class__):
             parent = manager
             manager = parent.manager
@@ -184,14 +184,20 @@ class DataSource:
     __iand__ = __ixor__ = __ior__ = __raise_noit_err
 
 class DataSourceManager:
-    ext_conf = os.path.join(config_dir, 'dsext.conf')
     max_generations = 2
 
-    def __init__(self):
+    def __init__(self, name):
         self._sign_all = 0
         self._sign_bit = 0
         self._valid = {}
-        self._conf = cconfig('ds', conf=self.ext_conf)
+        self._conf = cconfig('ds_' + name)
+
+    def set_conf(self, conf):
+        _conf = self._conf
+        _conf.parent = conf
+        conf.add(_conf.name)
+        conf._children[_conf.name] = _conf
+        self.load()
 
     def add(self, name, url, parser, fullname=None):
         self._conf.add(name)
@@ -222,15 +228,11 @@ class DataSourceManager:
         self._conf.switch(name, save)
 
     def load(self, filename=None):
-        if filename:
-            self.ext_conf = filename
         self._conf.load(filename=filename)
         for ds in self.sources():
             ds.load(filename=filename)
 
     def save(self, filename=None):
-        if filename:
-            self.ext_conf = filename
         self._conf.save(filename=filename)
         for ds in self.sources():
             ds.save(filename=filename)
