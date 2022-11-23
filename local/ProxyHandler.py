@@ -994,7 +994,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                         response.sock.close()
 
     #未配置 CFWorker
-    if not (GC.CFW_SUBDOMAIN and GC.CFW_WORKERS or GC.CFW_WORKER):
+    if not (GC.CFW_WORKER or GC.CFW_SUBDOMAIN and GC.CFW_WORKERS):
         def do_CFW(self):
             noworker = '请编辑 %r 文件，添加可用的 CFWorker 域名到 [cfw] 配置中并重启 GotoX！' % GC.CONFIG_FILENAME
             logging.critical(noworker)
@@ -1346,9 +1346,14 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
     def do_BLOCK(self):
         #返回空白内容
         self.close_connection = False
-        self.write(b'HTTP/1.1 200 Ok\r\n'
+        origin = self.headers.get('Origin')
+        if origin:
+            acao = 'Access-Control-Allow-Origin: %s\r\n' % origin
+        else:
+            acao = ''
+        self.write(b'HTTP/1.1 200 Ok\r\n%s'
                    b'Cache-Control: max-age=86400\r\n'
-                   b'Expires:Oct, 01 Aug 2100 00:00:00 GMT\r\n')
+                   b'Expires:Oct, 01 Aug 2100 00:00:00 GMT\r\n' % acao.encode())
         if self.url_parts and \
                 self.url_parts.path.endswith(('.jpg', '.gif', '.jpeg', '.png', '.bmp')):
             content = (b'GIF89a\x01\x00\x01\x00\x80\xff\x00\xc0\xc0\xc0'
@@ -1393,9 +1398,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             self.badhost[host] = 1
 
     def go_TEMPACT(self):
-        if GC.LISTEN_ACT == 'GAE' and (self.command not in self.gae_fetcmds or not GC.GAE_APPIDS):
-            return self.go_BAD()
-        elif GC.LISTEN_ACT == "CFW" and not (GC.CFW_SUBDOMAIN and GC.CFW_WORKERS or GC.CFW_WORKER):
+        if GC.LISTEN_ACT == 'GAE' and self.command not in self.gae_fetcmds:
             return self.go_BAD()
         self._set_temp_ACT()
         self.action = GC.LISTEN_ACTNAME
@@ -1407,10 +1410,6 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         self.do_action()
 
     def go_FAKECERT_TEMPACT(self):
-        if GC.LISTEN_ACT == 'GAE' and (self.command not in self.gae_fetcmds or not GC.GAE_APPIDS):
-            return self.go_BAD()
-        elif GC.LISTEN_ACT == "CFW" and not (GC.CFW_SUBDOMAIN and GC.CFW_WORKERS or GC.CFW_WORKER):
-            return self.go_BAD()
         self.path = '/'
         self._set_temp_ACT()
         self._set_temp_ACT()
@@ -1428,6 +1427,11 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                    b'Content-Type: text/html\r\n'
                    b'Content-Length: %d\r\n\r\n' % len(c))
         self.write(c)
+
+    if GC.LISTEN_ACT == "CFW" and not (GC.CFW_WORKER or GC.CFW_SUBDOMAIN and GC.CFW_WORKERS) or \
+        GC.LISTEN_ACT == 'GAE' and not GC.GAE_APPIDS:
+        go_TEMPACT = go_BAD
+        go_FAKECERT_TEMPACT = go_FAKECERT
 
     def forward_websocket(self, remote, timeout=90):
         logging.info('%s 转发 "%s %s %s"',
