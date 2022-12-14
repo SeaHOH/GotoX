@@ -1,5 +1,6 @@
 # coding:utf-8
 
+import re
 import zlib
 import struct
 import json
@@ -7,7 +8,7 @@ import math
 import random
 import logging
 import threading
-from time import sleep
+from time import sleep, mtime
 from io import BytesIO
 from gzip import GzipFile, _PaddedFile
 from collections import deque
@@ -18,13 +19,16 @@ from .common.decompress import decompress_readers
 from .common.decorator import make_lock_decorator
 from .common.dns import dns, dns_resolve
 from .common.net import explode_ip
+from .common.util import spawn_later
 
+version = (0, 7)
 http_cfw.max_per_ip = 1
 lock = threading.Lock()
 _lock_worker = make_lock_decorator(lock)
 cfw_iplist = []
 
 class cfw_params:
+    server = ()
     port = 443
     ssl = True
     command = 'POST'
@@ -44,6 +48,21 @@ class cfw_ws_params(cfw_params):
     command = 'GET'
     path = '/ws'
 
+class cfw_detect_params:
+    command = 'GET'
+    path = '/about'
+
+    def __init__(self, cfw_params):
+        self._cfw_params = cfw_params
+        self.headers = {
+            'Host': cfw_params.host,
+            'User-Agent': 'GotoX/ls/0.7',
+            'Accept-Encoding': 'br',
+        }
+
+    def __getattr__(self, name):
+        return getattr(self._cfw_params, name)
+
 cfw_options = {}
 if GC.CFW_PASSWORD:
     cfw_options['password'] = GC.CFW_PASSWORD
@@ -57,6 +76,47 @@ if GC.CFW_SUBDOMAIN and GC.CFW_WORKERS:
 else:
     cfw_paramses = [cfw_params]
     cfw_ws_paramses = [cfw_ws_params]
+
+def fetch_server_version():
+    set_dns()
+    errors = []
+    for worker_params in cfw_paramses:
+        noerror = True
+        response = None
+        try:
+            worker_detect_params = cfw_detect_params(worker_params)
+            response = http_cfw.request(worker_detect_params, headers=worker_detect_params.headers,
+                                        connection_cache_key=worker_params.connection_cache_key)
+            if response.status != 200:
+                logging.warning('CFW [%s] 版本检测失败：%d', worker_params.host, response.status)
+                continue
+            content = decompress_readers['br'](response).read()
+            ver = re.search(b'GotoX remote server ([\d\.]+) in CloudFlare Workers', content)
+            if ver:
+                ver = ver.groups()[0].decode()
+                worker_params.server = server = tuple(map(int, ver.split('.')))
+                if server < version:
+                    logging.warning('CFW [%s] 版本低于本地服务端：%s，建议更新', worker_params.host, ver)
+                elif server > version:
+                    logging.warning('CFW [%s] 版本高于本地服务端：%s，可能无法正常工作', worker_params.host, ver)
+                else:
+                    logging.test('CFW [%s] 版本匹配本地服务端：%s', worker_params.host, ver)
+            else:
+                logging.error('CFW [%s] 没有检测到任何版本信息，请检查配置信息是否正确', worker_params.host)
+        except Exception as e:
+            noerror = False
+            errors.append(e)
+        finally:
+            if noerror and response:
+                response.close()
+                if GC.CFW_KEEPALIVE:
+                    http_cfw.ssl_connection_cache[worker_params.connection_cache_key].append((mtime(), response.sock))
+                else:
+                    response.sock.close()
+    if errors:
+        raise errors[0]
+
+spawn_later(10, fetch_server_version)
 
 @_lock_worker
 def get_worker_params(f=None):
@@ -177,8 +237,15 @@ def cfw_fetch(method, host, url, headers, payload=b'', options=None):
     metadata = ['%s %s' % (method, url)]
     metadata += ['%s\t%s' % header for header in headers.items()]
     metadata = '\n'.join(metadata).encode()
-    metadata = zlib.compress(metadata)[2:-4]
-    metadata = struct.pack('!h', len(metadata)) + metadata
+    worker_params = get_worker_params()
+    if worker_params.server >= (0, 7):
+        deflated = len(metadata) > 3000
+        if deflated:
+            metadata = zlib.compress(metadata)[2:-4]
+        metadata = struct.pack('!H', deflated and len(metadata) | 0x8000 or len(metadata)) + metadata
+    else:
+        metadata = zlib.compress(metadata)[2:-4]
+        metadata = struct.pack('!H', len(metadata)) + metadata
     length = len(metadata) + int(headers.get('Content-Length', 0))
     if payload:
         if hasattr(payload, 'read'):
@@ -195,10 +262,9 @@ def cfw_fetch(method, host, url, headers, payload=b'', options=None):
         options_str = json.dumps(_options)
     else:
         options_str = cfw_options_str
-    worker_params = get_worker_params()
     request_headers = {
         'Host': worker_params.host,
-        'User-Agent': 'GotoX/ls/0.6',
+        'User-Agent': 'GotoX/ls/0.7',
         'Accept-Encoding': ae,
         'Content-Length': str(length),
         'X-Fetch-Options': options_str,
