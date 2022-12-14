@@ -152,16 +152,17 @@
       使用，不要通过它同时下载大量（包括多线程）较大的文件。
 
 ## 兼容性
-- CPython 3.6-3.10 已测试，其它版本则无法保证持续运行正常。
+- CPython 3.6-3.11已测试，其它版本则无法保证持续运行正常。
 - 必须组件：
-    - gevent 20.4.0 及以上
-    - pyOpenSSL 19.1.0 及以上
-    - dnslib 0.9.12 及以上
-    - PySocks 1.7.0 及以上
+    - gevent 22.8.0 及以上
+    - pyOpenSSL 20.0.0 及以上
+    - dnslib 0.9.19 及以上
+    - PySocks 1.7.1
 - 可选组件：
     - brotlicffi
-- 发布将提供包含 Windows CPython 3.9 环境的便携版本。另，从 GotoX 3.8.7 开始，
-  使用了 [nalexandru](https://github.com/nalexandru/api-ms-win-core-path-HACK)
+- 提供脚本支持将 CPython 3.8-3.12 win_amd64 打包为便携版本，发布的便携版本即是
+  由此脚本打包。打包环境为 Python 3.6+、pycurl、7-zip, 并使用了
+  [nalexandru](https://github.com/nalexandru/api-ms-win-core-path-HACK)
   提供的 api-ms-win-core-path-l1-1-0.dll 文件，以帮助 CPython 3.9 及以上版本在
   Windows 7 上正常运行。
 - 由于自己只使用 Windows，所以其它系统不保证能正常使用。如果有需求作者会尽量修改，
