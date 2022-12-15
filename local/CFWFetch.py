@@ -57,7 +57,7 @@ class cfw_detect_params:
         self.headers = {
             'Host': cfw_params.host,
             'User-Agent': 'GotoX/ls/0.7',
-            'Accept-Encoding': 'br',
+            'Accept-Encoding': 'br' in decompress_readers and 'br' or 'gzip',
         }
 
     def __getattr__(self, name):
@@ -90,7 +90,7 @@ def fetch_server_version():
             if response.status != 200:
                 logging.warning('CFW [%s] 版本检测失败：%d', worker_params.host, response.status)
                 continue
-            content = decompress_readers['br'](response).read()
+            content = decompress_readers[response.headers['Content-Encoding']](response).read()
             ver = re.search(b'GotoX remote server ([\d\.]+) in CloudFlare Workers', content)
             if ver:
                 ver = ver.groups()[0].decode()

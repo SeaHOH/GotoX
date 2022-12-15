@@ -19,7 +19,7 @@ addons:
 script:
   - export PYTHON_VERSION=3.11.1
   - export PYTHON_IMPL_VERSION=cp311
-  - export RELEASE_VERSION=$(grep -oP '[0-9\.ab]+' local/__init__.py)
+  - export RELEASE_VERSION=$(grep -oP '[\d\.]+([abc]|post|dev)?\d*' local/__init__.py)
 
 before_deploy:
   - python launcher/updatecas.py -u -d --all
