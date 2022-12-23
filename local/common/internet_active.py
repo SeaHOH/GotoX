@@ -146,6 +146,7 @@ class InternetActiveCheck:
     max_qdata_num = 256
     max_check_times = 0
     only_check_ip = None
+    fake_upd = GC.LINK_FAKEUDPCHECK
 
     def __init__(self, type, domains=domains):
         self.in_check = False
@@ -215,6 +216,10 @@ class InternetActiveCheck:
             while keep_on and not self.last_stat:
                 sleep(5)
             return self.last_stat
+
+        if self.fake_upd:
+            self.last_stat = 1
+            return 1
 
         time_pass = 0
         while self.in_check:
