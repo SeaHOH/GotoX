@@ -92,11 +92,11 @@ function parseFetch(request, ws) {
     let fetchOptions, status = 400, err
     try {
         // 读取代理设置
-        fetchOptions = headers.has('X-Fetch-Options') && headers.get('X-Fetch-Options')
+        fetchOptions = headers.get('X-Fetch-Options')
         fetchOptions = fetchOptions ? JSON.parse(fetchOptions) : {}
         // 处理非法请求
         if (ws && !(request.method === 'GET' && fetchOptions.url && headers.has('Sec-WebSocket-Key')) ||
-            !ws && !(request.method === 'POST' && headers.has('Content-Length') && !isNaN(headers.get('Content-Length')))) {
+            !ws && !(request.method === 'POST' && isFinite(headers.get('Content-Length') || NaN))) {
             throw 'Bad request, please use via GotoX [ https://github.com/SeaHOH/GotoX ].'
         }
         if (password && fetchOptions.password !== password) {
@@ -132,10 +132,8 @@ const cfEmail = {
         try {
             email = decodeURIComponent(escape(email))
         } catch (e) {}
-        if (type == 'email-protection#') {
-            email = email.replace(/"/g, '&quot;')
+        if (type === 'email-protection#')
             return match.replace(this.reLinkSub, `mailto:${email}`)
-        }
         return email
     },
     decode: function (html) {
@@ -158,12 +156,13 @@ cfEmail.bindAll()
 async function handleRequest(request) {
     const url = request.url
     const path = url.substring(url.indexOf('/', 8))
+    let fetchOptions, status, err
     switch (path) {
         case '/gh':
         case '/gh/':
             /** GotoX 代理 API，普通请求 **/
             try {
-                let [fetchOptions, status, err] = parseFetch(request, false)
+                [fetchOptions, status, err] = parseFetch(request, false)
                 if (err) throw err
                 // 读取解析代理请求并获取代理请求响应
                 const response = await fetch(await readRequest(request, fetchOptions), {
@@ -184,7 +183,7 @@ async function handleRequest(request) {
                 if (fetchOptions.decodeemail) {
                 // https://support.cloudflare.com/hc/en-us/articles/200170016-What-is-Email-Address-Obfuscation-
                 // cf.scrapeShield 参数无法关闭 Email Address Obfuscation，解码替换恢复
-                    const ct = headers.has('Content-Type') ? headers.get('Content-Type') : ''
+                    const ct = headers.get('Content-Type') || ''
                     if (ct.includes('text/html') || ct.includes('application/xhtml+xml')) {
                         body = response.clone().body
                         // text() 强制使用 UTF-8 解码，编码错误时自动以备用字符替换
@@ -214,7 +213,7 @@ async function handleRequest(request) {
         case '/ws/':
             /** GotoX 代理 API，WebSocket 请求 **/
             try {
-                let [fetchOptions, status, err] = parseFetch(request, true)
+                [fetchOptions, status, err] = parseFetch(request, true)
                 if (err) throw err
                 // 新建代理请求 Headers
                 const wsHeaders = new Headers()
