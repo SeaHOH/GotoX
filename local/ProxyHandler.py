@@ -38,6 +38,7 @@ from .FilterUtil import (
     get_action, get_connect_action )
 from .FilterConfig import action_filters
 
+gethttpproxy = partial(re.compile(r'^/(htt)?(ps?://)').subn, r'htt\2')
 normattachment = partial(re.compile(r'(?<=filename=)([^"\']+)').sub, r'"\1"')
 getbytes = re.compile(r'^bytes=(\d*)-(\d*)(,..)?').search
 getrange = re.compile(r'^bytes (\d+)-(\d+)/(\d+|\*)').search
@@ -315,6 +316,10 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         if self.host in self.localhosts and (
                 self.port in (80, 443) or
                 self.port in self.listen_port):
+            url, httpproxy = gethttpproxy(self.path)
+            if httpproxy:
+                self.target = url, (True, None)
+                return self.do_IREDIRECT()
             self.do_LOCAL()
             return True
 
@@ -424,6 +429,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         self.payload = payload
         self.reread_req = True
         self.cc = self.close_connection
+        logging.debug('request_headers=%s', request_headers)
         return request_headers.copy(), payload
 
     def handle_response_headers(self, response):
@@ -507,7 +513,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             response_headers['Connection' if self.tunnel else 'Proxy-Connection'] = 'close' if self.close_connection else 'keep-alive'
         headers_data = 'HTTP/1.1 %s %s\r\n%s\r\n' % (response.status, response.reason, ''.join('%s: %s\r\n' % x for x in response_headers.items()))
         self.write(headers_data)
-        logging.debug('headers_data=%s', headers_data)
+        logging.debug('response_headers=%s', headers_data)
         if 300 <= response.status < 400 and \
                 response.status != 304 and \
                 'Location' in response_headers:
@@ -1156,9 +1162,10 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             self.ssl = url_parts.scheme == 'https'
             #重设主机和端口
             origport = self.port
+            local_proxy = self.host in self.localhosts and origport in self.listen_port
             self.parse_host(None, url_parts.netloc, mhost)
             #未明确定义重定向端口时不改变原非标准端口
-            if origport not in (80, 443) and self.port in (80, 443):
+            if not local_proxy and origport not in (80, 443) and self.port in (80, 443):
                 self.ssl = origssl
                 self.port = origport
                 scheme = 'https' if origssl else 'http'

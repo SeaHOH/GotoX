@@ -334,8 +334,8 @@ class BaseHTTPUtil:
             return self.context_cache[cache_key]
         except KeyError:
             pass
-        if self.gws:
-            #强制 GWS 使用 TLSv1.3
+        if self.gws or cache_key.startswith('cloudflare_workers'):
+            #强制使用 TLSv1.3
             ssl_method = SSL.TLSv1_3_METHOD
         else:
             ssl_method = GC.LINK_REMOTESSL
@@ -355,9 +355,10 @@ class BaseHTTPUtil:
         ssl_options |= SSL.OP_NO_COMPRESSION
         #通用问题修复
         ssl_options |= SSL.OP_ALL
+        ssl_options |= SSL.OP_IGNORE_UNEXPECTED_EOF
         #会话重用
-        context.set_session_cache_mode(SSL.SESS_CACHE_CLIENT)
-        context.lock = threading.Lock()
+        ssl_options |= SSL.OP_NO_TICKET
+        context.set_session_cache_mode(SSL.SESS_CACHE_OFF)
         #证书验证
         context.set_cert_store(self._cert_store)
         context.set_verify(SSL.VERIFY_PEER, self._verify_callback)
@@ -414,7 +415,7 @@ class BaseHTTPUtil:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         # set struct linger{l_onoff=1,l_linger=0} to avoid 10048 socket error
         # struct.pack('ii', 1, 0) == b'\x01\x00\x00\x00\x00\x00\x00\x00'
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, b'\x01\x00\x00\x00\x00\x00\x00\x00')
+        #sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, b'\x01\x00\x00\x00\x00\x00\x00\x00')
         # resize socket recv buffer 8K->*K to improve browser releated application performance
         if set_buffer:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, GC.LINK_RECVBUFFER)
@@ -764,7 +765,10 @@ class HTTPUtil(BaseHTTPUtil):
                         callback(e)
                         return isinstance(e, LimiterFull)
                 # reset a large and random timeout to the ipaddr
-                self.ssl_connection_time[ipaddr] = self.timeout + 1
+                try:
+                    self.ssl_connection_time[ipaddr] += 1
+                except KeyError:
+                    self.ssl_connection_time[ipaddr] = self.timeout + 1
                 queobj.put(e)
             break
 

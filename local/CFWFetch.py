@@ -28,7 +28,7 @@ _lock_worker = make_lock_decorator(lock)
 cfw_iplist = []
 
 class cfw_params:
-    server = ()
+    server = (0, 7)
     port = 443
     ssl = True
     command = 'POST'
@@ -127,6 +127,7 @@ def get_worker_params(f=None):
 
 def set_dns():
     if dns.gettill(cfw_params.hostname):
+        http_cfw.max_per_ip = math.ceil(32 / len(cfw_iplist))
         return
     dns.setpadding(cfw_params.hostname)
     explodeip = GC.CFW_EXPLODEIP

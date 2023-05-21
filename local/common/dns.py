@@ -385,20 +385,23 @@ def _dns_udp_resolve(qname, dnsservers, timeout=2, qtypes=qtypes):
                     for r in reply.rr:
                         if r.rtype is qtype:
                             ip = str(r.rdata)
-                            if ip in ip_blacklist:
+                            if ip in ip_blacklist or \
+                                    qtype is AAAA and rr_alone and \
+                                    len(ip) <= 15 and ip.startswith('2001::'):
                                 query_times += 1
-                                iplist.clear()
+                                if ip in ip_blacklist:
+                                    iplist.clear()
                                 if not pollution:
                                     polluted_hosts.add(qname)
                                 pollution = True
                                 break
                             #一个简单排除 IPv6 污染定式的方法，有及其微小的机率误伤正常结果
                             #虽然没办法用于 IPv4，但这只是 check_edns_opt 的后备，聊胜于无
-                            elif qtype is AAAA and pollution and rr_alone and \
-                                    len(ip) <= 15 and ip.startswith('2001::'):
-                                query_times += 1
-                                #iplist.clear()
-                                #break
+                            #elif qtype is AAAA and pollution and rr_alone and \
+                            #        len(ip) <= 15 and ip.startswith('2001::'):
+                            #    query_times += 1
+                            #    #iplist.clear()
+                            #    #break
                             else:
                                 iplist.append(ip)
                 elif reply.header.rcode is NXDOMAIN:
