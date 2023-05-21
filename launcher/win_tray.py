@@ -217,6 +217,9 @@ def on_create_shortcut(systray):
     os.system(create_shortcut_js)
 
 from urllib.request import urlopen
+def on_reset_cacerts(systray):
+    urlopen('http://localhost/docmd?cmd=reset_cacerts')
+
 def on_reset_dns(systray):
     urlopen('http://localhost/docmd?cmd=reset_dns')
 
@@ -340,9 +343,11 @@ def make_rc_state(checked, disable=True):
             ) or MFS_ENABLED, MFT_RADIOCHECK
 
 def on_update_cas(systray):
-    msg = updatecas.update(updatecas.ds_GOOGLE, updatecas.ds_MOZILLA)
+    updated, msg = updatecas.update(updatecas.ds_GOOGLE, updatecas.ds_MOZILLA)
     if msg:
         balloons_warning(msg)
+    if updated:
+        urlopen('http://localhost/docmd?cmd=reset_cacerts')
 
 def download_cniplist(p):
     msg = buildipdb.download_cniplist_as_db(direct_ipdb, p)
@@ -444,6 +449,7 @@ def build_menu(systray):
                  visible and ('隐藏窗口', on_hide) or ('显示窗口', on_show),
                  ('创建桌面快捷方式', on_create_shortcut),
                  (f'设置系统（{sys_web_browser}）代理', sub_menu5),
+                 ('重载 CA 证书集', on_reset_cacerts),
                  ('重置 DNS 缓存', on_reset_dns),
                  ('重置自动规则缓存', on_reset_autorule_cache),
                  ('重置自动规则', on_reset_autorule),

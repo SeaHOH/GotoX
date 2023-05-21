@@ -28,7 +28,7 @@ from .common.proxy import parse_proxy, proxy_no_rdns
 from .common.region import isdirect
 from .common.util import LRUCache, LimiterFull, message_html
 from .GlobalConfig import GC
-from .HTTPUtil import http_gws, http_nor
+from .HTTPUtil import http_gws, http_nor, http_cfw
 from .RangeFetch import RangeFetchs
 from .CFWFetch import cfw_fetch
 from .GAEFetch import (
@@ -1555,7 +1555,11 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         exit = None
         reqs = urlparse.parse_qs(self.url_parts.query)
         cmd = reqs['cmd'][0] #只接受第一个命令
-        if cmd == 'reset_dns':
+        if cmd == 'reset_cacerts':
+            #重载 CA 证书集
+            http_nor.init_cert_store()
+            http_cfw.init_cert_store()
+        elif cmd == 'reset_dns':
             #重置 DNS
             reset_dns()
         elif cmd == 'reset_autorule':

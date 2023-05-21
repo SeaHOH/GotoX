@@ -170,7 +170,7 @@ def update(*dss):
     if downloading:
         msg = '已经有更新 CA 证书集的任务正在进行中，请稍后再试'
         logger.warning(msg)
-        return msg
+        return False, msg
     downloading = True
     updated = []
     for ds in dss:
@@ -181,9 +181,10 @@ def update(*dss):
             logger.warning('更新 CA 证书集 [ %s ] 时发生错误：%s', ds.name, e)
     downloading = False
     if updated:
-        msg = 'CA 证书集 [ %s ] 更新完毕，请重启 GotoX !' % ', '.join(updated)
+        msg = 'CA 证书集 [ %s ] 更新完毕 !' % ', '.join(updated)
         logger.warning(msg)
-        return msg
+        return True, msg
+    return False, None
 
 is_main = __name__ == '__main__'
 logger = getlogger(is_main)
