@@ -297,9 +297,10 @@ class BaseHTTPUtil:
         if GC.LINK_VERIFYGPK:
             self.google_verify = self.google_verify_pkey
         #建立公用 CA 证书库
-        self._context = SSL.Context(SSL.SSLv23_METHOD)
-        self.load_cacert(cacert)
-        self._cert_store = OpenSSL._util.lib.SSL_CTX_get_cert_store(self._context._context)
+        def init_cert_store():
+            self._cert_store = OpenSSL.crypto.X509Store()
+            self.load_cacert(cacert)
+        self.init_cert_store = init_cert_store() or init_cert_store
         if ssl_ciphers:
             self.ssl_ciphers = ssl_ciphers
         self.gws = gws = self.ssl_ciphers is gws_ciphers
@@ -321,9 +322,9 @@ class BaseHTTPUtil:
             cacerts = glob.glob(os.path.join(cacert, '*.pem'))
             if cacerts:
                 for cacert in cacerts:
-                    self._context.load_verify_locations(cacert)
+                    self._cert_store.load_locations(cacert)
         elif os.path.isfile(cacert):
-            self._context.load_verify_locations(cacert)
+            self._cert_store.load_locations(cacert)
         else:
             wait_exit('未找到可信任 CA 证书集，GotoX 即将退出！请检查：%r', cacert)
 
@@ -358,7 +359,7 @@ class BaseHTTPUtil:
         context.set_session_cache_mode(SSL.SESS_CACHE_CLIENT)
         context.lock = threading.Lock()
         #证书验证
-        OpenSSL._util.lib.SSL_CTX_set_cert_store(context._context, self._cert_store)
+        context.set_cert_store(self._cert_store)
         context.set_verify(SSL.VERIFY_PEER, self._verify_callback)
         #加密选择
         context.set_cipher_list(self.ssl_ciphers)
@@ -378,7 +379,7 @@ class BaseHTTPUtil:
         elif depth and ok:
             #添加可信的中间证书，一定程度上有助于验证配置缺失的服务器
             #下一步计划使用直接下载
-            OpenSSL._util.lib.X509_STORE_add_cert(self._cert_store, cert._x509)
+            self._cert_store.add_cert(cert)
         return ok
 
     @staticmethod

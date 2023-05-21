@@ -131,11 +131,8 @@ def init():
                 gevent._config.Loop.default.insert(0, looptype)
             except:
                 pass
-        try:
-            import gevent.monkey
-            gevent.monkey.patch_all(os=False, ssl=False, subprocess=False, signal=False)
-        except TypeError:
-            gevent.monkey.patch_all(os=False)
+        import gevent.monkey
+        gevent.monkey.patch_all(os=False, ssl=False, subprocess=False, signal=False)
         if get_looptype().startswith('libuv') and sys.platform.startswith('win'):
             patch_gevent_socket()
             patch_select()
@@ -149,17 +146,25 @@ def init():
 
     import logging
 
-    if allown_gevent_patch and gevent.__version__ < '1.3.0':
+    if allown_gevent_patch and gevent.__version__ < '21.1.0':
         logging.warning('警告：请更新 gevent 至 1.3.0 以上版本！')
 
     try:
         import OpenSSL
     except ImportError:
-        wait_exit('无法找到 pyOpenSSL，请安装 pyOpenSSL-16.0.0 以上版本，'
+        wait_exit('无法找到 pyOpenSSL，请安装 pyOpenSSL-21.0.0 以上版本，'
                   '或将相应 .egg 放到 %r 文件夹！', packages, exc_info=True)
+
+    import OpenSSL._util
+    try:
+        OpenSSL._util.lib.SSL_CTX_set_cert_store
+    except AttributeError:
+        wait_exit('pyOpenSSL 依赖 cryptography 版本不兼容，请安装非 40.0.0 - '
+                  '40.0.1 版本的 cryptography，或将相应 .egg 放到 %r 文件夹！',
+                  packages)
 
     try:
         import dnslib
     except ImportError:
-        wait_exit('无法找到 dnslib，请安装 dnslib-0.8.3 以上版本，'
+        wait_exit('无法找到 dnslib，请安装 dnslib-0.9.12 以上版本，'
                   '或将相应 .egg 放到 %r 文件夹！', packages, exc_info=True)
