@@ -1,4 +1,5 @@
 gevent >= 22.8.0
+cryptography != 40.0.0, != 40.0.1
 pyOpenSSL >= 22.0.0
 dnslib >= 0.9.19
 PySocks == 1.7.1

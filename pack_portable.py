@@ -13,6 +13,7 @@ import shutil
 import hashlib
 import pycurl
 import base64
+from zipfile import ZipFile
 from configparser import ConfigParser
 try:
     import packaging
@@ -26,6 +27,9 @@ try:
 except ImportError:
     BadGzipFile = OSError
 
+skip_pkg = 0
+allow_prerelease = None
+
 
 sitecustomize = b'''\
 import os
@@ -37,27 +41,20 @@ from importlib.util import spec_from_file_location
 py_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 
 def find_loader(self, fullname, path=None):
-    loader = find_loader.orig(self, fullname)
-    if loader[0] is None:
-        loader = _find_loader(self, fullname)
-    return loader
-
-def _find_loader(self, fullname):
-    path = zip_find_extension(self, fullname)
-    if path:
-        return ExtensionFileLoader(fullname, path), []
-    return None, []
+    loader, portion = find_loader.orig(self, fullname)
+    if loader is None:
+        path = zip_find_extension(self, fullname)
+        if path:
+            return ExtensionFileLoader(fullname, path), []
+    return loader, portion
 
 def find_spec(self, fullname, target=None):
     spec = find_spec.orig(self, fullname)
     if getattr(spec, 'loader', None) is None:
-        spec = _find_spec(self, fullname) or spec
+        path = zip_find_extension(self, fullname)
+        if path:
+            return spec_from_file_location(fullname, path)
     return spec
-
-def _find_spec(self, fullname):
-    path = zip_find_extension(self, fullname)
-    if path:
-        return spec_from_file_location(fullname, path)
 
 def zip_find_extension(self, fullname):
     path = self.prefix + fullname.rpartition('.')[2]
@@ -127,8 +124,14 @@ def set_path():
         eggs_cache = os.path.join(py_dir, 'Eggs-Cache')
 
 def main():
-    patch_zipimporter()
     set_path()
+    os.environ['EGGS_CACHE'] = eggs_cache
+    try:
+        import zipextimporter
+    except ImportError:
+        patch_zipimporter()
+    else:
+        zipextimporter.install()
 
 main()
 '''
@@ -268,6 +271,7 @@ else:
 STRING = b'STRING'
 BYTES = b'BYTES'
 JSON = b'JSON'
+IO = b'IO'
 ARB = re.compile(b'Accept-Ranges:\s?bytes', re.I).search
 CEG = re.compile(b'Content-Encoding:\s?gzip', re.I).search
 
@@ -307,7 +311,7 @@ class file:
 
     def new_file(self):
         self.close()
-        if self.filepath in (STRING, BYTES, JSON):
+        if self.filepath in (STRING, BYTES, JSON, IO):
             self.f = io.BytesIO()
         else:
             self.f = open(self.filepath, 'wb')
@@ -322,8 +326,11 @@ class file:
     def tell(self):
         return self._size
 
+    def getio(self):
+        return self.fungzip or self.f
+
     def getvalue(self):
-        return (self.fungzip or self.f).getvalue()
+        return self.getio().getvalue()
 
     def write_cb(self, data):
         if self.accept_ranges is None:
@@ -366,6 +373,8 @@ class file:
         self.accept_ranges = None
 
     def close(self):
+        if self.filepath is IO:
+            return
         try:
             self.f.close()
         except AttributeError:
@@ -408,6 +417,8 @@ def download(url, filepath=None, sum='|'):
                 res = f.getvalue()
             elif filepath is JSON:
                 res = json.loads(f.getvalue().decode())
+            elif filepath is IO:
+                res = f.getio()
             else:
                 res = filepath
         else:
@@ -422,87 +433,85 @@ def download(url, filepath=None, sum='|'):
         print(f'download {url!r} fail: {err}.', file=sys.stderr)
         sys.exit(1)
 
+def download_as_extracter(url, sum='|'):
+    file = download(url, IO, sum)
 
-# python embed
-ConfigParser.optionxform = lambda s, opt: opt
-config = ConfigParser()
-config.read('pack_portable.ini')
-if len(sys.argv) < 2:
-    print('missing version parameter!', file=sys.stderr)
-    sys.exit(1)
-py_ver = sys.argv[1]
-if py_ver not in config.sections():
-    print('version parameter mismatch!', file=sys.stderr)
-    sys.exit(1)
-extras = sys.argv[2:]
+    def extract(ext, path=None):
+        if ext and ext[0] != '.':
+            ext = '.' + ext
+        with ZipFile(file) as zf:
+            for filename in zf.namelist():
+                if filename.endswith(ext):
+                    zf.extract(filename, path)
 
-py_url = config.get(py_ver, 'url')
-py_sum = config.get(py_ver, 'sum')
-py_ver, py_arch = py_ver.split('-')
-py_vers = py_ver.split('.')
-py_ver = ''.join(py_vers[:2])
-dll_tag = f'cp{py_ver}-{py_arch}'
+    return extract
 
-if not os.path.exists('python/python.exe'):
-    filepath = download(py_url, sum=py_sum)
-    os.system(f'{_7z} e {filepath} -opython {to_null}')
-    os.remove(filepath)
 
-os.chdir('python')
-for filename in useless_exes:
-    try:
-        os.remove(filename)
-    except:
-        pass
-is_dll = re.compile('^(?!python\d).+\.(dll|pyd)$').match
-if not os.path.exists('DLLs'):
-    os.mkdir('DLLs')
-for filename in os.listdir():
-    if filename.endswith(('.txt', '.cat', '.cfg', '._pth')):
-        os.remove(filename)
-    elif is_dll(filename):
-        os.rename(filename, os.path.join('DLLs', filename))
-    elif filename.endswith('.zip'):
-        os.system(f'{_7z} x {filename} -opythonzip {to_null}')
-        os.remove(filename)
-        with open('pythonzip/sitecustomize.py', 'wb') as f:
-            f.write(sitecustomize)
-        with open('pythonzip/svenv.py', 'wb') as f:
-            f.write(simplewinvenv)
-        os.system(f'{_7z} a -mx=9 -mfb=258 -mtc=off {to_null} {filename} ./pythonzip/*')
+## Python embed
+def pack_pyembed():
+    if not os.path.exists('python/python.exe'):
+        filepath = download(py_url, sum=py_sum)
+        os.system(f'{_7z} e {filepath} -opython {to_null}')
+        os.remove(filepath)
+    os.chdir('python')
+    for filename in useless_exes:
+        try:
+            os.remove(filename)
+        except:
+            pass
+    is_dll = re.compile('^(?!python\d).+\.(dll|pyd)$').match
+    for dir in ('DLLs', 'pythonzip'):
+        if not os.path.exists(dir):
+            os.mkdir(dir)
+    url, _, sum = fetch_info('memimport', memimport_ver)[0]
+    memimport_zip = download_as_extracter(url, sum)
+    memimport_zip('pyd', 'DLLs')
+    pythonzip = None
+    for filename in os.listdir():
+        if filename.endswith(('.txt', '.cat', '.cfg', '._pth')):
+            os.remove(filename)
+        elif is_dll(filename):
+            os.rename(filename, os.path.join('pythonzip', filename))
+        elif filename.endswith('.zip'):
+            pythonzip = filename
+            os.system(f'{_7z} x {filename} -opythonzip {to_null}')
+            os.remove(filename)
+            memimport_zip('py', 'pythonzip')
+            with open('pythonzip/sitecustomize.py', 'wb') as f:
+                f.write(sitecustomize)
+            with open('pythonzip/svenv.py', 'wb') as f:
+                f.write(simplewinvenv)
+    if pythonzip:
+        os.system(f'{_7z} a -mx=9 -mfb=258 -mtc=off {to_null} {pythonzip} ./pythonzip/*')
         shutil.rmtree('pythonzip', True)
-if int(py_vers[1]) >= 9:
-    install_dlls = ['''\
+    if int(py_vers[1]) >= 9:
+        install_dlls = ['''\
 for /f "tokens=2 delims=[" %%v in ('ver') do set version=%%v
 for /f "tokens=2" %%v in ('echo %version%') do set version=%%v
 for /f "delims=]" %%v in ('echo %version%') do set version=%%v
 if %version% lss 6.2 ( goto :install )''']
-    for _, filename, *args in dlls[py_arch]:
-        install_dlls.append(f'if exist {filename} del {filename}')
-    install_dlls.append('''
+        for _, filename, *args in dlls[py_arch]:
+            install_dlls.append(f'if exist {filename} del {filename}')
+        install_dlls.append('''
 :del_self
   del %0
   goto :EOF
 
 :install''')
-    for generator, filename, *args in dlls[py_arch]:
-        if not os.path.exists(filename):
-            generator(filename, *args)
-        newfilename = os.path.splitext(filename)[0]
-        install_dlls.append(f'  if exist {newfilename} del {newfilename}')
-        install_dlls.append(f'  rename {filename} {newfilename}')
-    install_dlls.append('  goto :del_self')
-    with open('install_dll.bat', 'w', newline='\r\n') as f:
-        f.write('\n'.join(install_dlls))
+        for generator, filename, *args in dlls[py_arch]:
+            if not os.path.exists(filename):
+                generator(filename, *args)
+            newfilename = os.path.splitext(filename)[0]
+            install_dlls.append(f'  if exist {newfilename} del {newfilename}')
+            install_dlls.append(f'  rename {filename} {newfilename}')
+        install_dlls.append('  goto :del_self')
+        with open('install_dll.bat', 'w', newline='\r\n') as f:
+            f.write('\n'.join(install_dlls))
 
 
-# python packages
+## Python packages
 pypi_api = 'https://pypi.org/pypi/{}/json'.format
 pypi_ver_api = 'https://pypi.org/pypi/{}/{}/json'.format
-if not os.path.exists('site-packages'):
-    os.mkdir('site-packages')
-os.chdir('site-packages')
-
 
 class SpecifierSet(packaging.specifiers.SpecifierSet):
     _allow_yanked = None
@@ -529,19 +538,7 @@ class SpecifierSet(packaging.specifiers.SpecifierSet):
                                      for spec in self._specs)
         return self._allow_yanked
 
-allow_prerelease = None
-sub_vers = (len(py_vers[1]) == 1 and
-        f'[{{}}-{py_vers[1]}]' or
-        f'[{{}}-9]|[1-{py_vers[1][0]}][0-{py_vers[1][1]}]').format
-flag = int(py_vers[1]) < 8 and 'm?' or ''
-is_supported_tags_1 = re.compile(
-        f'(cp|py)3({sub_vers(0)})?-(cp{py_ver}{flag}|none)-({py_arch}|any)'
-        ).search
-is_supported_tags_2 = re.compile(
-        f'cp3({sub_vers(2)})-abi3-{py_arch}'
-        ).search
-
-def extract(project, specifiers):
+def fetch_info(project, specifiers=''):
     data = download(pypi_api(project), JSON)
     if specifiers and specifiers[0] not in '<>!~=':
         project_sub, _, specifiers = specifiers.partition(' ')
@@ -575,6 +572,11 @@ def extract(project, specifiers):
                 break
     url = dist['url']
     filename = dist['filename']
+    sum = '|'.join(('sha256', dist['digests']['sha256']))
+    return (url, filename, sum), project_sub
+
+def extract(project_info, project_sub):
+    filename = project_info[1]
     if project_sub:
         filename = filename.replace(project, project_sub)
     while True:
@@ -585,8 +587,7 @@ def extract(project, specifiers):
                 return
             else:
                 break
-    sum = '|'.join(('sha256', dist['digests']['sha256']))
-    filepath = download(url, dist['filename'], sum)
+    filepath = download(*project_info)
     if filepath.endswith(('.tar.gz', '.tar.xz', '.tar.bz2')):
         os.system(f'{_7z} e {filepath} {to_null}')
         os.remove(filepath)
@@ -678,10 +679,51 @@ def package(name):
                 os.remove(filepath)
         break
 
-for project, specifiers in config.items('site-packages'):
-    package(extract(project, specifiers))
 
-for project in extras:
-    specifiers = config.get('extras-site-packages', project, fallback='')
-    package(extract(project, specifiers))
+if __name__ == '__main__':
+    # read settings
+    ConfigParser.optionxform = lambda s, opt: opt
+    config = ConfigParser()
+    config.read('pack_portable.ini')
+    if len(sys.argv) < 2:
+        print('missing version parameter!', file=sys.stderr)
+        sys.exit(1)
+    py_ver = sys.argv[1]
+    if py_ver not in config.sections():
+        print('version parameter mismatch!', file=sys.stderr)
+        sys.exit(1)
+    extras = sys.argv[2:]
 
+    py_url = config.get(py_ver, 'url')
+    py_sum = config.get(py_ver, 'sum')
+    py_ver, py_arch = py_ver.split('-')
+    py_vers = py_ver.split('.')
+    py_ver = ''.join(py_vers[:2])
+    dll_tag = f'cp{py_ver}-{py_arch}'
+    memimport_ver = config.get('memimport', 'version')
+
+    sub_vers = (len(py_vers[1]) == 1 and
+            f'[{{}}-{py_vers[1]}]' or
+            f'[{{}}-9]|[1-{py_vers[1][0]}][0-{py_vers[1][1]}]').format
+    flag = int(py_vers[1]) < 8 and 'm?' or ''
+    is_supported_tags_1 = re.compile(
+            f'(cp|py)3({sub_vers(0)})?-(cp{py_ver}{flag}|none)-({py_arch}|any)'
+            ).search
+    is_supported_tags_2 = re.compile(
+            f'cp3({sub_vers(2)})-abi3-{py_arch}'
+            ).search
+
+    pack_pyembed()
+
+    if skip_pkg: sys.exit()
+
+    if not os.path.exists('site-packages'):
+        os.mkdir('site-packages')
+    os.chdir('site-packages')
+
+    for project, specifiers in config.items('site-packages'):
+        package((extract(*fetch_info(project, specifiers))))
+
+    for project in extras:
+        specifiers = config.get('extras-site-packages', project, fallback='')
+        package(extract(*fetch_info(project, specifiers)))
