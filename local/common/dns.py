@@ -12,7 +12,7 @@ from time import mtime, sleep
 from threading import _start_new_thread as start_new_thread
 from .net import servers_2_addresses, isip, isipv4, isipv6, stop_all_forward
 from .util import LRUCache
-from local.GlobalConfig import GC
+from ..GlobalConfig import GC
 
 A = dnslib.QTYPE.A
 AAAA = dnslib.QTYPE.AAAA
@@ -113,8 +113,8 @@ dns = LRUCache(GC.DNS_CACHE_ENTRIES, GC.DNS_CACHE_EXPIRATION)
 reset_dns()
 
 from .region import ipdb, islocal, direct_domains_black_tree
-from local.FilterUtil import get_action
-from local.HTTPUtil import http_gws, http_nor
+from ..FilterUtil import get_action
+from ..HTTPUtil import http_gws, http_nor
 
 #待处理：IP 数据库尚未支持 IPv6 地址
 def check_servers(servers, local):

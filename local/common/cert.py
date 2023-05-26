@@ -11,7 +11,7 @@ import OpenSSL
 from OpenSSL import crypto
 from time import time
 from datetime import datetime, timedelta
-from local.GlobalConfig import GC
+from ..GlobalConfig import GC
 from .path import cert_dir
 from .util import LRUCache
 

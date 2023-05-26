@@ -1,10 +1,10 @@
 # coding:utf-8
 
-from local.common.decorator import clean_after_invoked
+from ..common.decorator import clean_after_invoked
 
 @clean_after_invoked
 def replace_logging():
-    import local.clogging as clogging
+    from .. import clogging as clogging
     clogging.replace_logging()
     clogging.addLevelName(15, 'TEST', clogging.COLORS.GREEN)
     clogging.preferredEncoding = 'cp936'

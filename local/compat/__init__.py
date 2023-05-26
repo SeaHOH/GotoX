@@ -2,15 +2,15 @@
 
 import os
 import sys
-from local.common.cconfig import cconfig
-from local.common.path import py_dir, config_dir, data_dir, packages
+from ..common.cconfig import cconfig
+from ..common.path import py_dir, config_dir, data_dir, packages
 
 from .monkey_patch import *
 
 def wait_exit(*args, **kwargs):
     replace_logging()
     patch_time()
-    from local.common.util import wait_exit
+    from ..common.util import wait_exit
     wait_exit(*args, **kwargs)
 
 PY3 = sys.version_info.major == 3

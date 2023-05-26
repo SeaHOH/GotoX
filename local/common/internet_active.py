@@ -16,7 +16,7 @@ from threading import _start_new_thread as start_new_thread
 from .net import isipv4, isipv6, get_wan_ipv6
 from .path import get_dirname
 from .util import spawn_loop
-from local.GlobalConfig import GC
+from ..GlobalConfig import GC
 
 #网络测试要求稳定、快速，所以选国内的 DNS IP
 dns_ips_v4 = (

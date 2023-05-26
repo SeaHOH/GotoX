@@ -193,7 +193,7 @@ direct_opener = None
 dns_ip_api = None
 
 def init_direct_opener():
-    from local.GlobalConfig import GC
+    from ..GlobalConfig import GC
     global direct_opener, dns_ip_api
     direct_opener = urllib.request.OpenerDirector()
     #if GC.proxy:

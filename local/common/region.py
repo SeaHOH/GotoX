@@ -9,7 +9,7 @@ from threading import _start_new_thread as start_new_thread
 from .net import isipv4, isipv6
 from .path import data_dir, launcher_dir
 from .util import LRUCache, DomainsTree
-from local.GlobalConfig import GC
+from ..GlobalConfig import GC
 
 direct_ipdb = os.path.join(data_dir, 'directip.db')
 direct_domains = os.path.join(data_dir, 'directdomains.txt')

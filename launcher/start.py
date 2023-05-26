@@ -10,7 +10,10 @@ def no_tray():
     import subprocess
     dirname = os.path.dirname(os.path.realpath(__file__))
     app_start = os.path.realpath(os.path.join(dirname, '..', 'start.py'))
-    subprocess.Popen((sys.executable, app_start))
+    cmds = [sys.executable, app_start]
+    if hasattr(sys.flags, 'safe_path'):
+        cmds[1:1] = ['-P']
+    subprocess.Popen(cmds)
 
 if sys.platform.startswith('win'):
     import win_tray

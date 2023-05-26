@@ -117,10 +117,10 @@ def set_path():
         sys.path[:] = [os.path.join(py_dir,
                        'python%d%d.zip' % sys.version_info[:2])]
         sys.path.append(os.path.join(py_dir, 'DLLs'))
-        sys.path.append(py_dir)
         if os.path.exists(sp_dir):
             sys.path.append(sp_dir)
             sys.path.extend(glob.glob(os.path.join(sp_dir, '*.egg')))
+        sys.path.append(py_dir)
         eggs_cache = os.path.join(py_dir, 'Eggs-Cache')
 
 def main():

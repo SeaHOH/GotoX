@@ -20,11 +20,16 @@ refresh_proxy = os.path.join(app_root, 'launcher', 'refresh_proxy_win.py')
 wintray_conf = os.path.join(config_dir, 'win_tray.conf')
 
 
+import gotox
 import winreg
 import ctypes
+import subprocess
 from time import sleep
-from subprocess import Popen
-from local import __version__ as gotoxver
+
+
+def Popen(cmds, *args, **kwargs):
+    cmds = cmds[0], '-I', *cmds[1:]
+    return subprocess.Popen(cmds, *args, **kwargs)
 
 SET_PATH = r'Software\Microsoft\Windows\CurrentVersion\Internet Settings'
 ProxyOverride_local = ';'.join(
@@ -237,7 +242,7 @@ def on_refresh(systray):
         ShowWindow(hwnd, 8)
 
 def on_about(systray):
-    about = f'GotoX v{gotoxver}\n\nhttps://github.com/SeaHOH/GotoX'
+    about = f'GotoX v{gotox.__version__}\n\nhttps://github.com/SeaHOH/GotoX'
     MessageBox(None, about, '关于', 0)
 
 def on_quit(systray):

@@ -28,13 +28,15 @@ gcontext = None
 logging = None
 logger = None
 
+from _frozen_importlib_external import spec_from_file_location
+from _frozen_importlib import _load
 
-if root_dir not in sys.path:
-    sys.path.insert(0, root_dir)
+filepath = os.path.join(root_dir, 'local', '__init__.py')
+_load(spec_from_file_location('gotox', filepath))
 
-from local.compat import single_instance, replace_logging, patch_configparser
-from local.common.cconfig import cconfig
-from local.common.decorator import propertyb
+from gotox.compat import single_instance, replace_logging, patch_configparser
+from gotox.common.cconfig import cconfig
+from gotox.common.decorator import propertyb
 
 def load_config():
     patch_configparser()
