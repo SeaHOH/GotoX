@@ -41,6 +41,7 @@ sysproxy_keys = 'AutoConfigURL', 'ProxyEnable', 'ProxyServer', 'ProxyOverride'
 hwnd = ctypes.windll.kernel32.GetConsoleWindow()
 CreateEvent = ctypes.windll.kernel32.CreateEventA
 SetEvent = ctypes.windll.kernel32.SetEvent
+CloseHandle = ctypes.windll.kernel32.CloseHandle
 WaitForSingleObject = ctypes.windll.kernel32.WaitForSingleObject
 RegNotifyChangeKeyValue = ctypes.windll.advapi32.RegNotifyChangeKeyValue
 ShowWindow = ctypes.windll.user32.ShowWindow
@@ -60,6 +61,7 @@ try:
     ACCESS = winreg.KEY_QUERY_VALUE | winreg.KEY_NOTIFY | winreg.KEY_SET_VALUE
     SETTINGS = winreg.OpenKey(winreg.HKEY_CURRENT_USER, SET_PATH, access=ACCESS)
     INFINITE = -1
+    ERROR_ALREADY_EXISTS = 0xB7
 
     notifyHandle = CreateEvent(
         None,                      # lpEventAttributes
@@ -68,6 +70,8 @@ try:
         'pyInternetSettingsNotify' # lpName
     )
     assert notifyHandle != 0, 'CreateEvent 失败'
+    #此情况似乎无法做到 wait 同步，因此转到替代方法
+    assert ctypes.WinError().args[-1] != ERROR_ALREADY_EXISTS, '已存在一个正在运行的托盘实例'
     reg_notify()
 except Exception as e:
     reg_notify = None
@@ -208,9 +212,12 @@ def stop_GotoX():
     else:
         retcode = GotoX_app.poll()
         if retcode is None:
-            urlopen('http://localhost/docmd?cmd=quit')
+            try:
+                urlopen('http://localhost/docmd?cmd=quit')
+            except:
+                GotoX_app.kill()
         else:
-            logger.warning('GotoX 进程已经结束，code：%s。', retcode)
+            logger.warning(f'GotoX 进程已经结束，code：{retcode}。')
 
 def on_show(systray):
     ShowWindow(hwnd, 1)

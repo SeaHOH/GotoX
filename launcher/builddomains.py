@@ -24,18 +24,20 @@ def save_domains_as_txt(txt, domains_list):
             fd.write(b'\n')
 
 def parse_dnsmasq_domains(fd, ds):
-    read = 0
+    read = ll = 0
     try:
         for line in fd:
-            read += len(line)
+            ll = len(line)
+            read += ll
             if line[:1] in b'#;':
                 continue
             linesp = line.split(b'/')
             if len(linesp) == 3:
                 ds.itemlist.append(linesp[1])
+                ll = 0
     except Exception as e:
         logger.warning('parse_dnsmasq_domains 解析出错：%s', e)
-    return read
+    return read, ll
 
 def download_domains_as_txt(txt, p=1):
     global downloading

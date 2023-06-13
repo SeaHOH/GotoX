@@ -346,7 +346,7 @@ def download_as_list(ds):
     read = 0
     fd, l = download(ds.req)
     while True:
-        _read = ds.parser(fd, ds)
+        _read, ll = ds.parser(fd, ds)
         if _read is None:
             read = l
         else:
@@ -356,7 +356,7 @@ def download_as_list(ds):
             break
         #下载失败续传
         #往回跳过可能的缺损条目
-        read = max(read - 100, 0)
+        read -= ll
         ds.req.headers['Range'] = 'bytes=%d-' % read
         logger.debug('%s 列表下载中断，续传：%d/%d' % (ds.fullname, read, l))
         fd, _ = download(ds.req)

@@ -136,40 +136,44 @@ def save_iplist_as_db(ipdb, iplist, padding=b'\xff\xff'):
     logger.debug('保存地址：%s' % ipdb)
 
 def parse_apnic_iplist(fd, ds):
-    read = 0
+    read = ll = 0
     try:
         for line in fd:
-            read += len(line)
+            ll = len(line)
+            read += ll
             linesp = line.decode().split('|')
             if len(linesp) != 7:
                 continue
             if linesp[2] == 'ipv4' and (linesp[1] == 'CN' or ds.check(linesp[1])):
                 ds.itemlist.append((ip2int(linesp[3]), mask_dict[linesp[4]]))
+                ll = 0
             elif linesp[0] == '2' and not ds.update:
                 ds.update = '%s/%s' % (linesp[2], linesp[5])
             elif linesp[2] == 'ipv6':
                 #不需要 IPv6 数据，提前结束
-                return
+                return None, None
     except Exception as e:
         logger.warning('parse_apnic_iplist 解析出错：%s', e)
-    return read
+    return read, ll
 
 def parse_cidr_iplist(fd, ds):
-    read = 0
+    read = ll = 0
     try:
         for line in fd:
-            read += len(line)
+            ll = len(line)
+            read += ll
             if line[:1] in b'#;':
                 continue
             if b'/' in line:
                 if b':' in line:
                     #不需要 IPv6 数据，提前结束
-                    return
+                    return None, None
                 ip, mask = line.decode().strip('\r\n').split('/')
                 ds.itemlist.append((ip2int(ip), 32 - int(mask)))
+                ll = 0
     except Exception as e:
         logger.warning('parse_cidr_iplist 解析出错：%s', e)
-    return read
+    return read, ll
 
 def download_cniplist_as_db(ipdb, p=1):
     global downloading, update
