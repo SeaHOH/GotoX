@@ -16,17 +16,19 @@ def wait_exit(*args, **kwargs):
 PY3 = sys.version_info.major == 3
 if not PY3:
     import time
-    print(u'请使用 Python 3 系列版本运行本程序！\n30 秒后自动退出……')
+    print(u'请使用 Python 3 系列版本运行本程序!\n30 秒后自动退出……')
     time.sleep(30)
     os._exit(-1)
 
 #这段代码负责添加依赖库路径，不要改变位置
 # Windows 使用发布版本自带的 Python 不用重复添加
-if os.path.dirname(sys.executable) != py_dir:
+local_py = os.path.dirname(sys.executable) != py_dir
+if local_py:
     import glob
     #放在最后，优先导入当前运行 Python 已安装模块
     sys.path.append(packages)
-    sys.path.extend(glob.glob(os.path.join(packages, '*.egg')))
+    sys.path.extend(glob.glob(os.path.join(packages, 'helpers-*.egg')))
+    sys.path.extend(glob.glob(os.path.join(packages, '*-none-any.egg')))
 
 @clean_after_invoked
 def single_instance(name):
@@ -119,8 +121,8 @@ def init():
             import gevent
         except ImportError:
             wait_exit('无法找到 gevent 或者与 Python 版本不匹配，'
-                      '请安装 gevent-1.3.0 以上版本，'
-                      '或将相应 .egg 放到 %r 文件夹！\n'
+                      '请安装 gevent-21.1.0 或以上版本' f'''{local_py and '' or
+                     f'，或将相应 .egg 放到 "{packages}" 文件夹'}!\n'''
                       '或者使用 nogevent 参数重新启动。', packages, exc_info=True)
         # libuv-cffi 的 bug 问题越来越大，暂时调整默认顺序不使用它
         if looptype is None:
@@ -147,24 +149,37 @@ def init():
     import logging
 
     if allown_gevent_patch and gevent.__version__ < '21.1.0':
-        logging.warning('警告：请更新 gevent 至 1.3.0 以上版本！')
+        logging.warning('警告：请更新 gevent 至 21.1.0 或以上版本!')
+
+    try:
+        import _cffi_backend  # memimport: pyOpenSSL/cryptography 依赖
+    except ImportError:
+        pass
 
     try:
         import OpenSSL
     except ImportError:
-        wait_exit('无法找到 pyOpenSSL，请安装 pyOpenSSL-21.0.0 以上版本，'
-                  '或将相应 .egg 放到 %r 文件夹！', packages, exc_info=True)
+        wait_exit('无法找到 pyOpenSSL，请安装 pyOpenSSL-21.0.0 或以上版本'
+                  f'''{local_py and '' or
+                 f'，或将相应 .egg 放到 "{packages}" 文件夹'}!''',
+                  exc_info=True)
 
     import OpenSSL._util
     try:
         OpenSSL._util.lib.SSL_CTX_set_cert_store
     except AttributeError:
         wait_exit('pyOpenSSL 依赖 cryptography 版本不兼容，请安装非 40.0.0 - '
-                  '40.0.1 版本的 cryptography，或将相应 .egg 放到 %r 文件夹！',
-                  packages)
+                  '40.0.1 版本的 cryptography' f'''{local_py and '' or
+                 f'，或将相应 .egg 放到 "{packages}" 文件夹'}!''')
 
     try:
         import dnslib
     except ImportError:
-        wait_exit('无法找到 dnslib，请安装 dnslib-0.9.12 以上版本，'
-                  '或将相应 .egg 放到 %r 文件夹！', packages, exc_info=True)
+        wait_exit('无法找到 dnslib，请安装 dnslib-0.9.12 或以上版本，'
+                 f'或将相应 .egg 放到 "{packages}" 文件夹!', exc_info=True)
+
+    try:
+        import socks
+    except ImportError:
+        wait_exit('无法找到 PySocks，请安装 PySocks-1.7.1，'
+                 f'或将相应 .egg 放到 "{packages}" 文件夹!', exc_info=True)
