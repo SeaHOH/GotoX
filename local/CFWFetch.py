@@ -22,13 +22,14 @@ from .common.net import explode_ip
 from .common.util import spawn_later
 
 version = (0, 7)
+UserAgent = 'GotoX/ls/%d.%d' % version
 http_cfw.max_per_ip = 1
 lock = threading.Lock()
 _lock_worker = make_lock_decorator(lock)
 cfw_iplist = []
 
 class cfw_params:
-    server = (0, 7)
+    server = version
     port = 443
     ssl = True
     command = 'POST'
@@ -56,7 +57,7 @@ class cfw_detect_params:
         self._cfw_params = cfw_params
         self.headers = {
             'Host': cfw_params.host,
-            'User-Agent': 'GotoX/ls/0.7',
+            'User-Agent': UserAgent,
             'Accept-Encoding': 'br' in decompress_readers and 'br' or 'gzip',
         }
 
@@ -81,6 +82,8 @@ def fetch_server_version():
     set_dns()
     errors = []
     for worker_params in cfw_paramses:
+        if worker_params.host is None:
+            continue
         noerror = True
         response = None
         try:
@@ -265,7 +268,7 @@ def cfw_fetch(method, host, url, headers, payload=b'', options=None):
         options_str = cfw_options_str
     request_headers = {
         'Host': worker_params.host,
-        'User-Agent': 'GotoX/ls/0.7',
+        'User-Agent': UserAgent,
         'Accept-Encoding': ae,
         'Content-Length': str(length),
         'X-Fetch-Options': options_str,
