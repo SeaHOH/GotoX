@@ -355,7 +355,6 @@ class BaseHTTPUtil:
         ssl_options |= SSL.OP_NO_COMPRESSION
         #通用问题修复
         ssl_options |= SSL.OP_ALL
-        ssl_options |= SSL.OP_IGNORE_UNEXPECTED_EOF
         #会话重用
         ssl_options |= SSL.OP_NO_TICKET
         context.set_session_cache_mode(SSL.SESS_CACHE_OFF)

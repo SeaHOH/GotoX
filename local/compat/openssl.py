@@ -19,6 +19,11 @@ def_ciphers = res_ciphers.replace(b':!SHA1:', b':')
 zero_errno = errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTSOCK
 zero_EOF_error = -1, 'Unexpected EOF'
 
+try:
+    SSL.OP_ALL |= SSL.OP_IGNORE_UNEXPECTED_EOF
+except AttributeError:
+    pass
+
 class SSLConnection:
     '''API-compatibility wrapper for Python OpenSSL's Connection-class.'''
 
