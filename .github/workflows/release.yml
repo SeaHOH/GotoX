@@ -87,7 +87,7 @@ jobs:
 
       - name: Prepare for release 2
         run: |
-          mv *.sum *.zip *.7z GotoX
+          mv body.md *.sum *.zip *.7z GotoX
 
       - name: Create Release
         uses: ncipollo/release-action@v1
