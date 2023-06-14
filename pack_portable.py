@@ -28,6 +28,7 @@ except ImportError:
     BadGzipFile = OSError
 
 skip_pkg = 0
+only_pkg = 0
 allow_prerelease = None
 
 
@@ -35,10 +36,13 @@ sitecustomize = b'''\
 import os
 import sys
 import glob
-from importlib.machinery import EXTENSION_SUFFIXES, ExtensionFileLoader
-from importlib.util import spec_from_file_location
+from _frozen_importlib_external import \
+        EXTENSION_SUFFIXES, SourceFileLoader, \
+        ExtensionFileLoader, spec_from_file_location
 
-py_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+py_dir = os.path.abspath(os.path.join(
+    __file__,
+    * ['..'] * (isinstance(__loader__, SourceFileLoader) and 1 or 2) ))
 
 def find_loader(self, fullname, path=None):
     loader, portion = find_loader.orig(self, fullname)
@@ -132,6 +136,23 @@ def main():
         patch_zipimporter()
     else:
         zipextimporter.install()
+        modules = os.path.join(py_dir, 'memimport_exclude_modules')
+        if os.path.isfile(modules):
+            # debug
+            modules = open(modules, 'r').read().split()
+        elif sys.getwindowsversion() < (10,):
+            # NT 6
+            modules = ['greenlet._greenlet']
+            try:
+                assert int(__import__('cryptography').__version__.split('.')[0]) >= 41
+            except:
+                pass
+            else:
+                modules += ['cryptography.hazmat.bindings._rust']
+        elif __import__('struct').calcsize('P') == 8:
+            # NT 10 x64
+            modules = ['cryptography.hazmat.bindings._rust']
+        zipextimporter.set_exclude_modules(modules)
 
 main()
 '''
@@ -713,7 +734,10 @@ if __name__ == '__main__':
             f'cp3({sub_vers(2)})-abi3-{py_arch}'
             ).search
 
-    pack_pyembed()
+    if only_pkg:
+        os.chdir('python')
+    else:
+        pack_pyembed()
 
     if skip_pkg: sys.exit()
 
