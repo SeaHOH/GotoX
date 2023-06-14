@@ -50,10 +50,7 @@ jobs:
           python pack_portable.py ${1}-${3};
           if [ $? != 0 ]; then return 1; fi;
           rm -rf pack_portable.*;
-          7z a -mx=9 -m0=BCJ2 -m1=LZMA2:mf=bt3:fb=273:lc=2:lp=1:pb=1
-          -m2=LZMA2:fb=273 -m3=LZMA2:fb=273 -m4=LZMA2:fb=273
-          -mb0s0:1 -mb0s1:2 -mb0s2:3 -mb0s3:4
-          GotoX-${{ github.ref_name }}-${2}-${3}.7z *;
+          7z a -mx=9 -m0=BCJ2 -m1=LZMA2:mf=bt3:fb=273:lc=2:lp=1:pb=1 -m2=LZMA2:fb=273 -m3=LZMA2:fb=273 -m4=LZMA2:fb=273 -mb0s0:1 -mb0s1:2 -mb0s2:3 -mb0s3:4 GotoX-${{ github.ref_name }}-${2}-${3}.7z *;
           mv *.7z ..;
           cd ..;
           }
