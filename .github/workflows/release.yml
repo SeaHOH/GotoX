@@ -1,0 +1,96 @@
+name: Release
+on:
+  push:
+    tags: [ '*' ]
+
+jobs:
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: '..'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          sudo apt-get install libcurl4-openssl-dev
+          pip install packaging pycurl
+
+      - name: Prepare for package
+        run: |
+          cd GotoX
+          rm -rf .git*
+          rm -rf .travis*
+
+          python launcher/updatecas.py -u -d --all
+          python launcher/buildipdb.py -u -d --17mon --apnic
+          python launcher/builddomains.py -u -d --felix
+
+          cd python/site-packages
+          7z a -tzip -mx=9 -mfb=258 -mtc=off helpers-win32.egg winsystray
+          rm -rf winsystray
+
+      - name: Pack source
+        run: |
+          7z a -mx=9 -mfb=258 -mtc=off GotoX-${{ github.ref_name }}-py3-any.zip ./GotoX/*
+
+      - name: Pack Windows
+        run: |
+          pack() {
+          cp -r GotoX GotoX-${3};
+          cd GotoX-${3};
+          python pack_portable.py ${1}-${3};
+          if [ $? != 0 ]; then return 1; fi;
+          rm -rf pack_portable.*;
+          7z a -mx=9 -m0=BCJ2 -m1=LZMA2:mf=bt3:fb=273:lc=2:lp=1:pb=1
+          -m2=LZMA2:fb=273 -m3=LZMA2:fb=273 -m4=LZMA2:fb=273
+          -mb0s0:1 -mb0s1:2 -mb0s2:3 -mb0s3:4
+          GotoX-${{ github.ref_name }}-${2}-${3}.7z *;
+          mv *.7z ..;
+          cd ..;
+          }
+          pack 3.11.4 cp311 win_amd64
+
+      - name: Prepare for release
+        shell: python
+        run: |
+          import os
+          import hashlib
+          from glob import glob
+
+          mf = open('md5.sum', 'w')
+          sf = open('sha256.sum', 'w')
+          bf = open('body.md', 'w')
+          bf.write('| filename | md5 | sha256 |\n')
+          bf.write('| -------- | :-: | :----: |\n')
+
+          for artifact in (glob('*.zip') + glob('*.7z')):
+            md5sum = hashlib.md5()
+            sha256sum = hashlib.sha256()
+            with open(artifact, 'rb') as f:
+              b = f.read(8192)
+              while b:
+                md5sum.update(b)
+                sha256sum.update(b)
+                b = f.read(8192)
+            filename = os.path.basename(artifact)
+            md5sum = md5sum.hexdigest().upper()
+            sha256sum = sha256sum.hexdigest().upper()
+            mf.write(f'{md5sum}  {filename}\n')
+            sf.write(f'{sha256sum}  {filename}\n')
+            bf.write(f'| {filename} | {md5sum} | {sha256sum} |\n')
+
+      - name: Create Release
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          bodyFile: 'body.md'
+          artifacts: '*.sum,*.zip,*.7z'
