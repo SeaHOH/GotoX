@@ -61,6 +61,15 @@ class SSLConnection:
                         raise socket.timeout('The socket operation timed out')
                 else:
                     raise
+            except SSL.ZeroReturnError:
+                sstate = self._connection.get_shutdown()
+                if io_func.__name__ == 'send':
+                    if sstate:
+                        raise ConnectionAbortedError(errno.ECONNABORTED, 'Software caused connection abort')
+                else:
+                    if not sstate & SSL.RECEIVED_SHUTDOWN:
+                        raise ConnectionResetError(errno.ECONNRESET, 'Connection reset by remote')
+                raise
 
     def accept(self):
         sock, addr = self._sock.accept()
@@ -94,11 +103,8 @@ class SSLConnection:
         if data:
             try:
                 return self.__iowait(self._connection.send, data)
-            except SSL.ZeroReturnError as e:
-                if self._connection.get_shutdown():
-                    raise ConnectionAbortedError(errno.ECONNABORTED, 'Software caused connection abort')
-                else:
-                    return 0
+            except SSL.ZeroReturnError:
+                return 0
         else:
             return 0
 
@@ -120,9 +126,7 @@ class SSLConnection:
         try:
             return self.__iowait(self._connection.recv, bufsiz, flags)
         except SSL.ZeroReturnError:
-            if self._connection.get_shutdown() | SSL.RECEIVED_SHUTDOWN:
-                return b''
-            raise
+            return b''
         except SSL.SysCallError as e:
             if e.args == zero_EOF_error or e.args[0] in zero_errno:
                 return b''
@@ -137,9 +141,7 @@ class SSLConnection:
         try:
             return self.__iowait(self._connection.recv_into, buffer, nbytes, flags)
         except SSL.ZeroReturnError:
-            if self._connection.get_shutdown() | SSL.RECEIVED_SHUTDOWN:
-                return 0
-            raise
+            return 0
         except SSL.SysCallError as e:
             if e.args == zero_EOF_error or e.args[0] in zero_errno:
                 return 0
