@@ -22,7 +22,7 @@ from .common.decorator import make_lock_decorator
 from .common.dns import reset_dns, set_dns, dns_resolve, dns, polluted_hosts
 from .common.net import (
     NetWorkIOError, reset_errno, closed_errno, bypass_errno,
-    isip, isipv4, isipv6, splitport, forward_socket )
+    isip, isipv4, isipv6, splitport, forward_socket, stop_all_forward )
 from .common.path import web_dir
 from .common.proxy import parse_proxy, proxy_no_rdns
 from .common.region import isdirect
@@ -1206,6 +1206,8 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             ssl_sock = SSLConnection(context, self.connection)
             ssl_sock.do_handshake_server_side()
             self.fakecert = True
+        except SSL.ZeroReturnError:
+            return
         except Exception as e:
             if not e.args or e.args[0] not in bypass_errno:
                 logging.exception('%s 伪造加密连接失败：host=%r，%r',
@@ -1564,6 +1566,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         cmd = reqs['cmd'][0] #只接受第一个命令
         if cmd == 'reset_cacerts':
             #重载 CA 证书集
+            stop_all_forward()
             http_nor.init_cert_store()
             http_cfw.init_cert_store()
         elif cmd == 'reset_dns':

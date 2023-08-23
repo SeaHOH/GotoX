@@ -14,7 +14,7 @@ from select import select
 NetWorkIOError = OSError, OpenSSL.SSL.Error
 reset_errno = errno.ECONNRESET, errno.ENAMETOOLONG
 if hasattr(errno, 'WSAENAMETOOLONG'):
-    reset_errno += errno.WSAENAMETOOLONG,
+    reset_errno += (errno.WSAENAMETOOLONG, )
 closed_errno = errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE
 bypass_errno = -1, 'timed out', *closed_errno
 
@@ -273,16 +273,16 @@ def forward_socket(local, remote, payload=None, timeout=60, tick=4, bufsize=8192
     all_forward_sockets.add(remote)
     connected = False
     try:
-        while allins and timecount > 0:
+        while allins and timecount > 0 and remote in all_forward_sockets:
             start_time = mtime()
             ins, _, err = select(allins, [], allins, tick)
             t = mtime() - start_time
             timecount -= int(t)
             if err:
                 raise socket.error(err)
-            if remote not in all_forward_sockets:
-                break
             for sock in ins:
+                if remote not in all_forward_sockets:
+                    raise ConnectionAbortedError(errno.ECONNABORTED)
                 ndata = sock.recv_into(buf)
                 if ndata:
                     other = local if sock is remote else remote
