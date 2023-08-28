@@ -1566,9 +1566,9 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         cmd = reqs['cmd'][0] #只接受第一个命令
         if cmd == 'reset_cacerts':
             #重载 CA 证书集
-            stop_all_forward()
             http_nor.init_cert_store()
             http_cfw.init_cert_store()
+            stop_all_forward()
         elif cmd == 'reset_dns':
             #重置 DNS
             reset_dns()

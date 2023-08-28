@@ -219,6 +219,10 @@ crypto.X509.get_subject_alt_name = get_subject_alt_name
 if not hasattr(SSL.Context, 'set_cert_store'):
 
     def set_cert_store(self, store):
-        return SSL._lib.SSL_CTX_set_cert_store(self._context, store._store)
+        X509_STORE_up_ref = getattr(SSL._lib, 'X509_STORE_up_ref', None)
+        if X509_STORE_up_ref:
+            rc = X509_STORE_up_ref(store._store)
+            SSL._openssl_assert(rc == 1)
+        SSL._lib.SSL_CTX_set_cert_store(self._context, store._store)
 
     SSL.Context.set_cert_store = set_cert_store

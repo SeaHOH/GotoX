@@ -298,9 +298,11 @@ class BaseHTTPUtil:
             self.google_verify = self.google_verify_pkey
         #建立公用 CA 证书库
         def init_cert_store():
+            self.context_cache.clear()
+            self.tcp_connection_cache.clear()
+            self.ssl_connection_cache.clear()
             self._cert_store = OpenSSL.crypto.X509Store()
             self.load_cacert(cacert)
-        self.init_cert_store = init_cert_store() or init_cert_store
         if ssl_ciphers:
             self.ssl_ciphers = ssl_ciphers
         self.gws = gws = self.ssl_ciphers is gws_ciphers
@@ -313,6 +315,7 @@ class BaseHTTPUtil:
         self.context_cache = LRUCache(min(GC.DNS_CACHE_ENTRIES, 256))
         self.tcp_connection_cache = collections.defaultdict(collections.deque)
         self.ssl_connection_cache = collections.defaultdict(collections.deque)
+        self.init_cert_store = init_cert_store() or init_cert_store
         start_new_thread(self.check_connection_cache, ('tcp',))
         start_new_thread(self.check_connection_cache, ('ssl',))
 
