@@ -251,7 +251,10 @@ def get_connect_action(ssl, host):
         for schemefilter, hostfilter, _, target in filters:
             if schemefilter in schemes and match_host_filter(hostfilter, host):
                 #填充结果到缓存
-                ssl_filters_cache[key] = filter = numToSSLAct[filters.action], target
+                action = numToSSLAct[filters.action]
+                if action == 'do_FAKECERT' and filters.action != FAKECERT:
+                    target = None
+                ssl_filters_cache[key] = filter = action, target
                 #匹配第一个，后面忽略
                 return filter
     #添加默认规则
