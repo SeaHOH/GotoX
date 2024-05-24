@@ -253,7 +253,7 @@ def get_connect_action(ssl, host):
                 #填充结果到缓存
                 action = numToSSLAct[filters.action]
                 if action == 'do_FAKECERT' and filters.action != FAKECERT:
-                    target = None
+                    target = (target, )
                 ssl_filters_cache[key] = filter = action, target
                 #匹配第一个，后面忽略
                 return filter

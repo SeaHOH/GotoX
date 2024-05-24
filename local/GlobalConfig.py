@@ -99,7 +99,7 @@ class GC:
     LINK_REMOTESSL = max(_SSLv[LINK_REMOTESSLTXT], _SSLv['TLS'])
     for k, v in _SSLv.items():
         if LINK_LOCALSSL == v:
-            LINK_REMOTESSLTXT = k
+            LINK_LOCALSSLTXT = k
         if LINK_REMOTESSL == v:
             LINK_REMOTESSLTXT = k
     LINK_REQUESTCOMPRESS = _brotli and CONFIG.getboolean('link', 'requestcompress', fallback=False)
