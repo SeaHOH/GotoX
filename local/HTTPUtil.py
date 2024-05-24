@@ -345,10 +345,11 @@ class BaseHTTPUtil:
         ssl_options = 0
         #使用兼容模式来指定 TLSv1.3
         if ssl_method == SSL.TLSv1_3_METHOD:
-            ssl_method = SSL.SSLv23_METHOD
+            ssl_options |= SSL.OP_NO_TLSv1
+            ssl_options |= SSL.OP_NO_TLSv1_1
             ssl_options |= SSL.OP_NO_TLSv1_2
-        #兼容模式 TLS 禁用 TLSv1 及以下版本
-        if ssl_method == SSL.SSLv23_METHOD:
+        #兼容模式 TLS 禁用 TLSv1.1 及以下版本
+        elif ssl_method == SSL.SSLv23_METHOD:
             ssl_options |= SSL.OP_NO_SSLv2
             ssl_options |= SSL.OP_NO_SSLv3
             ssl_options |= SSL.OP_NO_TLSv1
