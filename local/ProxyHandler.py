@@ -1512,7 +1512,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         try:
             return self.context_cache[host]
         except KeyError:
-            certfile = cert.get_cert(host, ip)
+            certfile, expire = cert.get_cert(host, ip)
             ssl_method = GC.LINK_LOCALSSL
             ssl_options = 0
             #使用兼容模式来指定 TLSv1.3
@@ -1542,7 +1542,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             context.set_session_cache_mode(SSL.SESS_CACHE_SERVER)
             #应用设置
             context.set_options(ssl_options)
-            self.context_cache[host] = context
+            self.context_cache.set(host, context, expire=expire)
             return context
 
     def send_CA(self):

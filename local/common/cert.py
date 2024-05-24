@@ -10,7 +10,7 @@ import logging
 import OpenSSL
 from OpenSSL import crypto
 from time import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from ..GlobalConfig import GC
 from .path import cert_dir
 from .util import LRUCache
@@ -33,6 +33,7 @@ sub_serial = 3600 * 24 * 365 * 46
 sub_years = 1
 sub_time_b = -3600
 sub_time_a = 3600 * 24 * (365 * sub_years + sub_years // 4) + sub_time_b
+sub_time_e = sub_time_a - 3600 * 24
 sub_certs = LRUCache(128)
 
 def create_ca():
@@ -120,8 +121,10 @@ def get_cert(commonname, ip=False):
                 with open(certfile, 'rb') as fp:
                     cert = crypto.load_certificate(crypto.FILETYPE_PEM, fp.read())
                 sub_certs[certfile] = cert
-            # 最早在过期 30 天前更新证书
-            if datetime.strptime(cert.get_notAfter().decode(), '%Y%m%d%H%M%SZ') < datetime.utcnow() + timedelta(days=30):
+            expire = (datetime.strptime(cert.get_notAfter().decode(), '%Y%m%d%H%M%SZ') -
+                      datetime.utcnow()
+                     ).total_seconds()
+            if expire < 2592000:  # 最早在过期 30 天前更新证书
                 try:
                     os.remove(certfile)
                 except OSError as e:
@@ -130,11 +133,11 @@ def get_cert(commonname, ip=False):
                     del sub_certs[certfile]
                     cert = None
             if cert:
-                return certfile
+                return certfile, expire
 
         sub_certs.pop(certfile, None)
         create_subcert(certfile, commonname, ip)
-        return certfile
+        return certfile, sub_time_e
 
 def import_ca(certfile=None):
     if certfile is None:
@@ -172,7 +175,7 @@ def import_ca(certfile=None):
         pCertCtx = None
         for store in (CERT_SYSTEM_STORE_LOCAL_MACHINE, CERT_SYSTEM_STORE_CURRENT_USER):
             try:
-                store_handle = crypt32.CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, None, CERT_STORE_OPEN_EXISTING_FLAG | store, 'root')
+                store_handle = crypt32.CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, None, CERT_STORE_OPEN_EXISTING_FLAG | store, 'ROOT')
                 if not store_handle:
                     if store == CERT_SYSTEM_STORE_CURRENT_USER and not ca_exists:
                         logging.warning('导入证书时发生错误：无法打开 Windows 系统证书仓库')
