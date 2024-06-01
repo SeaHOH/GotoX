@@ -65,6 +65,8 @@ def get_fakesni(host):
         return
     action, rule = get_connect_action(True, host)
     if action == 'do_FAKECERT' and isinstance(rule, str):
+        rule, _, params = rule.partition(';')
+        params = params.lower().split(';') or None
         #同时返回原主机名用于验证，伪造名称只用于 SNI 设置
         _host, _, sni = rule.rpartition('@')
         if sni == 'none':
@@ -75,12 +77,12 @@ def get_fakesni(host):
             sni = random_hostname()
         elif '*' in sni:
             sni = random_hostname(sni)
-        host = _host or host
-        if host == 'none':
-            host = None
-        elif host == 'same':
-            host = sni
-        return sni, host
+        _host = _host or host
+        if _host == 'none':
+            _host = None
+        elif _host == 'same':
+            _host = sni
+        return sni, host, _host, params
     return
 
 def get_redirect(target, url):

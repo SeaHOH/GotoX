@@ -459,11 +459,21 @@ class BaseHTTPUtil:
         return context
 
     def _verify_callback(self, sock, cert, error_number, depth, ok):
+        cert_params = sock.cert_params
+        if cert_params and 'allow insecure' in cert_params:
+            if error_number:
+                logging.warning('%s 已配置为无安全验证, 当前错误代码: %d', sock.orig_hostname, error_number)
+            return 1
+        reason, gen_error_str = CertificateErrorTab.get(error_number, (None, None))
+        if cert_params and reason and f'allow {reason.lower()}' in cert_params:
+            ok = 1
+            error_number = 0
+            logging.debug('%s 已配置为忽略当前错误: %s', sock.orig_hostname, gen_error_str(cert))
         if ok and depth == 0 and not self.gws:
             self.match_hostname(sock, cert)
         elif error_number:
-            if error_number in CertificateErrorTab:
-                raise CertificateError(-1, (CertificateErrorTab[error_number](cert), depth))
+            if reason:
+                raise CertificateError(-1, (gen_error_str(cert), depth, len(sock.get_peer_cert_chain())))
             else:
                 logging.test('%s：%d-%d，%s', sock.get_servername(), depth, error_number, cert.get_subject())
         elif depth and ok:
@@ -477,7 +487,7 @@ class BaseHTTPUtil:
         cert = cert or sock.get_peer_certificate()
         if cert is None:
             raise CertificateError(-1, 'No cert has found.')
-        hostname = hostname or sock.orig_hostname
+        hostname = hostname or sock.proof_hostname
         if hostname is None:
             return
         match_hostname(cert, hostname)
@@ -550,9 +560,10 @@ class BaseHTTPUtil:
 
     def get_ssl_socket(self, sock, cache_key, server_hostname=None):
         if isinstance(server_hostname, tuple):
-            server_hostname, sock.orig_hostname = server_hostname
+            server_hostname, sock.orig_hostname, sock.proof_hostname, sock.cert_params = server_hostname
         else:
-            sock.orig_hostname = server_hostname
+            sock.orig_hostname = sock.proof_hostname = server_hostname
+            sock.cert_params = None
         context = self.get_context(cache_key)
         ssl_sock = SSLConnection(context, sock)
         if server_hostname and not isip(server_hostname):

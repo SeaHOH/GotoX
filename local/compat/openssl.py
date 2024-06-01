@@ -2,17 +2,17 @@
 
 import socket
 import errno
+import ssl
 from OpenSSL import SSL, crypto
 from select import select
-from ssl import _RESTRICTED_SERVER_CIPHERS, _dnsname_match, _ipaddress_match
+from ssl import _dnsname_match, _ipaddress_match
 try:
     from ssl import _inet_paton as ip_address # py3.7+
 except ImportError:
     from ipaddress import ip_address
 
 SSL.TLSv1_3_METHOD = SSL.TLSv1_2_METHOD + 1
-_RESTRICTED_SERVER_CIPHERS += ':!SSLv3'
-res_ciphers = _RESTRICTED_SERVER_CIPHERS.encode()
+res_ciphers = f'{ssl._RESTRICTED_SERVER_CIPHERS}:!SSLv3'.encode()
 # py3.10+ 兼容一些旧的应用和系统
 def_ciphers = res_ciphers.replace(b':!SHA1:', b':')
 
@@ -157,15 +157,26 @@ class SSLConnection:
     def makefile(self, *args, **kwargs):
         return socket.socket.makefile(self, *args, **kwargs)
 
-class CertificateError(SSL.Error):
+class CertificateError(SSL.Error, ssl.CertificateError):
     pass
 
 # https://www.openssl.org/docs/manmaster/man3/X509_verify_cert_error_string.html
 CertificateErrorTab = {
-    10: lambda cert: 'time expired: %s' % cert.get_notAfter().decode(),
-    18: lambda cert: 'self signed, issuer: %s' % str(cert.get_issuer())[18:-2],
-    19: lambda cert: 'self signed, issuer: %s' % str(cert.get_issuer())[18:-2],
-    20: lambda cert: 'untrusted CA, issuer: %s' % str(cert.get_issuer())[18:-2]
+    SSL._lib.X509_V_ERR_CERT_HAS_EXPIRED: (
+        'expired',
+        lambda cert: 'has expired: %s' % cert.get_notAfter().decode()),
+    SSL._lib.X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT: (
+        'self signed',
+        lambda cert: 'self signed, issuer: %s' % str(cert.get_issuer())[18:-2]),
+    SSL._lib.X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN: (
+        'self signed',
+        lambda cert: 'self signed in chain, issuer: %s' % str(cert.get_issuer())[18:-2]),
+    SSL._lib.X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT: (
+        'untrusted CA',
+        lambda cert: 'untrusted CA in chain, issuer: %s' % str(cert.get_issuer())[18:-2]),
+    SSL._lib.X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY: (
+        'untrusted CA',
+        lambda cert: 'untrusted root CA, issuer: %s' % str(cert.get_issuer())[18:-2])
 }
 
 def match_hostname(cert, hostname):

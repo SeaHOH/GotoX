@@ -250,8 +250,9 @@ def verify_certificate(ca, cert):
     store.add_cert(ca)
     try:
         crypto.X509StoreContext(store, cert).verify_certificate()
-    except:
-        return False
+    except Exception as e:
+        if 'expired' not in str(e):
+            return False
     return True
 
 def check_ca():

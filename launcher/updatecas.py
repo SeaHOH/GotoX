@@ -220,10 +220,7 @@ if is_main:
 
     import copy
     while True:
-        if '-u' in sys.argv:
-            cwd = 0
-        else:
-            cwd = select_path(0, 1)
+        cwd = select_path(0, 1)
         if cwd is None:
             continue
         dss = copy.deepcopy((ds_GOOGLE, ds_MOZILLA))
