@@ -143,7 +143,7 @@ domains_file = os.path.join(current_dir, 'domains.txt')
 domains = read_domains(domains_file)
 
 class InternetActiveCheck:
-    max_qdata_num = 256
+    domains_num = 64
     max_check_times = 0
     only_check_ip = None
     fake_upd = GC.LINK_FAKEUDPCHECK
@@ -161,11 +161,16 @@ class InternetActiveCheck:
             self.only_check_ip = GC.LINK_FASTV6CHECK
             self.set_dns_servers_v6()
             spawn_loop(10, self.set_dns_servers_v6)
-        domains = domains.copy()
-        random.shuffle(domains)
-        del domains[self.max_qdata_num:]
-        self.qdata_list = collections.deque(dnslib.DNSRecord.question(qname).pack() for qname in domains)
-        self.sock = socket.socket(socket.AF_INET if self.type == 'IPv4' else socket.AF_INET6, socket.SOCK_DGRAM)
+        self._domains = domains
+        self.domains = None
+        self.domains_num = min(self.domains_num, len(self._domains))
+        self.sock = socket.socket(self.type == 'IPv4' and socket.AF_INET or socket.AF_INET6,
+                                  socket.SOCK_DGRAM)
+
+    def update_qdata(self):
+        if not self.domains:
+            self.domains = random.sample(self._domains, self.domains_num)
+        self.qdata = dnslib.DNSRecord.question(self.domains.pop()).pack()
 
     def set_dns_servers(self, dns_ips):
         dns_servers = [(ip, 53) for ip in dns_ips]
@@ -263,8 +268,7 @@ class InternetActiveCheck:
                     continue
                 if not self.dns_servers:
                     self.dns_servers = self._dns_servers.copy()
-                    self.qdata = self.qdata_list.pop()
-                    self.qdata_list.appendleft(self.qdata)
+                    self.update_qdata()
                 dns_server = self.dns_servers.pop()
                 try:
                     self.sock.sendto(self.qdata, dns_server)
