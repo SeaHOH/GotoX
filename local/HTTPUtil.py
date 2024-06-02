@@ -467,19 +467,17 @@ class BaseHTTPUtil:
         reason, gen_error_str = CertificateErrorTab.get(error_number, (None, None))
         if cert_params and reason and f'allow {reason.lower()}' in cert_params:
             ok = 1
-            error_number = 0
             logging.debug('%s 已配置为忽略当前错误: %s', sock.orig_hostname, gen_error_str(cert))
-        if ok and depth == 0 and not self.gws:
-            self.match_hostname(sock, cert)
-        elif error_number:
-            if reason:
-                raise CertificateError(-1, (gen_error_str(cert), depth, len(sock.get_peer_cert_chain())))
-            else:
-                logging.test('%s：%d-%d，%s', sock.get_servername(), depth, error_number, cert.get_subject())
-        elif depth and ok:
-            #添加可信的中间证书，一定程度上有助于验证配置缺失的服务器
-            #下一步计划使用直接下载
-            self._cert_store.add_cert(cert)
+        if ok:
+            if depth == 0:
+                if not self.gws:
+                    self.match_hostname(sock, cert)
+            elif not error_number:
+                #添加可信的中间证书，一定程度上有助于验证配置缺失的服务器
+                #下一步计划使用直接下载
+                self._cert_store.add_cert(cert)
+        elif reason:
+            raise CertificateError(-1, (gen_error_str(cert), depth, len(sock.get_peer_cert_chain())))
         return ok
 
     @staticmethod
