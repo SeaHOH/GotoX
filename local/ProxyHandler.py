@@ -28,7 +28,7 @@ from .common.proxy import parse_proxy, proxy_no_rdns
 from .common.region import isdirect
 from .common.util import LRUCache, LimiterFull, message_html
 from .GlobalConfig import GC
-from .HTTPUtil import http_gws, http_nor, http_cfw
+from .HTTPUtil import http_gws, http_nor, http_cfw, set_maxperip
 from .RangeFetch import RangeFetchs
 from .CFWFetch import cfw_fetch
 from .GAEFetch import (
@@ -239,10 +239,13 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                                b'Content-Length: %d\r\n\r\n' % len(c))
                     self.write(c)
                 return
-            if profile == '@v4':
-                dns[self.hostname] = [ip for ip in dns[self.hostname] if isipv4(ip)]
-            elif profile == '@v6':
-                dns[self.hostname] = [ip for ip in dns[self.hostname] if isipv6(ip)]
+            if profile:
+                if profile.ipv == 4:
+                    dns[hostname] = [ip for ip in dns[hostname] if isipv4(ip)]
+                elif profile.ipv == 6:
+                    dns[hostname] = [ip for ip in dns[hostname] if isipv6(ip)]
+                if profile.maxperip:
+                    set_maxperip(dns[hostname], profile.maxperip)
         getattr(self, self.action)()
 
     def parse_host(self, host, chost, mhost=True):

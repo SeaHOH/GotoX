@@ -322,6 +322,11 @@ gws_servername = GC.GAE_SERVERNAME
 gae_testgwsiplist = GC.GAE_TESTGWSIPLIST
 autorange_threads = GC.AUTORANGE_FAST_THREADS
 _lock_context = make_lock_decorator()
+maxperip_settings = LRUCache(128, 600)
+
+def set_maxperip(ips, maxperip):
+    for ip in ips:
+        maxperip_settings.set(ip, maxperip)
 
 class LimitConnection(LimitDictBase):
     'A connection limiter wrapper for remote IP.'
@@ -355,7 +360,7 @@ class LimitConnect(LimitDictBase):
     'A connect limiter for host cache key.'
 
     maxsize = 3
-    timeout = 8
+    timeout = 300
 
 LimitConnection.init()
 LimitConnect.init()
@@ -540,9 +545,14 @@ class BaseHTTPUtil:
         else:
             # create a ipv4/ipv6 socket object
             sock = _socket(AF_INETX)
+        maxperip, timeout = maxperip_settings.get(ip, (None, None))
+        if maxperip:
+            maxperip = min(maxperip, self.max_per_ip)
+        else:
+            maxperip = self.max_per_ip
         try:
             # wrap for connect limit
-            sock = LimitConnection(sock, ip, self.max_per_ip)
+            sock = LimitConnection(sock, ip, maxperip, timeout)
         except LimiterFull as e:
             new_sock_cache.append(sock)
             raise e

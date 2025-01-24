@@ -140,11 +140,6 @@ def init():
             patch_select()
 
     replace_logging()
-    patch_http_client()
-    patch_time()
-    patch_builtins()
-    patch_configparser()
-    patch_dnslib()
 
     import logging
 
@@ -183,3 +178,10 @@ def init():
     except ImportError:
         wait_exit('无法找到 PySocks，请安装 PySocks-1.7.1，'
                  f'或将相应 .egg 放到 "{packages}" 文件夹!', exc_info=True)
+
+    patch_http_client()
+    patch_time()
+    patch_builtins()
+    patch_configparser()
+    patch_dnslib()
+    patch_socks()

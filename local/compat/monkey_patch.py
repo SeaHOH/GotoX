@@ -181,6 +181,11 @@ def patch_configparser():
     RawConfigParser.read = lambda s, f, encoding='utf8': _read(s, f, encoding)
 
 @clean_after_invoked
+def patch_socks():
+    import socks
+    socks.PROXY_TYPES['SOCKS'] = socks.PROXY_TYPES['SOCKS5']
+
+@clean_after_invoked
 def patch_dnslib():
     import dnslib
 

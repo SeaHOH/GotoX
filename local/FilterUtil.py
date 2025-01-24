@@ -2,6 +2,7 @@
 
 import threading
 import logging
+from copy import copy
 from time import mtime, sleep
 from threading import _start_new_thread as start_new_thread
 from functools import partial
@@ -12,13 +13,14 @@ from .common.path import config_dir
 from .common.util import LRUCache, DomainsTree
 from .GlobalConfig import GC
 from .FilterConfig import (
-    FAKECERT, numToAct, numToSSLAct, action_filters as _action_filters )
+    FORWARD, DIRECT, FAKECERT,
+    numToAct, numToSSLAct, action_filters as _action_filters )
 
 gLock = threading.Lock()
 gn = 0
 action_filters = _action_filters.config
 filters_cache = LRUCache(256)
-ssl_filters_cache = LRUCache(128)
+ssl_filters_cache = LRUCache(256)
 reset_method_list = [reset_dns]
 
 def lock_filters_cache(func):
@@ -175,6 +177,49 @@ def unset_temp_fakesni(host):
         ssl_filters_cache[host] = 'do_FAKECERT', None
         return True
 
+class Profile:
+    def __init__(self, name=None, value=None):
+        if name:
+            setattr(self, name, value)
+    def __getattr__(self, name):
+        return
+
+profile_none = Profile()
+profile_ipv4 = Profile('ipv', 4)
+profile_ipv6 = Profile('ipv', 6)
+
+def parse_profile(action, target):
+    if target and action in (FORWARD, DIRECT):
+        _, profile = target
+        if profile:
+            profiles = []
+            ipv = maxperip = None
+            for p in profile.split('@'):
+                if p == 'v4':
+                    ipv = profile_ipv4
+                elif p == 'v6':
+                    ipv = profile_ipv6
+                elif p[:8] == 'maxcc':
+                    try:
+                        maxperip = [n and int(n) for n in p[8:].split(';', 1)]
+                    except:
+                        pass
+                    else:
+                        if len(maxperip) == 1:
+                            maxperip.append(None)
+                elif p:
+                    profiles.append(p)
+            if maxperip or profiles:
+                profile = copy(ipv or profile_none)
+                for p in profiles:
+                    setattr(profile, p, True)
+                if maxperip:
+                    setattr(profile, 'maxperip', maxperip)
+            else:
+                profile = ipv or profile_none
+            target = _, profile
+    return target
+
 @lock_filters_cache
 def get_action(scheme, host, path, url):
     schemes = '', scheme
@@ -217,6 +262,7 @@ def get_action(scheme, host, path, url):
         for schemefilter, hostfilter, pathfilter, target in filters:
             if schemefilter in schemes and match_host_filter(hostfilter, host):
                 action = numToAct[filters.action]
+                target = parse_profile(filters.action, target)
                 #填充规则到缓存
                 _filters.append((pathfilter, action, target))
                 #匹配第一个，后面忽略
@@ -254,7 +300,9 @@ def get_connect_action(ssl, host):
             if schemefilter in schemes and match_host_filter(hostfilter, host):
                 #填充结果到缓存
                 action = numToSSLAct[filters.action]
-                if action == 'do_FAKECERT' and filters.action != FAKECERT:
+                if filters.action == FORWARD:
+                    target = parse_profile(filters.action, target)
+                if action == 'do_FAKECERT' and filters.action != FAKECERT and isinstance(target, str):
                     target = (target, )
                 ssl_filters_cache[key] = filter = action, target
                 #匹配第一个，后面忽略

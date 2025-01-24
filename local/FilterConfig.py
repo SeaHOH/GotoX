@@ -56,7 +56,7 @@ actToNum = {
     'IREDIRECT' : IREDIRECT,
 }
 
-isfiltername = re.compile(r'(?P<order>\d+)-(?P<action>\w+)').match
+isfiltername = re.compile(r'(?P<order>\d+)-(?P<action>\w+)(?P<proxy>=(?:socks[45]?|http)://.+)?').match
 isempty = re.compile(r'^\s*$').match
 if GC.LINK_PROFILE == 'ipv4':
     pickip = lambda str: [ip.strip() for ip in str.split('|') if isipv4(ip.strip())]
@@ -86,13 +86,13 @@ class ACTION_FILTERS:
         order_sections = []
         for section in self.CONFIG._sections:
             try:
-                order, action = isfiltername(section).group('order', 'action')
-                order_sections.append((int(order), action, section))
+                order, action, proxy = isfiltername(section).group('order', 'action', 'proxy')
+                order_sections.append((int(order), action, proxy, section))
             except:
                 continue
         order_sections.sort(key=lambda x: x[0])
         self.config = []
-        for order, action, section in order_sections:
+        for order, action, proxy, section in order_sections:
             action = action.upper()
             if action not in actToNum:
                 continue
@@ -126,12 +126,15 @@ class ACTION_FILTERS:
                     if path[:1] == '@':
                         path = re.compile(path[1:]).search
                 v = v.rstrip()
-                if filters.action in (FAKECERT, CFW):
+                if action == 'PROXY':
+                    if proxy and not v:
+                        v = proxy
+                elif action in ['FAKECERT', 'CFW']:
                     if not v:
                         v = None
-                elif filters.action in (BLOCK, GAE):
+                elif action in ['BLOCK', 'GAE']:
                     v = None
-                elif filters.action in (FORWARD, DIRECT):
+                elif action in ['FORWARD', 'DIRECT']:
                     if v[:1] == '@':
                         p, _, v = v.partition(' ')
                     else:
@@ -145,7 +148,7 @@ class ACTION_FILTERS:
                     elif isip(v) or not (v in GC.IPLIST_MAP or v.find('.') > 0):
                         v = None
                     v = v, p
-                elif filters.action in (REDIRECT, IREDIRECT):
+                elif action in ['REDIRECT', 'IREDIRECT']:
                     if v[:1] == '!':
                         v = v[1:].lstrip()
                         mhost = False
