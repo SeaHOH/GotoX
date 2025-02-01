@@ -199,9 +199,9 @@ def parse_profile(action, target):
                     ipv = profile_ipv4
                 elif p == 'v6':
                     ipv = profile_ipv6
-                elif p[:8] == 'maxcc':
+                elif p[:5] == 'maxcc':
                     try:
-                        maxperip = [n and int(n) for n in p[8:].split(';', 1)]
+                        maxperip = [n and int(n) for n in p[5:].split(';', 1)]
                     except:
                         pass
                     else:
