@@ -526,27 +526,35 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             self.address_string(response), self.action[3:], self.command, self.url, response.status, length, color=response.status == 304 and 'green')
         return response, data, need_chunked, ws_ok
 
+    def send_504(self):
+        c = message_html('504 响应超时',
+                         '响应超时',
+                         '获取 %s 超时，请稍后重试。' % self.url).encode()
+        self.write(b'HTTP/1.1 504 Gateway Timeout\r\n'
+                   b'Content-Type: text/html\r\n'
+                   b'Content-Length: %d\r\n\r\n' % len(c))
+        self.write(c)
+
+    def stop_retry(self, retry, payload, has_response):
+        if retry and payload and isinstance(payload, bytes) or hasattr(payload, 'readed') and payload.readed:
+            logging.warning('%s %s 由于有上传数据 "%s %s" 终止重试', self.address_string(), self.action, self.command, self.url)
+            self.close_connection = True
+            if not has_response:
+                self.send_504()
+            return True
+
     def do_DIRECT(self):
         #直接请求目标地址
         hostname = self.hostname
         http_util = http_gws if hostname.startswith('google') else http_nor
         request_headers, payload = self.handle_request_headers()
-        headers_sent = False
+        has_response = False
         for retry in range(2):
-            if retry > 0 and payload and isinstance(payload, bytes) or hasattr(payload, 'readed') and payload.readed:
-                logging.warning('%s do_DIRECT 由于有上传数据 "%s %s" 终止重试', self.address_string(), self.command, self.url)
-                self.close_connection = True
-                if not headers_sent:
-                    c = message_html('504 响应超时',
-                                     '响应超时',
-                                     '获取 %s 超时，请稍后重试。' % self.url).encode()
-                    self.write(b'HTTP/1.1 504 Gateway Timeout\r\n'
-                               b'Content-Type: text/html\r\n'
-                               b'Content-Length: %d\r\n\r\n' % len(c))
-                    self.write(c)
+            if self.stop_retry(retry, payload, has_response):
                 return
             noerror = True
             response = None
+            ws_ok = False
             self.close_connection = self.cc
             try:
                 connection_cache_key = '%s:%d' % (hostname, self.port)
@@ -571,6 +579,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                         logging.warning('%s do_DIRECT "%s %s" 失败，尝试使用 "%s" 规则。',
                                         self.address_string(), self.command, self.url, GC.LISTEN_ACT)
                         return self.go_TEMPACT()
+                has_response = True
                 #发生错误时关闭连接
                 if response.status >= 400:
                     noerror = False
@@ -580,7 +589,6 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                                     self.address_string(response), self.command, self.url, GC.LISTEN_ACT)
                     return self.go_TEMPACT()
                 response, data, need_chunked, ws_ok = self.handle_response_headers(response)
-                headers_sent = True
                 if ws_ok:
                     self.forward_websocket(response.sock)
                 else:
@@ -619,7 +627,7 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                                     self.address_string(response or e), self.command, self.url, e)
                     raise e
             finally:
-                if self.ws:
+                if ws_ok:
                     return
                 if not noerror or not response:
                     self.close_connection = True
@@ -662,34 +670,24 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
         request_headers, payload = self.handle_request_headers()
         if request_headers is None:
             return
-        headers_sent = False
+        has_response = False
         if self.target and '@follow' in self.target:
             options = {'redirect': 'true'}
         else:
             options = None
         for retry in range(GC.CFW_FETCHMAX):
-            if retry > 0 and payload and isinstance(payload, bytes) or hasattr(payload, 'readed') and payload.readed:
-                logging.warning('%s do_CFW 由于有上传数据 "%s %s" 终止重试',
-                                self.address_string(), self.command, self.url)
-                self.close_connection = True
-                if not headers_sent:
-                    c = message_html('504 响应超时',
-                                     '响应超时',
-                                     '获取 %s 超时，请稍后重试。' % self.url).encode()
-                    self.write(b'HTTP/1.1 504 Gateway Timeout\r\n'
-                               b'Content-Type: text/html\r\n'
-                               b'Content-Length: %d\r\n\r\n' % len(c))
-                    self.write(c)
+            if self.stop_retry(retry, payload, has_response):
                 return
             noerror = True
             response = None
+            ws_ok = False
             self.close_connection = self.cc
             try:
                 response = cfw_fetch(self.command, self.host, self.url, request_headers, payload, options)
                 if not response:
                     continue
+                has_response = True
                 response, data, need_chunked, ws_ok = self.handle_response_headers(response)
-                headers_sent = True
                 if ws_ok:
                     self.forward_websocket(response.sock)
                 else:
@@ -706,8 +704,10 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
                                     self.address_string(response or e), self.command, self.url, e)
                     raise e
             finally:
-                if self.ws:
+                if ws_ok:
                     return
+                if not has_response and retry + 1 == GC.CFW_FETCHMAX:
+                    return self.send_504()
                 if not noerror or not response:
                     self.close_connection = True
                 if response:
