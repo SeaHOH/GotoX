@@ -88,8 +88,14 @@ def fetch_server_version():
         response = None
         try:
             worker_detect_params = cfw_detect_params(worker_params)
-            response = http_cfw.request(worker_detect_params, headers=worker_detect_params.headers,
-                                        connection_cache_key=worker_params.connection_cache_key)
+            while True:
+                response = http_cfw.request(worker_detect_params, headers=worker_detect_params.headers,
+                                            connection_cache_key=worker_params.connection_cache_key,
+                                            realurl=worker_detect_params.url)
+                status = check_response(response, worker_params)
+                if status == 'retry':
+                    continue
+                break
             if response.status != 200:
                 logging.warning('CFW [%s] 版本检测失败：%d', worker_params.host, response.status)
                 continue
@@ -169,7 +175,9 @@ def remove_badip(ip):
 
 def check_response(response, worker_params):
     if response:
-        if response.headers.get('Server') == 'cloudflare':
+        if isinstance(response, Exception):
+            return 'retry'
+        elif response.headers.get('Server') == 'cloudflare':
             # https://support.cloudflare.com/hc/zh-cn/articles/115003014512-4xx-客户端错误
             # https://support.cloudflare.com/hc/zh-cn/articles/115003011431-Cloudflare-5XX-错误故障排除
             # https://support.cloudflare.com/hc/zh-cn/articles/360029779472-Cloudflare-1XXX-错误故障排除

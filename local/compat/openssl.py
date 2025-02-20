@@ -164,19 +164,22 @@ class CertificateError(SSL.Error, ssl.CertificateError):
 CertificateErrorTab = {
     SSL._lib.X509_V_ERR_CERT_HAS_EXPIRED: (
         'expired',
-        lambda cert: 'has expired: %s' % cert.get_notAfter().decode()),
+        lambda cert: f'has expired: {cert.get_notAfter().decode()}'),
     SSL._lib.X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT: (
         'self signed',
-        lambda cert: 'self signed, issuer: %s' % str(cert.get_issuer())[18:-2]),
+        lambda cert: f'self signed, issuer: {str(cert.get_issuer())[18:-2]}'),
     SSL._lib.X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN: (
         'self signed',
-        lambda cert: 'self signed in chain, issuer: %s' % str(cert.get_issuer())[18:-2]),
+        lambda cert: f'self signed in chain, issuer: {str(cert.get_issuer())[18:-2]}'),
     SSL._lib.X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT: (
         'untrusted CA',
-        lambda cert: 'untrusted CA in chain, issuer: %s' % str(cert.get_issuer())[18:-2]),
+        lambda cert: f'untrusted CA in chain, issuer: {str(cert.get_issuer())[18:-2]}'),
     SSL._lib.X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY: (
         'untrusted CA',
-        lambda cert: 'untrusted root CA, issuer: %s' % str(cert.get_issuer())[18:-2])
+        lambda cert: f'untrusted root CA, issuer: {str(cert.get_issuer())[18:-2]}'),
+    SSL._lib.X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE: (
+        'untrusted CA',
+        lambda cert: f'leaf signature occasioned untrusted CA, issuer: {str(cert.get_issuer())[18:-2]}')
 }
 
 def match_hostname(cert, hostname):

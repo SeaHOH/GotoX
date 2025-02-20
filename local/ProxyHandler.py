@@ -351,20 +351,20 @@ class AutoProxyHandler(BaseHTTPRequestHandler):
             while ndata:
                 if need_chunked:
                     self.write(b'%x\r\n' % ndata, True)
-                    assert ndata == self.write(buf[:ndata].tobytes(), True), '未完整写入数据'
+                    self.write(buf[:ndata].tobytes(), True)
                     self.write(b'\r\n', True)
                     wrote += ndata
                 else:
-                    assert ndata == self.write(buf[:ndata].tobytes(), True), '未完整写入数据'
+                    self.write(buf[:ndata].tobytes(), True)
                     wrote += ndata
                     if wrote >= length:
                         break
                 ndata = response.readinto(buf)
+            if need_chunked:
+                self.write(b'0\r\n\r\n', True)
         except Exception as e:
             err = e
         finally:
-            if need_chunked:
-                self.write(b'0\r\n\r\n', True)
             return wrote, err
 
     def handle_request_headers(self):
