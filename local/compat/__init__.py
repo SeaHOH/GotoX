@@ -185,3 +185,12 @@ def init():
     patch_configparser()
     patch_dnslib()
     patch_socks()
+
+    try:
+        from threading import _start_joinable_thread
+    except ImportError:
+        pass
+    else:
+        import _thread, threading
+        threading._start_new_thread = _thread.start_new_thread
+        
