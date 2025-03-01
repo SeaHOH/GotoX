@@ -83,7 +83,7 @@ logging.basicConfig(**log_config)
 import os
 import queue
 from time import sleep
-from threading import _start_new_thread as start_new_thread
+from _thread import start_new_thread
 from OpenSSL import __version__ as opensslver
 from .common.cert import check_ca
 from .common.dns import _dns_resolve as dns_resolve, dns_system_servers, dns_remote_servers, dns_local_servers, doh_servers

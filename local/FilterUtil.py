@@ -4,7 +4,7 @@ import threading
 import logging
 from copy import copy
 from time import mtime, sleep
-from threading import _start_new_thread as start_new_thread
+from _thread import start_new_thread
 from functools import partial
 from urllib import parse
 from .common.dns import reset_dns

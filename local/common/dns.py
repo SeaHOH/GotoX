@@ -9,7 +9,7 @@ import random
 import urllib.parse as urlparse
 from select import select
 from time import mtime, sleep
-from threading import _start_new_thread as start_new_thread
+from _thread import start_new_thread
 from .net import servers_2_addresses, isip, isipv4, isipv6, stop_all_forward
 from .util import LRUCache
 from ..GlobalConfig import GC

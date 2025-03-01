@@ -4,7 +4,7 @@ import sys
 import socket
 import logging
 import socketserver
-from threading import _start_new_thread as start_new_thread
+from _thread import start_new_thread
 from .common.decorator import sole_invoked
 from .common.dns import reset_dns
 from .common.internet_active import is_active, internet_v4, internet_v6

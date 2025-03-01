@@ -9,7 +9,7 @@ import threading
 import collections
 import logging
 from time import mtime, sleep
-from threading import _start_new_thread as start_new_thread
+from _thread import start_new_thread
 from .decorator import make_lock_decorator
 from .net import isipv4, isipv6
 

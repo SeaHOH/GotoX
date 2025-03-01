@@ -9,7 +9,7 @@ import collections
 from shutil import copyfile
 from copy import deepcopy
 from time import time, mtime, sleep, localtime, strftime
-from threading import _start_new_thread as start_new_thread
+from _thread import start_new_thread
 from .common.internet_active import internet_v4, internet_v6
 from .common.net import NetWorkIOError, random_hostname, isip, isipv4, isipv6
 from .common.decorator import make_lock_decorator

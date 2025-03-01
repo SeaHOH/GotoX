@@ -6,7 +6,7 @@ import logging
 from functools import partial
 from time import sleep
 from configparser import ConfigParser
-from threading import _start_new_thread as start_new_thread
+from _thread import start_new_thread
 from .common.net import isip, isipv4, isipv6
 from .common.path import config_dir, data_dir
 from .common.util import DomainsTree

@@ -5,7 +5,7 @@ import socket
 import logging
 from time import sleep
 from ipaddress import IPv6Address
-from threading import _start_new_thread as start_new_thread
+from _thread import start_new_thread
 from .net import isipv4, isipv6
 from .path import data_dir, launcher_dir
 from .util import LRUCache, DomainsTree

@@ -13,7 +13,7 @@ import urllib.parse as urlparse
 from select import select
 from time import mtime, sleep
 from functools import partial
-from threading import _start_new_thread as start_new_thread
+from _thread import start_new_thread
 from http.server import BaseHTTPRequestHandler, SimpleHTTPRequestHandler
 from .compat.openssl import def_ciphers, SSL, SSLConnection, CertificateError
 from .common import cert

@@ -12,7 +12,7 @@ import logging
 import collections
 from time import sleep
 from select import select
-from threading import _start_new_thread as start_new_thread
+from _thread import start_new_thread
 from .net import isipv4, isipv6, get_wan_ipv6
 from .path import get_dirname
 from .util import spawn_loop

@@ -13,7 +13,7 @@ import logging
 import threading
 from time import mtime, sleep
 from queue import Queue
-from threading import _start_new_thread as start_new_thread
+from _thread import start_new_thread
 from http.client import HTTPResponse
 from .GlobalConfig import GC
 from .compat.openssl import (
